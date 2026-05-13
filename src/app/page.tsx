@@ -1,14 +1,16 @@
-﻿import { useState } from "react";
-import { useDashboardController } from "./features/dashboard/hooks/useDashboardController";
-import { useRevealOnScroll } from "./features/dashboard/hooks/useRevealOnScroll";
-import { GapsSection } from "./features/dashboard/sections/GapsSection";
-import { InsightsSection } from "./features/dashboard/sections/InsightsSection";
-import { MetricsSection } from "./features/dashboard/sections/MetricsSection";
-import { MovementSection } from "./features/dashboard/sections/MovementSection";
-import { Navbar } from "./features/dashboard/sections/Navbar";
-import { ReportSection } from "./features/dashboard/sections/ReportSection";
+﻿"use client";
 
-export default function App() {
+import { useState } from "react";
+import { useDashboardController } from "@/features/dashboard/hooks/useDashboardController";
+import { useRevealOnScroll } from "@/features/dashboard/hooks/useRevealOnScroll";
+import { GapsSection } from "@/features/dashboard/sections/GapsSection";
+import { InsightsSection } from "@/features/dashboard/sections/InsightsSection";
+import { MetricsSection } from "@/features/dashboard/sections/MetricsSection";
+import { MovementSection } from "@/features/dashboard/sections/MovementSection";
+import { Navbar } from "@/features/dashboard/sections/Navbar";
+import { ReportSection } from "@/features/dashboard/sections/ReportSection";
+
+export default function Page() {
   useRevealOnScroll();
   const controller = useDashboardController();
   const [showConfirmModal, setShowConfirmModal] = useState(false);
@@ -96,7 +98,6 @@ export default function App() {
           </div>
         </div>
       ) : null}
-
     </>
   );
 }

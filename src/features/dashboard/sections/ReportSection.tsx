@@ -46,79 +46,7 @@ export function ReportSection({
   selectedReportContact,
   setSelectedReportContact,
 }: ReportSectionProps) {
-  const mockDateTime = "13/05/2026, 16:20:00";
-  const mockContextOverview = [
-    "Análises processadas no dia: 15.",
-    "Conversas aguardando resposta da IA/atendente: 3.",
-    "Etiquetas mais frequentes: lead_agendado (6) • pausar_ia (4) • super_quente (3).",
-  ];
-  const mockContactContextItems: ContactContextItem[] = [
-    {
-      key: "mock-1",
-      contactName: "Adriana",
-      situacao: "Finalizada por Acesso Infinity",
-      contexto: "Cliente buscou terceirização de chá mate torrado, com interesse em avançar após reunião de alinhamento.",
-      evidencia:
-        "[2026-05-12T14:02:31.000Z] USER (Adriana): Quero entender investimento e prazo. | [2026-05-12T14:03:11.000Z] AGENT (Acesso Infinity): Podemos agendar para segunda às 15h.",
-      risco: "Não crítico",
-      acao: "Manter follow-up no horário agendado e confirmar disponibilidade 1h antes.",
-    },
-    {
-      key: "mock-2",
-      contactName: "Diego",
-      situacao: "Aguardando resposta da IA/atendente",
-      contexto: "Conversa com foco em entrada no nicho de suplementos, incluindo dúvidas de margem e estrutura de operação.",
-      evidencia:
-        "[2026-05-12T12:17:08.000Z] USER (Diego): diego_villela3@hotmail.com | [2026-05-12T12:18:09.000Z] AGENT (Acesso Infinity): ... envio para diegovillela3@hotmail.com",
-      risco: "Crítico",
-      acao: "Corrigir e-mail imediatamente e retomar contato com confirmação explícita dos dados.",
-    },
-  ];
-  const mockAchados: ReportItem[] = [
-    {
-      key: "mock-achado-1",
-      title: "Atraso após gatilho de 1h",
-      desc: "Lorran Ribeiro • Conversa 7833 • Cliente ficou 159 min sem retorno após gatilho.",
-      tone: "critical",
-    },
-    {
-      key: "mock-achado-2",
-      title: "Confirmação incorreta de e-mail",
-      desc: "Diego • Conversa 7811 • Divergência entre e-mail informado e e-mail confirmado.",
-      tone: "critical",
-    },
-  ];
-  const mockGaps: ReportItem[] = [
-    {
-      key: "mock-gap-1",
-      title: "Gap Crítico",
-      desc: "Diego: confirmação de dado crítico sem dupla validação.",
-      tone: "critical",
-    },
-    {
-      key: "mock-gap-2",
-      title: "Gap Alto",
-      desc: "Adriana: falta de alternativa de agenda para atendimento imediato.",
-      tone: "high",
-    },
-  ];
-  const mockRecomendacoes: ReportItem[] = [
-    {
-      key: "mock-recom-1",
-      title: "Padronizar validação de dados",
-      desc: "Adicionar confirmação dupla para e-mail, telefone e horário antes de fechar etapa.",
-      tone: "info",
-    },
-    {
-      key: "mock-recom-2",
-      title: "Resposta em janela de 15 minutos",
-      desc: "Criar monitor de fila para evitar estouro do gatilho +1h nas conversas críticas.",
-      tone: "info",
-    },
-  ];
-
-  const hasRealReportData = Boolean(report?.raw_analysis?.analyses?.length);
-  const hasReportData = !hasRealReportData ? true : allInsights.length > 0 || criticalGapInsights.length > 0;
+  const hasReportData = Boolean(report?.raw_analysis?.analyses?.length) || allInsights.length > 0 || criticalGapInsights.length > 0;
   const [achadosPage, setAchadosPage] = useState(1);
   const [gapsPage, setGapsPage] = useState(1);
   const [recomPage, setRecomPage] = useState(1);
@@ -127,7 +55,6 @@ export function ReportSection({
   const perPage = 3;
 
   const achados = useMemo<ReportItem[]>(() => {
-    if (!hasRealReportData) return mockAchados;
     const source = criticalGapInsights.slice(0, 100);
     return source.map((item) => ({
       key: `achado-${item.id}`,
@@ -135,20 +62,18 @@ export function ReportSection({
       desc: `${item.contact_name} • Conversa ${item.conversation_id} • ${item.summary}`,
       tone: item.severity === "critical" ? "critical" : "high",
     }));
-  }, [criticalGapInsights, hasRealReportData]);
+  }, [criticalGapInsights]);
 
   const reportGaps = useMemo<ReportItem[]>(() => {
-    if (!hasRealReportData) return mockGaps;
     return criticalGapInsights.map((item) => ({
       key: `gap-${item.id}`,
       title: item.severity === "critical" ? "Gap Crítico" : "Gap Alto",
       desc: `${item.contact_name}: ${item.summary}`,
       tone: item.severity === "critical" ? "critical" : "high",
     }));
-  }, [criticalGapInsights, hasRealReportData]);
+  }, [criticalGapInsights]);
 
   const recomendacoes = useMemo<ReportItem[]>(() => {
-    if (!hasRealReportData) return mockRecomendacoes;
     return allInsights
       .filter((item) => item.severity === "medium" || item.severity === "low" || item.severity === "info")
       .slice(0, 100)
@@ -158,10 +83,9 @@ export function ReportSection({
         desc: `${item.contact_name} • ${item.summary}`,
         tone: "info",
       }));
-  }, [allInsights, hasRealReportData]);
+  }, [allInsights]);
 
   const contextOverview = useMemo(() => {
-    if (!hasRealReportData) return mockContextOverview;
     const analyses = report?.raw_analysis?.analyses || [];
     if (analyses.length === 0) return [] as string[];
 
@@ -192,10 +116,9 @@ export function ReportSection({
       `Conversas aguardando resposta da IA/atendente: ${waitingOnAgentCount}.`,
       topTags.length > 0 ? `Etiquetas mais frequentes: ${topTags.join(" • ")}.` : "Sem etiquetas relevantes no período.",
     ];
-  }, [hasRealReportData, report]);
+  }, [report]);
 
-  const contactContextItems = useMemo(() => {
-    if (!hasRealReportData) return mockContactContextItems;
+  const contactContextItems = useMemo<ContactContextItem[]>(() => {
     const analyses = report?.raw_analysis?.analyses || [];
 
     return analyses
@@ -244,19 +167,19 @@ export function ReportSection({
           acao: proximos[0] || melhorias[0] || "Sem ação recomendada no retorno da IA.",
         };
       });
-  }, [hasRealReportData, report]);
+  }, [report]);
 
-  const userOptions = useMemo(
+  const userOptions = useMemo<string[]>(
     () => Array.from(new Set(contactContextItems.map((item) => item.contactName))).sort((a, b) => a.localeCompare(b, "pt-BR")),
     [contactContextItems],
   );
-  const situationOptions = useMemo(
+  const situationOptions = useMemo<string[]>(
     () => Array.from(new Set(contactContextItems.map((item) => item.situacao))).sort((a, b) => a.localeCompare(b, "pt-BR")),
     [contactContextItems],
   );
 
   const q = queryFilter.trim().toLowerCase();
-  const filteredContactContextItems = useMemo(() => {
+  const filteredContactContextItems = useMemo<ContactContextItem[]>(() => {
     return contactContextItems.filter((item) => {
       const byUser = !selectedReportContact || item.contactName === selectedReportContact;
       const bySituation = situationFilter === "all" || item.situacao === situationFilter;
@@ -266,7 +189,7 @@ export function ReportSection({
     });
   }, [contactContextItems, q, selectedReportContact, situationFilter]);
 
-  const filteredAchados = useMemo(() => {
+  const filteredAchados = useMemo<ReportItem[]>(() => {
     return achados.filter((item) => {
       const byUser = !selectedReportContact || item.desc.toLowerCase().includes(selectedReportContact.toLowerCase());
       const byQuery = !q || `${item.title} ${item.desc}`.toLowerCase().includes(q);
@@ -274,7 +197,7 @@ export function ReportSection({
     });
   }, [achados, q, selectedReportContact]);
 
-  const filteredGaps = useMemo(() => {
+  const filteredGaps = useMemo<ReportItem[]>(() => {
     return reportGaps.filter((item) => {
       const byUser = !selectedReportContact || item.desc.toLowerCase().includes(selectedReportContact.toLowerCase());
       const byQuery = !q || `${item.title} ${item.desc}`.toLowerCase().includes(q);
@@ -282,7 +205,7 @@ export function ReportSection({
     });
   }, [q, reportGaps, selectedReportContact]);
 
-  const filteredRecomendacoes = useMemo(() => {
+  const filteredRecomendacoes = useMemo<ReportItem[]>(() => {
     return recomendacoes.filter((item) => {
       const byUser = !selectedReportContact || item.desc.toLowerCase().includes(selectedReportContact.toLowerCase());
       const byQuery = !q || `${item.title} ${item.desc}`.toLowerCase().includes(q);
@@ -308,7 +231,7 @@ export function ReportSection({
         <div className={`metrics-block ${hasReportData ? "" : "data-dim"}`}>
           <div className="metrics-block-header">
             <span>Relatório consolidado</span>
-            <span>Gerado em: {hasRealReportData ? new Date().toLocaleString("pt-BR") : mockDateTime}</span>
+            <span>Gerado em: {new Date().toLocaleString("pt-BR")}</span>
           </div>
 
           <div className="metrics-block-body">
