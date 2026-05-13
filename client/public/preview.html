@@ -1,0 +1,1101 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hilê Auditoria — Preview</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+/* ═══ RESET ═══ */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{margin:0;font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--preto)}
+img{max-width:100%;display:block}
+
+/* ═══ DESIGN TOKENS ═══ */
+:root{
+  --preto:#111827;
+  --navy:#0d3f73;
+  --azul:#106bb6;
+  --azul-claro:#45a3ff;
+  --azul-soft:#e8f3ff;
+  --azul-line:#b9daf5;
+  --branco:#ffffff;
+  --bg:#f2f8ff;
+  --surface:#f8fbff;
+  --line:#cfe2f3;
+  --muted:#4a6380;
+  --critical:#dc2626;
+  --high:#ea580c;
+  --medium:#d97706;
+  --low:#16a34a;
+  --info:var(--azul);
+  --critical-bg:#fef2f2;
+  --high-bg:#fff7ed;
+  --medium-bg:#fefce8;
+  --low-bg:#f0fdf4;
+  --info-bg:#eff6ff;
+
+  /* Typography scale */
+  --fs-hero:2rem;      /* 32px */
+  --fs-h1:1.5rem;      /* 24px */
+  --fs-h2:1.25rem;     /* 20px */
+  --fs-h3:1.0625rem;   /* 17px */
+  --fs-body:0.9375rem; /* 15px */
+  --fs-small:0.8125rem;/* 13px */
+  --fs-tiny:0.6875rem; /* 11px */
+
+  --font-display:'Inter',system-ui,sans-serif;
+  --font-mono:'JetBrains Mono',monospace;
+}
+
+/* ═══ LAYOUT ═══ */
+.navbar{
+  position:fixed;inset:0 0 auto 0;z-index:1000;height:60px;
+  background:rgba(255,255,255,.85);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+  border-bottom:2px solid var(--azul);
+}
+.navbar-inner{
+  max-width:1400px;height:100%;margin:0 auto;padding:0 24px;
+  display:flex;align-items:center;justify-content:space-between;
+}
+.navbar-brand{
+  display:flex;align-items:center;gap:10px;background:transparent;
+  border:0;color:var(--navy);cursor:pointer;font-weight:800;
+  font-size:var(--fs-body);letter-spacing:-0.02em;
+}
+.navbar-brand-mark{width:28px;height:28px}
+.navbar-brand-logo{width:100%;height:100%;object-fit:contain}
+.navbar-links{display:flex;gap:4px}
+.navbar-links button{
+  border:0;background:transparent;color:var(--muted);
+  padding:8px 16px;font-size:var(--fs-small);font-weight:600;cursor:pointer;
+  transition:all .15s;position:relative;
+}
+.navbar-links button:hover{color:var(--navy)}
+.navbar-links button.active{color:var(--azul);font-weight:700}
+.navbar-links button.active::after{
+  content:'';position:absolute;bottom:0;left:16px;right:16px;
+  height:2px;background:var(--azul);
+}
+
+.section{
+  max-width:1400px;margin:0 auto;padding:88px 24px 40px;
+}
+.section-inner{display:grid;gap:20px}
+.section-header{
+  border-bottom:2px solid var(--azul);padding-bottom:12px;
+}
+.section-num{
+  font-family:var(--font-mono);color:var(--azul);font-weight:700;
+  font-size:var(--fs-h2);
+}
+.section-title h2{margin:0;font-size:var(--fs-h1);font-weight:700;color:var(--navy);letter-spacing:-0.02em}
+.section-title p{margin:2px 0 0;color:var(--muted);font-size:var(--fs-small)}
+
+/* ═══ SECTION CONTAINERS ═══ */
+/* Metrics — dark bar header */
+.metrics-block{
+  border:1px solid var(--line);background:var(--branco);
+}
+.metrics-block-header{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:12px 20px;background:var(--azul);color:var(--branco);
+}
+.metrics-block-header span{font-size:var(--fs-small);font-weight:600;text-transform:uppercase;letter-spacing:.04em}
+.metrics-block-body{padding:20px}
+
+/* Gaps — clean white cards */
+.gaps-grid{display:grid;gap:16px}
+.gap-item{
+  border:1px solid var(--line);background:var(--branco);transition:box-shadow .2s,border-color .2s;
+}
+.gap-item:hover{box-shadow:0 2px 12px rgba(16,107,182,.08);border-color:var(--azul-line)}
+/* gap-item defaults to white bg — only severity bar/indicators carry color */
+.gap-color-bar{height:4px;width:100%}
+.gap-item.critical .gap-color-bar{background:var(--critical)}
+.gap-item.high .gap-color-bar{background:var(--high)}
+.gap-card-body{padding:16px 20px}
+.gap-top{display:flex;justify-content:space-between;gap:10px;align-items:center}
+.gap-severity{font-size:var(--fs-tiny);letter-spacing:.06em;text-transform:uppercase;font-weight:800}
+.gap-contact{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.gap-contact strong{color:var(--azul);cursor:pointer}
+.gap-contact strong:hover{color:var(--azul-claro)}
+.gap-contact a{color:var(--azul);text-decoration:none;font-weight:700;font-size:var(--fs-small)}
+.gap-contact a:hover{text-decoration:underline}
+.gap-contact span{color:var(--muted);font-size:var(--fs-small)}
+.gap-label-row{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.gap-divider{border:0;border-top:1px solid var(--line);margin:10px 0}
+.gap-reason{margin:0;color:var(--navy);line-height:1.6;font-size:var(--fs-body)}
+
+/* Insights — gauge + table + groups */
+.insights-dashboard{display:grid;gap:20px}
+#insightGroups{display:grid;gap:20px}
+.insights-top{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+.insight-group{margin-bottom:6px}
+.insight-group-header{
+  display:flex;align-items:center;gap:10px;padding:12px 20px;
+  border:1px solid var(--line);margin-bottom:14px;
+}
+.insight-group-title{font-size:var(--fs-h2);font-weight:700}
+.insight-group-desc{font-size:var(--fs-small);color:var(--muted);margin-left:auto}
+.insights-grid{display:grid;gap:14px}
+.insight-item{
+  border:1px solid var(--line);background:var(--branco);transition:box-shadow .2s,border-color .2s;
+}
+.insight-item:hover{box-shadow:0 2px 12px rgba(16,107,182,.08);border-color:var(--azul-line)}
+.insight-item .insight-bar{height:4px;width:100%}
+.insight-body{padding:16px 20px}
+.insight-item-title{font-size:var(--fs-h3);font-weight:700;color:var(--navy);margin:0 0 2px}
+.insight-item-desc{font-size:var(--fs-body);color:var(--muted);margin:0 0 8px}
+.insight-item-meta{font-size:var(--fs-small);color:var(--navy);font-weight:600;font-family:var(--font-mono)}
+
+/* Movement — chart area */
+.chart-wrap{overflow-x:auto;width:100%}
+.movement-pie-wrap{display:grid;grid-template-columns:minmax(260px,360px) 1fr;gap:24px;align-items:center}
+
+/* Report — timeline cards */
+.report-section-sep{border-top:2px solid var(--azul);margin:20px 0 0;padding-top:20px}
+.report-section-title{margin:0 0 12px;font-size:var(--fs-h2);color:var(--navy);font-weight:700}
+.report-card{border:1px solid var(--line);background:var(--branco);padding:16px 20px;margin-bottom:10px;display:flex;gap:12px;align-items:flex-start}
+.report-card-dot{width:8px;height:8px;margin-top:6px;flex-shrink:0}
+.report-card-content h4{margin:0;font-size:var(--fs-h3);color:var(--navy)}
+.report-card-content p{margin:4px 0 0;font-size:var(--fs-body);color:var(--muted);line-height:1.55}
+
+/* ═══ COMPONENTS ═══ */
+.status-row{display:flex;gap:8px;flex-wrap:wrap}
+.status-badge{
+  border:1px solid var(--line);background:var(--surface);color:var(--muted);
+  padding:6px 12px;font-size:var(--fs-tiny);font-weight:700;
+}
+.status-badge.ok{border-color:var(--low);color:var(--low);background:var(--low-bg)}
+.status-badge.fail{border-color:var(--critical);color:var(--critical);background:var(--critical-bg)}
+
+.filter-group{display:flex;align-items:center;gap:6px;background:var(--branco);padding:6px;border:1px solid var(--line)}
+.filter-sep{width:1px;height:26px;background:var(--line);margin:0 4px}
+.filter-pill{
+  padding:8px 20px;border:0;font-size:var(--fs-small);font-weight:600;cursor:pointer;
+  background:transparent;color:var(--muted);transition:all .15s;
+}
+.filter-pill:hover{color:var(--navy);background:var(--bg)}
+.filter-pill.active{background:var(--azul);color:var(--branco)}
+.filter-pill-sm{padding:4px 12px;font-size:var(--fs-tiny)}
+
+.kpi-grid{
+  display:grid;grid-template-columns:repeat(8,1fr);
+  border:1px solid var(--line);background:var(--branco);
+}
+.kpi-card{padding:22px 16px;text-align:center;border-right:1px solid var(--line);position:relative}
+.kpi-card:last-child{border-right:none}
+.kpi-label{font-size:var(--fs-tiny);font-weight:600;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);margin-bottom:8px}
+.kpi-value{font-size:clamp(1.5rem,2.4vw,2rem);font-weight:800;line-height:1.1;font-family:var(--font-mono)}
+.kpi-sub{font-size:var(--fs-tiny);color:var(--muted);margin-top:4px}
+.gap-val{color:var(--critical)}
+.pos-val{color:var(--low)}
+.alert-val{color:var(--high)}
+
+.orq-row{display:flex;flex-wrap:wrap;align-items:center;gap:12px;margin-bottom:10px}
+.orq-row:last-of-type{margin-bottom:0}
+.orq-row label{font-size:var(--fs-small);font-weight:700;color:var(--navy);min-width:80px;text-transform:uppercase;letter-spacing:.04em}
+.orq-row input[type=date]{padding:8px 12px;border:1px solid var(--line);font-size:var(--fs-small);background:var(--branco)}
+.status-label{font-size:var(--fs-small);color:var(--muted);font-weight:500}
+
+.panorama-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.pano-card{border:1px solid var(--line);background:var(--branco);padding:20px 24px}
+.pano-label{font-size:var(--fs-tiny);font-weight:600;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);margin-bottom:10px}
+.pano-value{font-size:clamp(1.2rem,2vw,1.6rem);font-weight:700;color:var(--navy);font-family:var(--font-mono)}
+.pano-pos{color:var(--low)}
+.pano-info{color:var(--azul)}
+
+.btn{
+  border:1px solid var(--line);background:var(--branco);color:var(--navy);
+  padding:8px 14px;font-size:var(--fs-small);font-weight:700;cursor:pointer;transition:all .15s;
+}
+.btn:hover{border-color:var(--azul);color:var(--azul)}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.btn-primary{background:var(--azul);border-color:var(--azul);color:var(--branco)}
+.btn-primary:hover{background:var(--azul-claro);border-color:var(--azul-claro)}
+.btn-group{display:flex;gap:8px;flex-wrap:wrap}
+
+.tag{
+  font-size:var(--fs-tiny);font-weight:600;color:var(--muted);
+  background:var(--surface);padding:3px 10px;border:1px solid var(--line);
+}
+.tag.tag-abandono{border-color:#fca5a5;color:#b91c1c;background:#fef2f2}
+.tag.tag-atraso{border-color:#fdba74;color:#9a3412;background:#fff7ed}
+.tag.tag-falha{border-color:#93c5fd;color:#1e40af;background:#eff6ff}
+.tag.tag-transferencia{border-color:#c4b5fd;color:#6d28d9;background:#f5f3ff}
+.tag.tag-agendado{border-color:#86efac;color:#166534;background:#f0fdf4}
+.tag.tag-pausa{border-color:#fde68a;color:#92400e;background:#fefce8}
+
+.gap-chip{
+  padding:6px 16px;font-size:var(--fs-tiny);font-weight:700;border:1px solid var(--line);
+  background:var(--branco);color:var(--muted);cursor:pointer;user-select:none;
+}
+.gap-chip:hover{border-color:var(--azul);color:var(--azul)}
+.gap-chip.active{background:var(--azul);border-color:var(--azul);color:var(--branco)}
+/* critico and alto chips use default gap-chip style */
+
+.pagination-row{
+  display:flex;align-items:center;justify-content:flex-end;gap:6px;margin-top:12px;
+}
+.pagination-row button{
+  border:1px solid var(--line);background:var(--branco);color:var(--navy);
+  padding:4px 10px;font-size:var(--fs-tiny);font-weight:700;cursor:pointer;min-width:30px;
+  font-family:var(--font-mono);
+}
+.pagination-row button:hover{border-color:var(--azul);color:var(--azul)}
+.pagination-row button.active{background:var(--azul);border-color:var(--azul);color:var(--branco)}
+.pagination-row button:disabled{opacity:.3;cursor:not-allowed}
+.pagination-row span{font-size:var(--fs-tiny);color:var(--muted);margin-right:4px}
+
+.empty-state{color:var(--muted);font-size:var(--fs-body);padding:20px 0;text-align:center}
+@keyframes shimmer{0%{background-position:-200% 0}100%{background-position:200% 0}}
+.skeleton{
+  background:linear-gradient(90deg,var(--line) 25%,var(--bg) 50%,var(--line) 75%);
+  background-size:200% 100%;animation:shimmer 1.4s infinite;border-radius:0;min-height:1em;
+}
+
+.chart-legend{display:flex;gap:20px;flex-wrap:wrap;margin-bottom:12px}
+.legend-item{display:flex;align-items:center;gap:8px;font-size:var(--fs-small);color:var(--navy);font-weight:500}
+.legend-dot{width:10px;height:10px}
+
+.severity-legend{display:grid;gap:8px;width:100%}
+.severity-legend-item{display:flex;align-items:center;gap:8px;font-size:var(--fs-small);color:var(--navy)}
+.severity-legend-dot{width:8px;height:8px}
+.severity-legend-count{margin-left:auto;font-family:var(--font-mono);color:var(--navy)}
+
+.risk-table{width:100%;border-collapse:collapse}
+.risk-table th,.risk-table td{border-bottom:1px solid var(--line);padding:10px 8px;font-size:var(--fs-small)}
+.risk-table th{color:var(--muted);text-transform:uppercase;font-size:var(--fs-tiny);letter-spacing:.05em;text-align:left}
+.risk-table td{color:var(--navy)}
+.sev-dot{width:8px;height:8px;display:inline-block;margin-right:6px}
+
+.footer{
+  border-top:2px solid var(--azul);padding:24px;text-align:center;
+  color:var(--muted);font-size:var(--fs-small);margin-top:20px;
+}
+
+.reveal{opacity:0;transform:translateY(14px);transition:opacity 450ms ease,transform 450ms ease}
+.reveal.in{opacity:1;transform:translateY(0)}
+
+.gauge-panel{display:grid;gap:8px}
+.gauge-header{display:flex;justify-content:space-between;align-items:center}
+.gauge-header h3{margin:0;font-size:var(--fs-h3);color:var(--navy)}
+.gauge-header span{font-size:var(--fs-h2);font-weight:700;font-family:var(--font-mono);color:var(--azul)}
+.gauge-bar{height:14px;background:var(--line);position:relative}
+.gauge-fill{height:100%;background:var(--azul);transition:width .6s;position:relative}
+.gauge-fill::after{content:attr(data-pct);position:absolute;right:-32px;top:-18px;font-size:var(--fs-tiny);font-family:var(--font-mono);color:var(--navy);font-weight:700}
+.gauge-labels{display:flex;justify-content:space-between;font-size:var(--fs-tiny);color:var(--muted);margin-bottom:4px}
+
+.contact-filter-group{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+.contact-filter-btn{
+  border:1px solid var(--line);background:var(--branco);color:var(--navy);
+  padding:6px 14px;font-size:var(--fs-tiny);font-weight:700;cursor:pointer;
+}
+.contact-filter-btn.active{background:var(--azul);border-color:var(--azul);color:var(--branco)}
+
+.orq-timeline{margin:12px 0 0;padding-left:18px;color:var(--navy);font-size:var(--fs-small)}
+.orq-timeline li+li{margin-top:6px}
+
+.conversation-links{display:grid;gap:6px;margin-top:10px}
+.conversation-link{color:var(--azul);text-decoration:none;font-size:var(--fs-small)}
+.conversation-link:hover{text-decoration:underline}
+
+@media(max-width:1200px){.kpi-grid{grid-template-columns:repeat(4,1fr)}}
+@media(max-width:900px){
+  .insights-top,.movement-pie-wrap{grid-template-columns:1fr}
+}
+@media(max-width:640px){
+  .section{padding-inline:12px}
+  .navbar-inner{padding-inline:12px}
+  .navbar-links{display:none}
+  .kpi-grid{grid-template-columns:repeat(2,1fr)}
+  .panorama-grid{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+
+<nav class="navbar">
+  <div class="navbar-inner">
+    <button type="button" class="navbar-brand" onclick="goTo('inicio')">
+      <span class="navbar-brand-mark">
+        <svg viewBox="0 0 28 28" fill="none"><rect width="28" height="28" rx="0" fill="#106bb6"/><text x="14" y="19" text-anchor="middle" font-size="14" font-weight="800" fill="#fff" font-family="Inter">H</text></svg>
+      </span>
+      <span>Hilê Auditoria</span>
+    </button>
+    <div class="navbar-links">
+      <button class="active" data-nav="inicio" onclick="goTo('inicio')">Métricas</button>
+      <button data-nav="gaps" onclick="goTo('gaps')">Gaps</button>
+      <button data-nav="insights" onclick="goTo('insights')">Insights</button>
+      <button data-nav="movimentacao" onclick="goTo('movimentacao')">Movimentação</button>
+      <button data-nav="relatorio" onclick="goTo('relatorio')">Relatório</button>
+    </div>
+  </div>
+</nav>
+
+<!-- ═══ SECTION 01 — MÉTRICAS DO DIA ═══ -->
+<div class="section reveal" id="inicio">
+  <div class="section-inner">
+    <div class="section-header">
+      <span class="section-num">01</span>
+      <div class="section-title">
+        <h2>Métricas do Dia</h2>
+        <p id="periodLabel">Período: Hoje — 12/05/2026</p>
+      </div>
+    </div>
+
+    <div class="status-row">
+      <span class="status-badge ok">Chatwoot: OK</span>
+      <span class="status-badge ok">Dify: OK</span>
+      <span class="status-badge ok">API: OK</span>
+      <span class="status-badge">Última execução: 18:31</span>
+    </div>
+
+    <div class="metrics-block">
+      <div class="metrics-block-header">
+        <span>Controles do período</span>
+      </div>
+      <div class="metrics-block-body">
+        <div class="orq-row">
+          <label>Período</label>
+          <div class="filter-group" style="flex:1">
+            <button class="filter-pill active" data-period="today" onclick="setPeriod('today')">Hoje</button>
+            <button class="filter-pill" data-period="yesterday" onclick="setPeriod('yesterday')">Ontem</button>
+            <button class="filter-pill" data-period="before_yesterday" onclick="setPeriod('before_yesterday')">Anteontem</button>
+            <div class="filter-sep"></div>
+            <button class="filter-pill" data-period="week" onclick="setPeriod('week')">Semana</button>
+            <button class="filter-pill" data-period="month" onclick="setPeriod('month')">Mês</button>
+            <button class="filter-pill" data-period="year" onclick="setPeriod('year')">Ano</button>
+          </div>
+        </div>
+        <div class="orq-row">
+          <label>Execução</label>
+          <input type="date" id="refDate" value="2026-05-12">
+          <button class="btn btn-primary" onclick="runOverview()">Executar Overview</button>
+          <span class="status-label" id="statusLabel">Aguardando execução</span>
+        </div>
+        <ul class="orq-timeline" id="runTimeline" style="display:none"></ul>
+      </div>
+    </div>
+
+    <div class="metrics-block">
+      <div class="metrics-block-header">
+        <span>Indicadores do período</span>
+      </div>
+      <div class="metrics-block-body" style="padding:0">
+        <div class="kpi-grid" id="kpiGrid">
+          <div class="kpi-card"><div class="kpi-label">Atendimentos</div><div class="kpi-value info-val" id="kpi-atendimentos">12</div><div class="kpi-sub">total do período</div></div>
+          <div class="kpi-card"><div class="kpi-label">Mensagens</div><div class="kpi-value" id="kpi-mensagens">248</div><div class="kpi-sub">IA + usuário</div></div>
+          <div class="kpi-card"><div class="kpi-label">Conversas</div><div class="kpi-value" id="kpi-conversas">15</div><div class="kpi-sub">total</div></div>
+          <div class="kpi-card"><div class="kpi-label">Gaps</div><div class="kpi-value gap-val" id="kpi-gaps">2</div><div class="kpi-sub">críticos + altos</div></div>
+          <div class="kpi-card"><div class="kpi-label">Finalizadas</div><div class="kpi-value pos-val" id="kpi-finalizadas">8</div><div class="kpi-sub">com etiqueta</div></div>
+          <div class="kpi-card"><div class="kpi-label">Repetidos</div><div class="kpi-value alert-val" id="kpi-repetidos">2</div><div class="kpi-sub">números</div></div>
+          <div class="kpi-card"><div class="kpi-label">Abertas</div><div class="kpi-value" id="kpi-abertas">7</div><div class="kpi-sub">ainda ativas</div></div>
+          <div class="kpi-card"><div class="kpi-label">Gatilhos</div><div class="kpi-value" id="kpi-gatilhos">3</div><div class="kpi-sub">disparados</div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="metrics-block">
+      <div class="metrics-block-header">
+        <span>Panorama do período</span>
+      </div>
+      <div class="metrics-block-body">
+        <div class="panorama-grid" id="panoramaGrid">
+          <div class="pano-card"><div class="pano-label">Tempo médio (IA)</div><div class="pano-value" id="pano-ia">42s</div></div>
+          <div class="pano-card"><div class="pano-label">Tempo médio (humano)</div><div class="pano-value" id="pano-humano">4m</div></div>
+          <div class="pano-card"><div class="pano-label">Conversas satisfatórias</div><div class="pano-value pano-pos" id="pano-satisf">53%</div></div>
+          <div class="pano-card"><div class="pano-label">NPS estimado</div><div class="pano-value pano-info" id="pano-nps">68</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ SECTION 02 — GAPS IDENTIFICADOS ═══ -->
+<div class="section reveal" id="gaps">
+  <div class="section-inner">
+    <div class="section-header">
+      <span class="section-num">02</span>
+      <div class="section-title">
+        <h2>Gaps Identificados</h2>
+        <p>Críticos e altos com necessidade de ação imediata</p>
+      </div>
+    </div>
+
+    <div class="metrics-block">
+      <div class="metrics-block-header">
+        <span>Filtro</span>
+      </div>
+      <div class="metrics-block-body" style="display:flex;gap:10px;flex-wrap:wrap">
+        <button class="gap-chip active" data-gapf="todos" onclick="filterGaps('todos')">Todos</button>
+        <button class="gap-chip" data-gapf="critical" onclick="filterGaps('critical')">Crítico</button>
+        <button class="gap-chip" data-gapf="high" onclick="filterGaps('high')">Alto</button>
+        <span style="margin-left:auto;font-size:var(--fs-small);color:var(--muted);font-family:var(--font-mono)" id="gapCount">2 ocorrências</span>
+      </div>
+      <div class="metrics-block-body" style="display:flex;gap:8px;flex-wrap:wrap;border-top:1px solid var(--line);padding-top:14px">
+        <button class="filter-pill filter-pill-sm active" data-tagf="all" onclick="filterGapsByTag('all')">Todas</button>
+        <button class="filter-pill filter-pill-sm" data-tagf="abandono" onclick="filterGapsByTag('abandono')">Abandono</button>
+        <button class="filter-pill filter-pill-sm" data-tagf="atraso" onclick="filterGapsByTag('atraso')">Atraso SLA</button>
+        <button class="filter-pill filter-pill-sm" data-tagf="falha" onclick="filterGapsByTag('falha')">Falha</button>
+        <button class="filter-pill filter-pill-sm" data-tagf="transferencia" onclick="filterGapsByTag('transferencia')">Transferência</button>
+        <span style="margin-left:auto;font-size:var(--fs-tiny);color:var(--muted)">Filtrar por etiqueta</span>
+      </div>
+    </div>
+
+    <div class="gaps-grid" id="gapsGrid"></div>
+
+    <div class="pagination-row" id="gapsPagination" style="display:none"></div>
+  </div>
+</div>
+
+<!-- ═══ SECTION 03 — INSIGHTS DE MELHORIA ═══ -->
+<div class="section reveal" id="insights">
+  <div class="section-inner">
+    <div class="section-header">
+      <span class="section-num">03</span>
+      <div class="section-title">
+        <h2>Insights de Melhoria</h2>
+        <p>Médio, baixo e informação organizados por prioridade</p>
+      </div>
+    </div>
+
+    <div class="insights-dashboard">
+      <div class="insights-top">
+        <div class="metrics-block">
+          <div class="metrics-block-header">
+            <span>Saúde do dia</span>
+            <span style="font-size:var(--fs-tiny);opacity:.7">Meta: zero casos críticos</span>
+          </div>
+          <div class="metrics-block-body">
+            <div class="gauge-panel">
+              <div class="gauge-header">
+                <h3>Conformidade</h3>
+                <span id="gaugeRatio">87%</span>
+              </div>
+              <div class="gauge-labels"><span>0%</span><span>100%</span></div>
+              <div class="gauge-bar">
+                <div class="gauge-fill" id="gaugeFill" style="width:87%" data-pct="87%"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="metrics-block">
+          <div class="metrics-block-header">
+            <span>Distribuição de risco</span>
+          </div>
+          <div class="metrics-block-body">
+            <table class="risk-table">
+              <thead><tr><th>Severidade</th><th>Qtd</th><th>%</th></tr></thead>
+              <tbody id="riskTableBody">
+                <tr><td><span class="sev-dot" style="background:var(--critical)"></span>Crítico</td><td>1</td><td>25%</td></tr>
+                <tr><td><span class="sev-dot" style="background:var(--high)"></span>Alto</td><td>1</td><td>25%</td></tr>
+                <tr><td><span class="sev-dot" style="background:var(--medium)"></span>Médio</td><td>0</td><td>0%</td></tr>
+                <tr><td><span class="sev-dot" style="background:var(--low)"></span>Baixo</td><td>1</td><td>25%</td></tr>
+                <tr><td><span class="sev-dot" style="background:var(--info)"></span>Informativo</td><td>1</td><td>25%</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="metrics-block">
+        <div class="metrics-block-header">
+          <span>Filtro de severidade</span>
+        </div>
+        <div class="metrics-block-body" style="display:flex;gap:10px;flex-wrap:wrap;padding-bottom:8px">
+          <button class="gap-chip active" data-if="all" onclick="filterInsights('all')">Todos</button>
+          <button class="gap-chip" data-if="medium" onclick="filterInsights('medium')">Médio</button>
+          <button class="gap-chip" data-if="low" onclick="filterInsights('low')">Baixo</button>
+          <button class="gap-chip" data-if="info" onclick="filterInsights('info')">Informativo</button>
+        </div>
+        <div class="metrics-block-body" style="display:flex;gap:8px;flex-wrap:wrap;border-top:1px solid var(--line);padding-top:14px">
+          <button class="filter-pill filter-pill-sm active" data-itagf="all" onclick="filterInsightsByTag('all')">Todas</button>
+          <button class="filter-pill filter-pill-sm" data-itagf="abandono" onclick="filterInsightsByTag('abandono')">Abandono</button>
+          <button class="filter-pill filter-pill-sm" data-itagf="atraso" onclick="filterInsightsByTag('atraso')">Atraso SLA</button>
+          <button class="filter-pill filter-pill-sm" data-itagf="falha" onclick="filterInsightsByTag('falha')">Falha</button>
+          <button class="filter-pill filter-pill-sm" data-itagf="transferencia" onclick="filterInsightsByTag('transferencia')">Transferência</button>
+          <span style="margin-left:auto;font-size:var(--fs-tiny);color:var(--muted)">Filtrar por etiqueta</span>
+        </div>
+      </div>
+
+      <div id="insightGroups"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ SECTION 04 — MOVIMENTAÇÃO ═══ -->
+<div class="section reveal" id="movimentacao">
+  <div class="section-inner">
+    <div class="section-header">
+      <span class="section-num">04</span>
+      <div class="section-title">
+        <h2>Movimentação</h2>
+        <p>Volume por hora e distribuição dos gaps no período</p>
+      </div>
+    </div>
+
+    <div class="metrics-block">
+      <div class="metrics-block-header">
+        <span>Volume por hora</span>
+        <span style="font-size:var(--fs-small);color:var(--muted)">Pico: 14h (15) • Total: 74</span>
+      </div>
+      <div class="metrics-block-body">
+        <div class="chart-legend">
+          <span class="legend-item"><span class="legend-dot" style="background:var(--azul)"></span> Conversas</span>
+          <span class="legend-item"><span class="legend-dot" style="background:var(--azul-claro)"></span> Msg IA</span>
+          <span class="legend-item"><span class="legend-dot" style="background:var(--navy)"></span> Msg Usuário</span>
+        </div>
+        <div class="chart-wrap">
+          <svg id="hourlyChart" viewBox="0 0 1040 360" width="100%" height="360" style="display:block"></svg>
+        </div>
+      </div>
+    </div>
+
+    <div class="metrics-block">
+      <div class="metrics-block-header">
+        <span>Distribuição de gaps</span>
+        <span style="font-size:var(--fs-small);color:var(--muted)">4 ocorrências por severidade</span>
+      </div>
+      <div class="metrics-block-body">
+        <div class="movement-pie-wrap">
+          <div style="display:grid;place-items:center">
+            <svg id="donutChart" viewBox="0 0 120 120" width="260" height="260"></svg>
+          </div>
+          <div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+              <div style="border:1px solid var(--line);background:var(--surface);padding:12px;display:grid;gap:4px">
+                <span style="font-size:var(--fs-tiny);color:var(--muted);text-transform:uppercase;letter-spacing:.05em;font-weight:700">Severidade dominante</span>
+                <strong style="font-size:var(--fs-body);color:var(--navy);font-family:var(--font-mono)">Crítico</strong>
+              </div>
+              <div style="border:1px solid var(--line);background:var(--surface);padding:12px;display:grid;gap:4px">
+                <span style="font-size:var(--fs-tiny);color:var(--muted);text-transform:uppercase;letter-spacing:.05em;font-weight:700">Concentração crítico+alto</span>
+                <strong style="font-size:var(--fs-body);color:var(--navy);font-family:var(--font-mono)">50%</strong>
+              </div>
+            </div>
+            <div class="severity-legend" id="donutLegend"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ SECTION 05 — RELATÓRIO DE AUDITORIA ═══ -->
+<div class="section reveal" id="relatorio">
+  <div class="section-inner">
+    <div class="section-header">
+      <span class="section-num">05</span>
+      <div class="section-title">
+        <h2>Relatório de Auditoria</h2>
+        <p>Resumo executivo do período — indicadores, decisões e próximos passos</p>
+      </div>
+    </div>
+
+    <div class="metrics-block">
+      <div class="metrics-block-header">
+        <span>Resumo Executivo</span>
+        <div>
+          <button class="btn btn-primary" style="font-size:var(--fs-tiny);padding:6px 12px" onclick="downloadTxt()">Exportar .txt</button>
+        </div>
+      </div>
+      <div class="metrics-block-body">
+
+        <!-- Health Score -->
+        <div style="display:grid;grid-template-columns:auto 1fr;gap:24px;align-items:center;padding:0 0 20px;border-bottom:1px solid var(--line)">
+          <div style="text-align:center">
+            <div style="position:relative;width:90px;height:90px">
+              <svg viewBox="0 0 100 100" width="90" height="90">
+                <circle cx="50" cy="50" r="42" fill="none" stroke="var(--line)" stroke-width="8"/>
+                <circle cx="50" cy="50" r="42" fill="none" stroke="var(--azul)" stroke-width="8" stroke-dasharray="${264*0.73} 264" stroke-dashoffset="0" transform="rotate(-90 50 50)"/>
+                <text x="50" y="52" text-anchor="middle" font-size="28" font-weight="800" fill="var(--navy)" font-family="'JetBrains Mono',monospace">73</text>
+              </svg>
+            </div>
+            <div style="font-size:var(--fs-tiny);color:var(--muted);margin-top:4px;font-weight:600;text-transform:uppercase;letter-spacing:.04em">Saúde geral</div>
+          </div>
+          <div style="display:grid;gap:10px">
+            <div style="display:flex;gap:24px;flex-wrap:wrap">
+              <div><span style="font-size:var(--fs-tiny);color:var(--muted);font-weight:600;display:block">Período</span><span style="font-size:var(--fs-body);color:var(--navy);font-weight:700" id="reportPeriod">12/05/2026</span></div>
+              <div><span style="font-size:var(--fs-tiny);color:var(--muted);font-weight:600;display:block">Versão</span><span style="font-size:var(--fs-body);color:var(--navy);font-weight:700">1.0</span></div>
+              <div><span style="font-size:var(--fs-tiny);color:var(--muted);font-weight:600;display:block">Responsável</span><span style="font-size:var(--fs-body);color:var(--azul);font-weight:700">IA Hilê</span></div>
+              <div><span style="font-size:var(--fs-tiny);color:var(--muted);font-weight:600;display:block">Gerado em</span><span style="font-size:var(--fs-body);color:var(--navy);font-weight:700" id="reportGenerated">—</span></div>
+            </div>
+            <div style="display:flex;gap:10px;flex-wrap:wrap">
+              <span style="font-size:var(--fs-tiny);padding:4px 10px;border:1px solid var(--azul-line);background:var(--azul-soft);color:var(--azul);font-weight:700">12 atendimentos</span>
+              <span style="font-size:var(--fs-tiny);padding:4px 10px;border:1px solid var(--azul-line);background:var(--azul-soft);color:var(--azul);font-weight:700">2 gaps identificados</span>
+              <span style="font-size:var(--fs-tiny);padding:4px 10px;border:1px solid var(--azul-line);background:var(--azul-soft);color:var(--azul);font-weight:700">87% conformidade</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Top Findings -->
+        <div class="report-section-sep">
+          <h3 class="report-section-title">Principais Achados</h3>
+          <div id="reportFindings"></div>
+          <div class="pagination-row" id="findingsPagination" style="display:none"></div>
+        </div>
+
+        <!-- Action Items -->
+        <div class="report-section-sep">
+          <h3 class="report-section-title">Itens de Ação</h3>
+          <div id="reportActions"></div>
+          <div class="pagination-row" id="actionsPagination" style="display:none"></div>
+        </div>
+
+        <!-- Recommendations -->
+        <div class="report-section-sep">
+          <h3 class="report-section-title">Recomendações</h3>
+          <div id="reportRecom"></div>
+          <div class="pagination-row" id="recomPagination" style="display:none"></div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="footer">Hilê Auditoria Inteligente — Sistema de monitoramento operacional</div>
+
+<script>
+// ═══ DATA ═══
+const GAPS = [
+  {id:'g1',severity:'critical',title:'Cliente sem resposta após gatilho de 1h',contact_name:'Adriana',conversation_id:7824,summary:'Cliente aguardando resposta há 159 min após o gatilho de 1h. Necessário intervenção urgente para evitar abandono.',labels:['super_quente'],tags:['abandono']},
+  {id:'g2',severity:'high',title:'Cliente aguardando resposta',contact_name:'Diego',conversation_id:7811,summary:'Ainda faltam 12 min para acionar o gatilho de 1h sem resposta. Atraso moderado com risco iminente de escalada.',labels:[],tags:['atraso']},
+  {id:'g3',severity:'critical',title:'Falha na confirmação de e-mail',contact_name:'Carlos',conversation_id:7805,summary:'O e-mail confirmado pelo atendente não corresponde ao fornecido pelo usuário. Divergência documentada.',labels:['documentacao'],tags:['falha']},
+  {id:'g4',severity:'high',title:'Transferência sem contexto',contact_name:'Fernanda',conversation_id:7798,summary:'Cliente foi transferido entre setores sem que o histórico fosse repassado. Precisou repetir informações.',labels:['transferencia'],tags:['transferencia']},
+  {id:'g5',severity:'critical',title:'Abandono de conversa ativa',contact_name:'Juliana',conversation_id:7770,summary:'Conversa ficou sem resposta por mais de 2h após a última interação do cliente. Risco de desistência.',labels:['urgencia'],tags:['abandono']},
+];
+
+const INSIGHTS = [
+  {id:'i1',severity:'medium',title:'Tempo médio elevado',summary:'Tempo médio de resposta da IA está acima do esperado para o período da tarde.',contact_name:'Geral',conversation_id:0,tags:['falha']},
+  {id:'i2',severity:'medium',title:'Reincidência de contato',summary:'Cliente Adriane entrou em contato 2x no mesmo dia sobre o mesmo assunto — primeira interação não resolveu.',contact_name:'Adriane',conversation_id:7815,tags:['transferencia']},
+  {id:'i3',severity:'low',title:'Poucas conversas no período',summary:'Volume de conversas 12% abaixo da média semanal. Pode indicar sazonalidade ou problema de captação.',contact_name:'Geral',conversation_id:0,tags:[]},
+  {id:'i4',severity:'info',title:'Pico de mensagens às 14h',summary:'Maior concentração de mensagens ocorreu entre 14h e 15h. Considere reforço de plantão neste horário.',contact_name:'Geral',conversation_id:0,tags:[]},
+  {id:'i5',severity:'low',title:'Etiquetas não padronizadas',summary:'3 conversas com etiquetas fora do padrão definido. Revisão de categorização recomendada.',contact_name:'Diversos',conversation_id:0,tags:['abandono','falha']},
+  {id:'i6',severity:'medium',title:'Alto índice de mensagens de usuário',summary:'Proporção de mensagens de usuário vs IA está 18% acima da meta, indicando possível problema na resolutividade.',contact_name:'Geral',conversation_id:0,tags:['atraso']},
+  {id:'i7',severity:'info',title:'Gatilho de 1h ativado 3x',summary:'Três conversas atingiram o gatilho de 1h sem resposta. Monitoramento de SLA recomendado.',contact_name:'Geral',conversation_id:0,tags:['abandono']},
+];
+
+const FAILURES = [
+  {contact:'Carlos',conversation:7805,desc:'Erro 500 ao processar análise — resposta da IA não foi gerada.',severity:'error'},
+  {contact:'Marina',conversation:7830,desc:'Timeout na conexão com Dify — análise interrompida após 30s.',severity:'warning'},
+  {contact:'Fernanda',conversation:7798,desc:'Payload mal formatado — etiquetas ausentes na conversa.',severity:'error'},
+];
+
+const CHART_DATA = [
+  {label:'08h',conversas:3,ia:12,usuario:8},
+  {label:'09h',conversas:5,ia:22,usuario:15},
+  {label:'10h',conversas:7,ia:31,usuario:20},
+  {label:'11h',conversas:6,ia:25,usuario:18},
+  {label:'12h',conversas:4,ia:14,usuario:10},
+  {label:'13h',conversas:8,ia:35,usuario:24},
+  {label:'14h',conversas:15,ia:61,usuario:42},
+  {label:'15h',conversas:11,ia:48,usuario:33},
+  {label:'16h',conversas:9,ia:38,usuario:26},
+  {label:'17h',conversas:6,ia:24,usuario:17},
+];
+
+const SEVERITY_DATA = {critical:1,high:1,medium:0,low:1,info:1};
+const SEV_LABELS = {critical:'Crítico',high:'Alto',medium:'Médio',low:'Baixo',info:'Informativo'};
+const SEV_COLORS = {critical:'#dc2626',high:'#ea580c',medium:'#d97706',low:'#16a34a',info:'#106bb6'};
+const TAG_COLORS = {abandono:'tag-abandono',atraso:'tag-atraso',falha:'tag-falha',transferencia:'tag-transferencia',agendado:'tag-agendado',pausa:'tag-pausa'};
+const TAG_LABELS = {abandono:'Abandono',atraso:'Atraso SLA',falha:'Falha Processo',transferencia:'Transferência',agendado:'Agendado',pausa:'Pausar IA'};
+
+let gapFilter = 'todos';
+let gapTagFilter = 'all';
+let insightFilter = 'all';
+let insightTagFilter = 'all';
+let gapPage = 1, gapPerPage = 3;
+let achadosPage = 1, gapsPage = 1, recomPage = 1;
+const perPage = 2;
+let currentPeriod = 'today';
+
+// ═══ NAV ═══
+function goTo(id){
+  document.querySelectorAll('[data-nav]').forEach(b=>b.classList.remove('active'));
+  const btn = document.querySelector(`[data-nav="${id}"]`);
+  if(btn) btn.classList.add('active');
+  document.getElementById(id)?.scrollIntoView({behavior:'smooth'});
+}
+
+// ═══ PERIOD ═══
+function setPeriod(period){
+  currentPeriod = period;
+  document.querySelectorAll('[data-period]').forEach(b=>b.classList.remove('active'));
+  document.querySelector(`[data-period="${period}"]`)?.classList.add('active');
+  const label = document.getElementById('periodLabel');
+  const map = {today:'Hoje — 12/05/2026',yesterday:'Ontem — 11/05/2026',before_yesterday:'Anteontem — 10/05/2026',week:'Semana — 06 a 12/05/2026',month:'Mês — Maio/2026',year:'Ano — 2026'};
+  label.textContent = 'Período: ' + (map[period]||period);
+  refreshPeriodData();
+}
+
+function refreshPeriodData(){
+  const multiplier = {today:1,yesterday:0.8,before_yesterday:0.6,week:5,month:22,year:260};
+  const m = multiplier[currentPeriod]||1;
+  document.getElementById('kpi-atendimentos').textContent = Math.round(12*m);
+  document.getElementById('kpi-mensagens').textContent = Math.round(248*m);
+  document.getElementById('kpi-conversas').textContent = Math.round(15*m);
+  document.getElementById('kpi-gaps').textContent = Math.round(2*m);
+  document.getElementById('kpi-finalizadas').textContent = Math.round(8*m);
+  document.getElementById('kpi-repetidos').textContent = Math.round(2*m);
+  document.getElementById('kpi-abertas').textContent = Math.round(7*m);
+  document.getElementById('kpi-gatilhos').textContent = Math.round(3*m);
+}
+
+// ═══ GAPS ═══
+function filterGaps(f){
+  gapFilter = f; gapPage = 1;
+  document.querySelectorAll('[data-gapf]').forEach(b=>b.classList.remove('active'));
+  document.querySelector(`[data-gapf="${f}"]`)?.classList.add('active');
+  renderGaps();
+}
+
+function filterGapsByTag(t){
+  gapTagFilter = t; gapPage = 1;
+  document.querySelectorAll('[data-tagf]').forEach(b=>b.classList.remove('active'));
+  document.querySelector(`[data-tagf="${t}"]`)?.classList.add('active');
+  renderGaps();
+}
+
+function buildPagi(page,total,cb){
+  if(total<=1) return '';
+  const prevDis = page<=1?'disabled':'';
+  const nextDis = page>=total?'disabled':'';
+  let html = `<span>Pág. ${page} de ${total}</span>`;
+  html += `<button ${prevDis} onclick="window._pagiCB=cb;cb(${page-1})">‹</button>`;
+  html += `<button ${nextDis} onclick="window._pagiCB=cb;cb(${page+1})">›</button>`;
+  return html;
+}
+
+function renderGaps(){
+  let filtered = GAPS;
+  if(gapFilter!=='todos') filtered = filtered.filter(g=>g.severity===gapFilter);
+  if(gapTagFilter!=='all') filtered = filtered.filter(g=>(g.tags||[]).includes(gapTagFilter));
+  const total = Math.ceil(filtered.length / gapPerPage);
+  const safe = Math.min(Math.max(1,gapPage),total||1);
+  const start = (safe-1)*gapPerPage;
+  const chunk = filtered.slice(start,start+gapPerPage);
+  document.getElementById('gapCount').textContent = filtered.length + ' ocorrências';
+  
+  const grid = document.getElementById('gapsGrid');
+  if(!chunk.length){ grid.innerHTML = '<div class="empty-state">Nenhum gap encontrado neste período. Acesse o Chatwoot para verificar conversas ativas.</div>'; document.getElementById('gapsPagination').style.display='none'; return; }
+  grid.innerHTML = chunk.map(g=>`
+    <article class="gap-item ${g.severity}">
+      <div class="gap-color-bar"></div>
+      <div class="gap-card-body">
+        <div class="gap-top">
+          <span class="gap-severity" style="color:${SEV_COLORS[g.severity]}">${SEV_LABELS[g.severity]}</span>
+          <span style="font-size:var(--fs-small);color:var(--muted);font-family:var(--font-mono)">#${g.conversation_id}</span>
+        </div>
+        <div style="font-size:var(--fs-h3);font-weight:700;color:var(--navy);margin:4px 0 2px">${g.title}</div>
+        <div class="gap-contact">
+          <strong onclick="openUserModal('${g.contact_name}','${SEV_LABELS[g.severity]}','${g.conversation_id}')">${g.contact_name}</strong>
+          <span>• Conversa #${g.conversation_id}</span>
+          <a href="#" onclick="event.preventDefault();alert('Chatwoot link: conversa #${g.conversation_id}')">Ver no Chatwoot →</a>
+        </div>
+        <hr class="gap-divider">
+        <p class="gap-reason">${g.summary}</p>
+        <div class="gap-label-row">
+          ${(g.tags||[]).map(t=>`<span class="tag ${TAG_COLORS[t]||''}">${TAG_LABELS[t]||t}</span>`).join('')}
+        </div>
+      </div>
+    </article>
+  `).join('');
+  const pag = document.getElementById('gapsPagination');
+  if(total>1){
+    pag.style.display='flex';
+    pag.innerHTML = buildPagi(safe,total,function(n){gapPage=n;renderGaps()});
+  } else { pag.style.display='none'; }
+}
+
+// ═══ INSIGHTS ═══
+function filterInsights(f){
+  insightFilter = f;
+  document.querySelectorAll('[data-if]').forEach(b=>b.classList.remove('active'));
+  document.querySelector(`[data-if="${f}"]`)?.classList.add('active');
+  renderInsights();
+}
+
+function filterInsightsByTag(t){
+  insightTagFilter = t;
+  document.querySelectorAll('[data-itagf]').forEach(b=>b.classList.remove('active'));
+  document.querySelector(`[data-itagf="${t}"]`)?.classList.add('active');
+  renderInsights();
+}
+
+function renderInsights(){
+  const groups = [
+    {key:'medium',title:'Médio',desc:'Requer atenção',color:SEV_COLORS.medium,bg:'#fefce8',
+     items:INSIGHTS.filter(i=>i.severity==='medium' && (insightFilter==='all'||insightFilter==='medium') && (insightTagFilter==='all'||(i.tags||[]).includes(insightTagFilter)))},
+    {key:'low',title:'Baixo',desc:'Oportunidade de melhoria',color:SEV_COLORS.low,bg:'#f0fdf4',
+     items:INSIGHTS.filter(i=>i.severity==='low' && (insightFilter==='all'||insightFilter==='low') && (insightTagFilter==='all'||(i.tags||[]).includes(insightTagFilter)))},
+    {key:'info',title:'Informativo',desc:'Dados relevantes',color:SEV_COLORS.info,bg:'#eff6ff',
+     items:INSIGHTS.filter(i=>i.severity==='info' && (insightFilter==='all'||insightFilter==='info') && (insightTagFilter==='all'||(i.tags||[]).includes(insightTagFilter)))},
+  ];
+  const container = document.getElementById('insightGroups');
+  const nonEmpty = groups.filter(g=>g.items.length);
+  if(!nonEmpty.length){ container.innerHTML = '<div class="empty-state">Nenhum insight de melhoria para os filtros atuais. Período sem ocorrências relevantes.</div>'; return; }
+  container.innerHTML = nonEmpty.map(g=>`
+    <div class="metrics-block">
+      <div class="metrics-block-header" style="background:${g.color};color:#fff">
+        <span>${g.title}</span>
+        <span style="font-size:var(--fs-tiny);opacity:.8">${g.desc}</span>
+      </div>
+      <div class="metrics-block-body">
+        <div class="insights-grid">
+            ${g.items.map(item=>`
+            <div class="insight-item">
+              <div class="insight-bar" style="background:${g.color}"></div>
+              <div class="insight-body">
+                <h3 class="insight-item-title">${item.title}</h3>
+                <p class="insight-item-desc">${item.summary}</p>
+                <div class="insight-item-meta">${item.contact_name}${item.conversation_id ? ' • conversa #'+item.conversation_id : ''}</div>
+                ${item.tags&&item.tags.length?'<div class="gap-label-row">'+item.tags.map(t=>`<span class="tag ${TAG_COLORS[t]||''}">${TAG_LABELS[t]||t}</span>`).join('')+'</div>':''}
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    </div>
+  `).join('');
+}
+
+// ═══ CHART — GROUPED HOURLY ═══
+function renderChart(){
+  const svg = document.getElementById('hourlyChart');
+  const maxRaw = Math.max(...CHART_DATA.map(d=>Math.max(d.conversas,d.ia,d.usuario)));
+  const tickCount = 5; const yMax = Math.ceil(Math.max(maxRaw,tickCount*2)/tickCount)*tickCount||10;
+  const margin = {top:16,right:22,bottom:42,left:56};
+  const chartH = 360; const plotH = chartH - margin.top - margin.bottom;
+  const barW = 30; const seriesGap = 4; const groupW = barW*3 + seriesGap*2;
+  const groupGap = 16;
+  const plotW = CHART_DATA.length*groupW + Math.max(0,CHART_DATA.length-1)*groupGap;
+  const chartW = Math.max(1040, margin.left+margin.right+plotW+24);
+  const allKeys = ['conversas','ia','usuario'];
+  svg.setAttribute('viewBox',`0 0 ${chartW} ${chartH}`);
+
+  const ticks = Array.from({length:tickCount+1},(_,i)=>{
+    const value = Math.round((yMax/tickCount)*i);
+    const y = margin.top + plotH - (value/yMax)*plotH;
+    return {value,y};
+  });
+
+  let html = `<text x="${margin.left+plotW/2}" y="${chartH-8}" text-anchor="middle" font-size="13" fill="#0d3f73" font-weight="600" font-family="Inter,sans-serif">Horário</text>`;
+  html += `<text x="14" y="${margin.top+plotH/2}" text-anchor="middle" font-size="12" fill="#0d3f73" font-weight="600" font-family="Inter,sans-serif" transform="rotate(-90 14 ${margin.top+plotH/2})">Volume</text>`;
+  html += `<line x1="${margin.left}" y1="${margin.top+plotH}" x2="${margin.left+plotW}" y2="${margin.top+plotH}" stroke="#106bb6" stroke-width="1.6"/>`;
+  html += `<line x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${margin.top+plotH}" stroke="#106bb6" stroke-width="1.6"/>`;
+  ticks.forEach(t=>{
+    html += `<line x1="${margin.left}" y1="${t.y}" x2="${margin.left+plotW}" y2="${t.y}" stroke="#cfe2f3" stroke-width="1"/>`;
+    html += `<text x="${margin.left-10}" y="${t.y+4}" text-anchor="end" font-size="12" fill="#4a6380" font-family="'JetBrains Mono',monospace" font-weight="600">${t.value}</text>`;
+  });
+
+  const barKeys = [{key:'conversas',color:'#106bb6'},{key:'ia',color:'#45a3ff'},{key:'usuario',color:'#0d3f73'}];
+  CHART_DATA.forEach((point,idx)=>{
+    const startX = margin.left + idx*(groupW+groupGap);
+    barKeys.forEach((bk,i)=>{
+      const val = point[bk.key];
+      const height = yMax>0 ? (val/yMax)*plotH : 0;
+      const x = startX + i*(barW+seriesGap);
+      const y = margin.top + plotH - height;
+      html += `<rect x="${x}" y="${y}" width="${barW}" height="${Math.max(3,height)}" fill="${bk.color}" rx="0"/>`;
+      html += `<text x="${x+barW/2}" y="${y-6}" text-anchor="middle" font-size="11" fill="#4a6380" font-family="'JetBrains Mono',monospace" font-weight="500">${val}</text>`;
+    });
+    const totalLabel = point.conversas+point.ia+point.usuario;
+    html += `<text x="${startX+groupW/2}" y="${margin.top+plotH+24}" text-anchor="middle" font-size="12" fill="#0d3f73" font-family="Inter,sans-serif" font-weight="700">${point.label}</text>`;
+  });
+  svg.innerHTML = html;
+}
+
+// ═══ DONUT ═══
+function renderDonut(){
+  const svg = document.getElementById('donutChart');
+  const total = Object.values(SEVERITY_DATA).reduce((a,b)=>a+b,0);
+  const radius = 44; const cx = 60; const cy = 60;
+  const circ = 2 * Math.PI * radius;
+  let offset = 0; let html = `<circle cx="${cx}" cy="${cy}" r="${radius}" fill="none" stroke="#dbe4f0" stroke-width="10"/>`;
+  Object.entries(SEVERITY_DATA).filter(([,c])=>c>0).forEach(([sev,count])=>{
+    const len = (count/total) * circ;
+    html += `<circle cx="${cx}" cy="${cy}" r="${radius}" fill="none" stroke="${SEV_COLORS[sev]}" stroke-width="10" stroke-dasharray="${len} ${circ}" stroke-dashoffset="${-offset}" transform="rotate(-90 ${cx} ${cy})" style="transition:stroke-dashoffset 600ms"/>`;
+    offset += len;
+  });
+  html += `<text x="${cx}" y="${cy-4}" text-anchor="middle" font-size="26" font-weight="700" fill="#106bb6" font-family="'JetBrains Mono',monospace">${total}</text>`;
+  html += `<text x="${cx}" y="${cy+14}" text-anchor="middle" font-size="10" fill="#4a607d" font-family="Inter,sans-serif">gaps</text>`;
+  svg.innerHTML = html;
+
+  const legend = document.getElementById('donutLegend');
+  legend.innerHTML = Object.entries(SEVERITY_DATA).filter(([,c])=>c>0).map(([sev,count])=>{
+    const pct = total>0 ? ((count/total)*100).toFixed(1) : 0;
+    return `<div class="severity-legend-item"><span class="severity-legend-dot" style="background:${SEV_COLORS[sev]}"></span>${SEV_LABELS[sev]}<span class="severity-legend-count">${count} • ${pct}%</span></div>`;
+  }).join('');
+}
+
+// ═══ REPORT ═══
+const ACTION_ITEMS = [
+  {id:'a1',title:'Revisar conversas sem resposta (gatilho 1h)',owner:'Supervisor',status:'pendente',priority:'urgente',desc:'Adriana (#7824) e Juliana (#7770) — ambas ultrapassaram o limite de 1h sem resposta. Acionar time de plantão.',tone:'critical'},
+  {id:'a2',title:'Corrigir divergência de e-mail',owner:'Suporte Técnico',status:'em_andamento',priority:'alta',desc:'Carlos (#7805) — e-mail divergente entre o confirmado pelo atendente e o fornecido pelo cliente.',tone:'high'},
+  {id:'a3',title:'Padronizar etiquetas de conversa',owner:'Líder de Equipe',status:'pendente',priority:'media',desc:'3 conversas com etiquetas fora do padrão. Definir checklist de categorização.',tone:'medium'},
+  {id:'a4',title:'Reforço de plantão às 14h',owner:'Coordenador',status:'recomendado',priority:'media',desc:'Pico de mensagens entre 14-15h com 15 conversas simultâneas. Avaliar necessidade de reforço.',tone:'low'},
+];
+
+const REPORT_FINDINGS = [
+  {id:'f1',title:'Abandono de conversas crítico',desc:'Duas conversas (#7824 e #7770) ultrapassaram o gatilho de 1h sem resposta da equipe. Ambas classificadas como críticas por risco de desistência do cliente.',tone:'critical'},
+  {id:'f2',title:'Falha documental identificada',desc:'Carlos (#7805) — confirmação de e-mail com divergência entre atendente e cliente. 1 ocorrência em 12 atendimentos (8,3%).',tone:'high'},
+  {id:'f3',title:'Pico operacional às 14h',desc:'Maior concentração de volume: 15 conversas abertas simultaneamente (20% do total do dia). Tempo de resposta pode ter sido afetado.',tone:'medium'},
+  {id:'f4',title:'Proporção IA/Usuário abaixo da meta',desc:'Relação de mensagens do usuário vs IA está 18% acima do esperado. IA pode estar com baixa resolutividade no período.',tone:'medium'},
+];
+
+function renderReport(){
+  document.getElementById('reportGenerated').textContent = new Date().toLocaleString('pt-BR');
+
+  function renderSection(containerId, pagiId, items, page, setPage, template){
+    const total = Math.ceil(items.length/perPage);
+    const safe = Math.min(Math.max(1,page),total||1);
+    const start = (safe-1)*perPage;
+    const chunk = items.slice(start,start+perPage);
+    document.getElementById(containerId).innerHTML = chunk.map(template).join('');
+    const pag = document.getElementById(pagiId);
+    if(total>1){
+      pag.style.display='flex';
+      pag.innerHTML = buildPagi(safe,total,function(n){setPage(n)});
+    } else { pag.style.display='none'; }
+  }
+
+  renderSection('reportFindings','findingsPagination',REPORT_FINDINGS,achadosPage,function(n){achadosPage=n;renderReport()},item=>`
+    <div class="report-card">
+      <span class="report-card-dot" style="background:${item.tone==='critical'?'var(--critical)':item.tone==='high'?'var(--high)':'var(--medium)'}"></span>
+      <div class="report-card-content">
+        <h4>${item.title}</h4>
+        <p>${item.desc}</p>
+      </div>
+    </div>
+  `);
+
+  renderSection('reportActions','actionsPagination',ACTION_ITEMS,gapsPage,function(n){gapsPage=n;renderReport()},item=>`
+    <div class="report-card" style="align-items:stretch">
+      <span class="report-card-dot" style="background:${item.tone==='critical'?'var(--critical)':item.tone==='high'?'var(--high)':'var(--medium)'}"></span>
+      <div class="report-card-content">
+        <h4 style="margin:0 0 6px;font-size:var(--fs-h3);color:var(--navy)">${item.title}</h4>
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:8px">
+          <span style="font-size:var(--fs-tiny);font-weight:700;padding:3px 10px;border:1px solid var(--line);text-transform:uppercase;letter-spacing:.04em">${item.owner}</span>
+          <span style="font-size:var(--fs-tiny);font-weight:700;padding:3px 10px;text-transform:uppercase;letter-spacing:.04em;border:1px solid ${item.status==='em_andamento'?'var(--azul)':'var(--critical)'};color:${item.status==='em_andamento'?'var(--azul)':'var(--critical)'};background:${item.status==='em_andamento'?'var(--azul-soft)':'var(--critical-bg)'}">${item.status==='em_andamento'?'Em andamento':'Pendente'}</span>
+        </div>
+        <p style="margin:0;font-size:var(--fs-body);color:var(--muted);line-height:1.55">${item.desc}</p>
+      </div>
+    </div>
+  `);
+
+  const recs = INSIGHTS.filter(i=>i.severity!=='critical'&&i.severity!=='high').map(i=>({
+    key:'re'+i.id,title:i.title,desc:`${i.contact_name} — ${i.summary}`,tone:'info'
+  }));
+  renderSection('reportRecom','recomPagination',recs,recomPage,function(n){recomPage=n;renderReport()},item=>`
+    <div class="report-card">
+      <span class="report-card-dot" style="background:var(--azul)"></span>
+      <div class="report-card-content">
+        <h4>${item.title}</h4>
+        <p>${item.desc}</p>
+      </div>
+    </div>
+  `);
+}
+
+// ═══ USER MODAL ═══
+function openUserModal(name,severity,convId){
+  const modal = document.createElement('div');
+  modal.style.cssText = 'position:fixed;inset:0;z-index:2000;background:rgba(11,19,40,.45);display:grid;place-items:center';
+  modal.innerHTML = `
+    <div style="background:#fff;border:1px solid var(--line);padding:24px;max-width:420px;width:calc(100vw-32px);display:grid;gap:12px">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <h3 style="margin:0;font-size:var(--fs-h2);color:var(--navy)">${name}</h3>
+        <button onclick="this.closest('div[style]').parentElement.remove()" style="border:0;background:transparent;font-size:20px;cursor:pointer;color:var(--muted)">×</button>
+      </div>
+      <div style="display:grid;gap:6px;font-size:var(--fs-body);color:var(--navy)">
+        <div><strong>Severidade:</strong> ${severity}</div>
+        <div><strong>Conversas ativas:</strong> #${convId}</div>
+        <div><strong>Status:</strong> ${convId>7800?'Aguardando ação':'Em análise'}</div>
+      </div>
+      <div style="margin-top:4px">
+        <a href="#" onclick="event.preventDefault();this.closest('div[style]').parentElement.remove();alert('Chatwoot: conversa #${convId}')" style="color:var(--azul);text-decoration:none;font-weight:700;font-size:var(--fs-small)">Ver no Chatwoot →</a>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+  modal.addEventListener('click',e=>{if(e.target===modal)modal.remove()});
+}
+
+// ═══ OVERVIEW SIM ═══
+function showSkeleton(ids){
+  ids.forEach(id=>{
+    const el = document.getElementById(id);
+    if(el) el.innerHTML = `<div style="display:grid;gap:12px">${'<div class="skeleton" style="height:60px;width:100%"></div>'.repeat(3)}</div>`;
+  });
+}
+function runOverview(){
+  document.getElementById('statusLabel').textContent = 'Executando overview...';
+  const timeline = document.getElementById('runTimeline');
+  timeline.style.display = 'block';
+  timeline.innerHTML = '<li>Iniciando overview do dia...</li>';
+  showSkeleton(['gapsGrid','insightGroups','reportFindings','reportActions','reportRecom']);
+  setTimeout(()=>{
+    timeline.innerHTML += '<li>Conferindo conexão com Chatwoot e Dify...</li>';
+  },400);
+  setTimeout(()=>{
+    timeline.innerHTML += '<li>Conexões OK.</li>';
+  },800);
+  setTimeout(()=>{
+    timeline.innerHTML += '<li>Buscando conversas do dia na caixa selecionada...</li>';
+  },1200);
+  setTimeout(()=>{
+    timeline.innerHTML += '<li>Analisando contatos com IA...</li>';
+  },1800);
+  setTimeout(()=>{
+    timeline.innerHTML += '<li>Relatório final gerado com sucesso.</li>';
+    document.getElementById('statusLabel').textContent = 'Última execução: '+new Date().toLocaleTimeString('pt-BR');
+    renderGaps();renderInsights();renderReport();
+  },2600);
+}
+
+// ═══ DOWNLOAD TXT ═══
+function downloadTxt(){
+  const content = [
+    'RELATÓRIO DE AUDITORIA — HILÊ',
+    `Gerado em: ${new Date().toLocaleString('pt-BR')}`,
+    '',
+    'SAÚDE GERAL: 73/100',
+    'Período: 12/05/2026 | Versão: 1.0',
+    '',
+    '== PRINCIPAIS ACHADOS ==',
+    ...REPORT_FINDINGS.map(f=>`  • ${f.title}: ${f.desc}`),
+    '',
+    '== ITENS DE AÇÃO ==',
+    ...ACTION_ITEMS.map(a=>`  [${a.status}] ${a.title} — Responsável: ${a.owner}`),
+    '',
+    '== RECOMENDAÇÕES ==',
+    ...INSIGHTS.filter(i=>i.severity!=='critical'&&i.severity!=='high').map(i=>`  • ${i.title} — ${i.summary}`),
+  ].join('\n');
+  const blob = new Blob([content],{type:'text/plain;charset=utf-8'});
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+  a.download = `hile-auditoria-${new Date().toISOString().slice(0,10)}.txt`;
+  document.body.appendChild(a); a.click(); a.remove();
+}
+
+// ═══ SCROLL REVEAL ═══
+const observer = new IntersectionObserver(entries=>{
+  entries.forEach(e=>{if(e.isIntersecting)e.target.classList.add('in')});
+},{threshold:.08});
+document.querySelectorAll('.reveal').forEach(el=>observer.observe(el));
+
+// ═══ INIT ═══
+renderGaps();
+renderInsights();
+renderChart();
+renderDonut();
+renderReport();
+
+// sync date input — no-op kept for compatibility
+</script>
+</body>
+</html>

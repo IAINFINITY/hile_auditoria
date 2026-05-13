@@ -1,0 +1,26 @@
+{
+  "name": "auditoria-atendimento-hile",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Mini projeto para analisar conversas do Chatwoot com Dify",
+  "main": "src/server.ts",
+  "scripts": {
+    "start": "tsx src/server.ts",
+    "dev": "concurrently -n API,WEB -c cyan,magenta \"npm run dev:api\" \"npm run dev:client\"",
+    "dev:api": "tsx watch src/server.ts",
+    "dev:client": "npm --prefix client run dev",
+    "build:client": "npm --prefix client run build",
+    "preview:client": "npm --prefix client run preview",
+    "typecheck:api": "tsc -p tsconfig.api.json --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "concurrently": "^9.1.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
