@@ -20,6 +20,8 @@ interface MetricsSectionProps {
   runTimeline: string[];
   runProgress: number;
   runCurrentContact: string | null;
+  selectedDateInfo: string;
+  selectedDateHasSavedReport: boolean;
 }
 
 const PRESETS: Array<{ key: PeriodPreset; label: string }> = [
@@ -68,6 +70,8 @@ export function MetricsSection({
   runTimeline,
   runProgress,
   runCurrentContact,
+  selectedDateInfo,
+  selectedDateHasSavedReport,
 }: MetricsSectionProps) {
   const summary = overview?.overview;
   const hasOverviewData = Boolean(summary);
@@ -87,26 +91,23 @@ export function MetricsSection({
   }, [severitySnapshot.critical, severitySnapshot.high, summary]);
 
   const panorama = useMemo(() => {
-    const totalConv = Math.max(1, summary?.conversations_total_analyzed_day ?? 1);
+    const totalConv = Math.max(1, summary?.conversations_total_analyzed_day ?? 0);
     const totalMsgs = summary?.total_messages_day ?? 0;
-    const iaTempoSec = Math.max(12, Math.round((totalMsgs / totalConv) * 4.2));
-    const humanoTempoMin = Math.max(1, Math.round(((summary?.continued_count ?? 0) / totalConv) * 9));
-    const satisfatoriasPct = Math.max(0, Math.min(100, Math.round((kpis.finalizadas / Math.max(1, kpis.totalConversas)) * 100)));
-    const npsEstimado = Math.max(0, Math.min(100, 100 - Math.round((kpis.gapsCriticosAltos / Math.max(1, kpis.totalConversas)) * 100 * 2.4)));
+    const mediaMensagens = totalMsgs / totalConv;
+    const taxaFinalizacao = (kpis.finalizadas / totalConv) * 100;
+    const taxaCriticidade = (kpis.gapsCriticosAltos / totalConv) * 100;
 
     return {
-      tempoIa: `${iaTempoSec}s`,
-      tempoHumano: `${humanoTempoMin}m`,
-      satisfatorias: `${satisfatoriasPct}%`,
-      nps: `${npsEstimado}`,
+      mediaMensagens: Number.isFinite(mediaMensagens) ? mediaMensagens.toFixed(1) : "0.0",
+      taxaFinalizacao: `${Math.max(0, Math.min(100, Math.round(taxaFinalizacao)))}%`,
+      taxaCriticidade: `${Math.max(0, Math.min(100, Math.round(taxaCriticidade)))}%`,
+      aguardandoIa: `${kpis.gatilhos}`,
     };
-  }, [kpis.finalizadas, kpis.gapsCriticosAltos, kpis.totalConversas, summary?.continued_count, summary?.conversations_total_analyzed_day, summary?.total_messages_day]);
+  }, [kpis.finalizadas, kpis.gapsCriticosAltos, kpis.gatilhos, summary?.conversations_total_analyzed_day, summary?.total_messages_day]);
 
   const statusLabel = isRunningOverview
     ? `Executando overview... ${runProgress}%`
-    : lastRunAt
-      ? `Última execução: ${new Date(lastRunAt).toLocaleTimeString("pt-BR")}`
-      : "Aguardando execução";
+    : "";
 
   return (
     <div className="section reveal" id="inicio">
@@ -165,10 +166,23 @@ export function MetricsSection({
                 max={maxDate}
                 onChange={(event) => setDate(event.target.value)}
               />
+              <span
+                className="status-badge"
+                style={{
+                  background: selectedDateHasSavedReport ? "rgba(16, 185, 129, 0.12)" : "rgba(245, 158, 11, 0.12)",
+                  color: selectedDateHasSavedReport ? "var(--ok)" : "var(--orange)",
+                  borderColor: selectedDateHasSavedReport ? "rgba(16, 185, 129, 0.45)" : "rgba(245, 158, 11, 0.45)",
+                }}
+              >
+                {selectedDateHasSavedReport ? "Com relatório" : "Sem relatório"}
+              </span>
               <button className="btn btn-primary" onClick={onRequestOverview} disabled={isBusy}>
                 {isRunningOverview ? "Processando..." : "Executar Overview"}
               </button>
-              <span className="status-label">{statusLabel}</span>
+              {statusLabel ? <span className="status-label">{statusLabel}</span> : null}
+            </div>
+            <div className="status-label" style={{ color: selectedDateHasSavedReport ? "var(--orange)" : undefined }}>
+              {selectedDateInfo}
             </div>
 
             {isRunningOverview && runTimeline.length > 0 ? (
@@ -205,20 +219,20 @@ export function MetricsSection({
           <div className="metrics-block-body">
             <div className="panorama-grid">
               <div className="pano-card">
-                <div className="pano-label">Tempo médio (IA)</div>
-                <div className="pano-value">{panorama.tempoIa}</div>
+                <div className="pano-label">Média de mensagens por conversa</div>
+                <div className="pano-value">{panorama.mediaMensagens}</div>
               </div>
               <div className="pano-card">
-                <div className="pano-label">Tempo médio (humano)</div>
-                <div className="pano-value">{panorama.tempoHumano}</div>
+                <div className="pano-label">Taxa de finalização</div>
+                <div className="pano-value pano-pos">{panorama.taxaFinalizacao}</div>
               </div>
               <div className="pano-card">
-                <div className="pano-label">Conversas satisfatórias</div>
-                <div className="pano-value pano-pos">{panorama.satisfatorias}</div>
+                <div className="pano-label">Taxa de gaps críticos + altos</div>
+                <div className="pano-value gap-val">{panorama.taxaCriticidade}</div>
               </div>
               <div className="pano-card">
-                <div className="pano-label">NPS médio (estimado)</div>
-                <div className="pano-value pano-info">{panorama.nps}</div>
+                <div className="pano-label">Conversas aguardando IA (+1h)</div>
+                <div className="pano-value">{panorama.aguardandoIa}</div>
               </div>
             </div>
           </div>

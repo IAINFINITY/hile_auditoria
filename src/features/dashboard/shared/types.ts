@@ -1,4 +1,12 @@
-import type { FailureItem, InsightItem, OverviewPayload, ReportPayload, Severity, SystemCheckResponse } from "../../../types";
+import type {
+  FailureItem,
+  InsightItem,
+  OverviewPayload,
+  ReportHistoryItem,
+  ReportPayload,
+  Severity,
+  SystemCheckResponse,
+} from "../../../types";
 
 export type ActionKey = "overview";
 export type InsightFilter = "all" | Severity;
@@ -79,8 +87,8 @@ export interface DashboardController {
   reportContacts: string[];
   selectedReportContact: string | null;
   setSelectedReportContact: (value: string | null) => void;
-  reportSeverityFilter: "all" | "critical" | "high" | "medium" | "low";
-  setReportSeverityFilter: (value: "all" | "critical" | "high" | "medium" | "low") => void;
+  reportSeverityFilter: "all" | "critical" | "high" | "medium" | "low" | "info";
+  setReportSeverityFilter: (value: "all" | "critical" | "high" | "medium" | "low" | "info") => void;
   filteredReportMarkdown: string;
   rawOutput: string;
   overviewRunCount: number;
@@ -88,5 +96,8 @@ export interface DashboardController {
   runProgress: number;
   runCurrentContact: string | null;
   reportLinks: ReportLinkItem[];
+  reportHistory: ReportHistoryItem[];
+  selectedDateInfo: string;
+  selectedDateHasSavedReport: boolean;
   focusReportByContact: (contactName: string) => void;
 }

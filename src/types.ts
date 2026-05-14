@@ -137,6 +137,7 @@ export interface AnalysisItem {
       finalization_actor?: string | null;
       waiting_on_agent?: boolean;
       waiting_on_customer?: boolean;
+      labels?: string[];
     } | null;
   }>;
   analysis?: {
@@ -193,6 +194,7 @@ export interface ReportJobStartResponse {
 
 export interface ReportJobStatusResponse {
   job_id: string;
+  db_run_id?: string | null;
   date: string;
   status: "running" | "completed" | "failed";
   started_at: string;
@@ -221,4 +223,65 @@ export interface ReportJobStatusResponse {
   }>;
   result: ReportPayload | null;
   error: string | null;
+}
+
+export interface ReportRunResponse {
+  run: {
+    id: string;
+    status: "running" | "completed" | "failed";
+    date_ref: string;
+    started_at: string;
+    finished_at: string | null;
+  };
+  report_markdown: string | null;
+  report_json: Record<string, unknown> | null;
+}
+
+export interface ReportHistoryItem {
+  id: string;
+  status: "running" | "completed" | "failed";
+  date_ref: string;
+  started_at: string;
+  finished_at: string | null;
+  total_conversations: number;
+  processed: number;
+  success_count: number;
+  failure_count: number;
+  tenant: string;
+  channel: string;
+  has_report: boolean;
+  report_json?: {
+    date?: string;
+    summary?: Record<string, unknown>;
+    logs_count?: number;
+    logs?: Array<{
+      contact_key: string;
+      contact_name: string;
+      conversation_ids: number[];
+      chatwoot_links: string[];
+      risk_level: "critical" | "non_critical";
+      summary: string | null;
+      improvements: string[];
+      next_steps: string[];
+      finalization_status: string | null;
+      finalization_actor: string | null;
+      created_at: string;
+    }>;
+  } | null;
+}
+
+export interface ReportHistoryResponse {
+  items: ReportHistoryItem[];
+  count: number;
+}
+
+export interface AvailableDatesResponse {
+  dates: string[];
+  count: number;
+}
+
+export interface ReportByDateResponse {
+  run: ReportHistoryItem & {
+    report_markdown: string | null;
+  };
 }

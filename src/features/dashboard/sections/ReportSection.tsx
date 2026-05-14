@@ -1,19 +1,32 @@
-﻿import { useEffect, useMemo, useState } from "react";
-import type { InsightItem, ReportPayload } from "../../../types";
+import { useEffect, useMemo, useState } from "react";
+import type { Severity } from "../../../types";
+import type { ReportHistoryItem, ReportPayload } from "../../../types";
+
+type SeverityFilter = "all" | Severity;
 
 interface ReportSectionProps {
-  allInsights: InsightItem[];
-  criticalGapInsights: InsightItem[];
+  criticalGapInsights: Array<{
+    id: string;
+    severity: Severity;
+    summary: string;
+    contact_name: string;
+    labels?: string[];
+  }>;
   report: ReportPayload | null;
+  reportHistory: ReportHistoryItem[];
   selectedReportContact: string | null;
-  setSelectedReportContact: (value: string | null) => void;
+  onSelectReportContact: (value: string | null) => void;
+  reportSeverityFilter: SeverityFilter;
+  onChangeReportSeverityFilter: (value: SeverityFilter) => void;
 }
 
 interface ReportItem {
   key: string;
   title: string;
   desc: string;
-  tone: "critical" | "high" | "info";
+  severity: Severity;
+  contactName: string;
+  labels: string[];
 }
 
 interface ContactContextItem {
@@ -24,71 +37,130 @@ interface ContactContextItem {
   evidencia: string;
   risco: string;
   acao: string;
+  labels: string[];
+  severity: Severity;
 }
 
-function toneColor(tone: ReportItem["tone"]): string {
-  if (tone === "critical") return "var(--critical)";
-  if (tone === "high") return "var(--high)";
-  return "var(--azul)";
+const REPORT_SEVERITY_OPTIONS: Array<{ value: SeverityFilter; label: string }> = [
+  { value: "all", label: "Severidade: todas" },
+  { value: "critical", label: "Severidade: crítico" },
+  { value: "high", label: "Severidade: alto" },
+  { value: "medium", label: "Severidade: médio" },
+  { value: "low", label: "Severidade: baixo" },
+  { value: "info", label: "Severidade: informativo" },
+];
+
+function toneColor(severity: Severity): string {
+  if (severity === "critical") return "var(--critical)";
+  if (severity === "high") return "var(--high)";
+  if (severity === "medium") return "var(--medium)";
+  if (severity === "low") return "var(--low)";
+  return "var(--info)";
 }
 
-function paginate<T>(items: T[], page: number, perPage: number): { rows: T[]; pages: number } {
+function labelClass(tag: string): string {
+  const value = String(tag || "").toLowerCase();
+  if (value.includes("lead_agendado")) return "tag tag-ok";
+  if (value.includes("pausar_ia")) return "tag tag-pause";
+  if (value.includes("quente")) return "tag tag-warm";
+  return "tag";
+}
+
+function paginate<T>(items: T[], page: number, perPage: number): { rows: T[]; pages: number; safePage: number } {
   const pages = Math.max(1, Math.ceil(items.length / perPage));
   const safePage = Math.min(Math.max(1, page), pages);
   const start = (safePage - 1) * perPage;
-  return { rows: items.slice(start, start + perPage), pages };
+  return { rows: items.slice(start, start + perPage), pages, safePage };
+}
+
+function parsePossibleJsonObject(text: string): Record<string, unknown> {
+  const raw = String(text || "").trim();
+  if (!raw) return {};
+
+  try {
+    return JSON.parse(raw);
+  } catch {
+    const fenced = raw.match(/```json\s*([\s\S]*?)\s*```/i);
+    if (!fenced?.[1]) return {};
+    try {
+      return JSON.parse(fenced[1]);
+    } catch {
+      return {};
+    }
+  }
+}
+
+function parseLabelsFromLogText(logText: string): string[] {
+  const tags = new Set<string>();
+  for (const line of String(logText || "").split("\n")) {
+    const matches = line.match(/\[etiquetas:\s*([^\]]+)\]/i);
+    if (!matches?.[1]) continue;
+    for (const value of matches[1].split(",")) {
+      const clean = value.trim();
+      if (clean) tags.add(clean);
+    }
+  }
+  return Array.from(tags);
+}
+
+function extractStateLabels(state: unknown): string[] {
+  const record = state && typeof state === "object" ? (state as Record<string, unknown>) : {};
+  if (!Array.isArray(record.labels)) return [];
+  return record.labels.map((item) => String(item)).filter(Boolean);
+}
+
+function includesAnyLabel(source: string[], selected: string[]): boolean {
+  if (selected.length === 0) return true;
+  const sourceSet = new Set(source.map((item) => item.toLowerCase()));
+  return selected.some((label) => sourceSet.has(label.toLowerCase()));
+}
+
+function normalizeText(value: unknown): string {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
+function toSeverity(value: unknown, fallback: Severity): Severity {
+  const text = normalizeText(value);
+  if (text.includes("crit")) return "critical";
+  if (text.includes("alt")) return "high";
+  if (text.includes("med")) return "medium";
+  if (text.includes("baix")) return "low";
+  if (text.includes("info")) return "info";
+  return fallback;
 }
 
 export function ReportSection({
-  allInsights,
   criticalGapInsights,
   report,
+  reportHistory,
   selectedReportContact,
-  setSelectedReportContact,
+  onSelectReportContact,
+  reportSeverityFilter,
+  onChangeReportSeverityFilter,
 }: ReportSectionProps) {
-  const hasReportData = Boolean(report?.raw_analysis?.analyses?.length) || allInsights.length > 0 || criticalGapInsights.length > 0;
-  const [achadosPage, setAchadosPage] = useState(1);
+  const hasReportData = Boolean(report?.raw_analysis?.analyses?.length) || criticalGapInsights.length > 0;
+  const [historyPage, setHistoryPage] = useState(1);
+  const [contextPage, setContextPage] = useState(1);
   const [gapsPage, setGapsPage] = useState(1);
-  const [recomPage, setRecomPage] = useState(1);
-  const [situationFilter, setSituationFilter] = useState<string>("all");
-  const [queryFilter, setQueryFilter] = useState<string>("");
-  const [generatedAtLabel, setGeneratedAtLabel] = useState<string>("—");
-  const perPage = 3;
+  const [localContactFilter, setLocalContactFilter] = useState<string>("");
+  const [situacaoFilter, setSituacaoFilter] = useState<string>("all");
+  const [selectedLabels, setSelectedLabels] = useState<string[]>([]);
+  const perPage = 5;
 
   useEffect(() => {
-    setGeneratedAtLabel(new Date().toLocaleString("pt-BR"));
-  }, []);
+    setLocalContactFilter(selectedReportContact || "");
+  }, [selectedReportContact]);
 
-  const achados = useMemo<ReportItem[]>(() => {
-    const source = criticalGapInsights.slice(0, 100);
-    return source.map((item) => ({
-      key: `achado-${item.id}`,
-      title: item.title,
-      desc: `${item.contact_name} • Conversa ${item.conversation_id} • ${item.summary}`,
-      tone: item.severity === "critical" ? "critical" : "high",
-    }));
-  }, [criticalGapInsights]);
-
-  const reportGaps = useMemo<ReportItem[]>(() => {
-    return criticalGapInsights.map((item) => ({
-      key: `gap-${item.id}`,
-      title: item.severity === "critical" ? "Gap Crítico" : "Gap Alto",
-      desc: `${item.contact_name}: ${item.summary}`,
-      tone: item.severity === "critical" ? "critical" : "high",
-    }));
-  }, [criticalGapInsights]);
-
-  const recomendacoes = useMemo<ReportItem[]>(() => {
-    return allInsights
-      .filter((item) => item.severity === "medium" || item.severity === "low" || item.severity === "info")
-      .slice(0, 100)
-      .map((item) => ({
-        key: `recom-${item.id}`,
-        title: item.title,
-        desc: `${item.contact_name} • ${item.summary}`,
-        tone: "info",
-      }));
-  }, [allInsights]);
+  const generatedAtLabel = useMemo(() => {
+    const latest = reportHistory[0];
+    const dateIso = latest?.finished_at || latest?.started_at || "";
+    if (!dateIso) return "--";
+    return new Date(dateIso).toLocaleString("pt-BR");
+  }, [reportHistory]);
 
   const contextOverview = useMemo(() => {
     const analyses = report?.raw_analysis?.analyses || [];
@@ -100,14 +172,9 @@ export function ReportSection({
     for (const analysis of analyses) {
       const state = analysis.conversation_operational?.[0]?.state;
       if (state?.waiting_on_agent) waitingOnAgentCount += 1;
-
-      for (const line of String(analysis.log_text || "").split("\n")) {
-        const matches = line.match(/\[etiquetas:\s*([^\]]+)\]/i);
-        if (!matches?.[1]) continue;
-        const values = matches[1].split(",").map((item) => item.trim().toLowerCase()).filter(Boolean);
-        for (const value of values) {
-          tags.set(value, (tags.get(value) || 0) + 1);
-        }
+      for (const tag of parseLabelsFromLogText(String(analysis.log_text || ""))) {
+        const key = tag.toLowerCase();
+        tags.set(key, (tags.get(key) || 0) + 1);
       }
     }
 
@@ -130,37 +197,39 @@ export function ReportSection({
       .slice()
       .sort((a, b) => Number(a.analysis_index || 0) - Number(b.analysis_index || 0))
       .map((analysis) => {
-        const answer = String(analysis.analysis?.answer || "");
-        let parsed: Record<string, unknown> = {};
+        const parsed = parsePossibleJsonObject(String(analysis.analysis?.answer || ""));
+        const toList = (value: unknown): string[] =>
+          Array.isArray(value) ? value.map((item) => String(item)).filter(Boolean) : [];
 
-        try {
-          parsed = JSON.parse(answer);
-        } catch {
-          parsed = {};
-        }
-
-        const toList = (value: unknown): string[] => (Array.isArray(value) ? value.map((item) => String(item)).filter(Boolean) : []);
         const contactName = analysis.contact?.name || analysis.contact?.identifier || analysis.contact_key;
         const resumo = String(parsed.resumo || "Sem resumo estruturado.");
         const melhorias = toList(parsed.pontos_melhoria);
         const proximos = toList(parsed.proximos_passos);
         const riscoCritico = Boolean(parsed.risco_critico);
+        const fallbackSeverity: Severity = riscoCritico ? "critical" : "info";
+        const severity = toSeverity(
+          parsed.severidade || parsed.severity || parsed.nivel_risco || parsed.risco,
+          fallbackSeverity,
+        );
+
         const state = analysis.conversation_operational?.[0]?.state;
-        const situacao = state?.finalization_status === "finalizada"
-          ? state.finalization_actor
-            ? `Finalizada por ${state.finalization_actor}`
-            : "Finalizada"
-          : state?.waiting_on_agent
-            ? "Aguardando resposta da IA/atendente"
-            : state?.waiting_on_customer
-              ? "Aguardando retorno do cliente"
-              : "Em andamento";
+        const situacao =
+          state?.finalization_status === "finalizada"
+            ? state.finalization_actor
+              ? `Finalizada por ${state.finalization_actor}`
+              : "Finalizada"
+            : state?.waiting_on_agent
+              ? "Aguardando resposta da IA/atendente"
+              : state?.waiting_on_customer
+                ? "Aguardando retorno do cliente"
+                : "Em andamento";
 
         const evidenceLines = String(analysis.log_text || "")
           .split("\n")
           .filter((line) => /\] (USER|AGENT) /i.test(line))
           .slice(-2);
         const evidencia = evidenceLines.length > 0 ? evidenceLines.join(" | ") : "Sem trecho de evidência disponível.";
+        const labels = extractStateLabels(state).length > 0 ? extractStateLabels(state) : parseLabelsFromLogText(String(analysis.log_text || ""));
 
         return {
           key: `${analysis.contact_key}-${analysis.analysis_index || 0}`,
@@ -170,57 +239,86 @@ export function ReportSection({
           evidencia,
           risco: riscoCritico ? "Crítico" : "Não crítico",
           acao: proximos[0] || melhorias[0] || "Sem ação recomendada no retorno da IA.",
+          labels,
+          severity,
         };
       });
   }, [report]);
 
-  const userOptions = useMemo<string[]>(
-    () => Array.from(new Set(contactContextItems.map((item) => item.contactName))).sort((a, b) => a.localeCompare(b, "pt-BR")),
-    [contactContextItems],
-  );
-  const situationOptions = useMemo<string[]>(
-    () => Array.from(new Set(contactContextItems.map((item) => item.situacao))).sort((a, b) => a.localeCompare(b, "pt-BR")),
-    [contactContextItems],
-  );
+  const availableContacts = useMemo(() => {
+    const unique = new Set<string>();
+    for (const item of contactContextItems) unique.add(item.contactName);
+    return Array.from(unique).sort((a, b) => a.localeCompare(b, "pt-BR"));
+  }, [contactContextItems]);
 
-  const q = queryFilter.trim().toLowerCase();
+  const availableSituacoes = useMemo(() => {
+    const unique = new Set<string>();
+    for (const item of contactContextItems) unique.add(item.situacao);
+    return Array.from(unique).sort((a, b) => a.localeCompare(b, "pt-BR"));
+  }, [contactContextItems]);
+
+  const reportGaps = useMemo<ReportItem[]>(() => {
+    return criticalGapInsights.map((item) => ({
+      key: `gap-${item.id}`,
+      title: item.severity === "critical" ? "Gap Crítico" : "Gap Alto",
+      desc: `${item.contact_name}: ${item.summary}`,
+      severity: item.severity,
+      contactName: item.contact_name,
+      labels: Array.isArray(item.labels) ? item.labels : [],
+    }));
+  }, [criticalGapInsights]);
+
+  const availableLabels = useMemo(() => {
+    const all = new Set<string>();
+    for (const item of contactContextItems) {
+      for (const label of item.labels) all.add(label);
+    }
+    for (const item of reportGaps) {
+      for (const label of item.labels) all.add(label);
+    }
+    return Array.from(all).sort((a, b) => a.localeCompare(b, "pt-BR"));
+  }, [contactContextItems, reportGaps]);
+
+  const normalizedContactFilter = localContactFilter.trim().toLowerCase();
+  const normalizedSituacaoFilter = situacaoFilter.trim().toLowerCase();
+
   const filteredContactContextItems = useMemo<ContactContextItem[]>(() => {
     return contactContextItems.filter((item) => {
-      const byUser = !selectedReportContact || item.contactName === selectedReportContact;
-      const bySituation = situationFilter === "all" || item.situacao === situationFilter;
-      const haystack = `${item.contactName} ${item.situacao} ${item.contexto} ${item.evidencia} ${item.risco} ${item.acao}`.toLowerCase();
-      const byQuery = !q || haystack.includes(q);
-      return byUser && bySituation && byQuery;
+      const byUser = !normalizedContactFilter || item.contactName.toLowerCase().includes(normalizedContactFilter);
+      const bySituacao = normalizedSituacaoFilter === "all" || item.situacao.toLowerCase() === normalizedSituacaoFilter;
+      const byLabel = includesAnyLabel(item.labels, selectedLabels);
+      const bySeverity = reportSeverityFilter === "all" || item.severity === reportSeverityFilter;
+      return byUser && bySituacao && byLabel && bySeverity;
     });
-  }, [contactContextItems, q, selectedReportContact, situationFilter]);
-
-  const filteredAchados = useMemo<ReportItem[]>(() => {
-    return achados.filter((item) => {
-      const byUser = !selectedReportContact || item.desc.toLowerCase().includes(selectedReportContact.toLowerCase());
-      const byQuery = !q || `${item.title} ${item.desc}`.toLowerCase().includes(q);
-      return byUser && byQuery;
-    });
-  }, [achados, q, selectedReportContact]);
+  }, [contactContextItems, normalizedContactFilter, normalizedSituacaoFilter, selectedLabels, reportSeverityFilter]);
 
   const filteredGaps = useMemo<ReportItem[]>(() => {
     return reportGaps.filter((item) => {
-      const byUser = !selectedReportContact || item.desc.toLowerCase().includes(selectedReportContact.toLowerCase());
-      const byQuery = !q || `${item.title} ${item.desc}`.toLowerCase().includes(q);
-      return byUser && byQuery;
+      const byUser = !normalizedContactFilter || item.contactName.toLowerCase().includes(normalizedContactFilter);
+      const byLabel = includesAnyLabel(item.labels, selectedLabels);
+      const bySeverity = reportSeverityFilter === "all" || item.severity === reportSeverityFilter;
+      return byUser && byLabel && bySeverity;
     });
-  }, [q, reportGaps, selectedReportContact]);
+  }, [reportGaps, normalizedContactFilter, selectedLabels, reportSeverityFilter]);
 
-  const filteredRecomendacoes = useMemo<ReportItem[]>(() => {
-    return recomendacoes.filter((item) => {
-      const byUser = !selectedReportContact || item.desc.toLowerCase().includes(selectedReportContact.toLowerCase());
-      const byQuery = !q || `${item.title} ${item.desc}`.toLowerCase().includes(q);
-      return byUser && byQuery;
-    });
-  }, [q, recomendacoes, selectedReportContact]);
-
-  const achadosChunk = paginate(filteredAchados, achadosPage, perPage);
+  const historyChunk = paginate(reportHistory, historyPage, perPage);
+  const contextChunk = paginate(filteredContactContextItems, contextPage, perPage);
   const gapsChunk = paginate(filteredGaps, gapsPage, perPage);
-  const recomChunk = paginate(filteredRecomendacoes, recomPage, perPage);
+
+  function keepScroll(update: () => void) {
+    const y = typeof window !== "undefined" ? window.scrollY : 0;
+    update();
+    if (typeof window !== "undefined") {
+      requestAnimationFrame(() => window.scrollTo({ top: y }));
+    }
+  }
+
+  function toggleLabel(label: string) {
+    const low = label.toLowerCase();
+    setSelectedLabels((current) => (current.includes(low) ? current.filter((item) => item !== low) : [...current, low]));
+    setContextPage(1);
+    setGapsPage(1);
+  }
 
   return (
     <div className="section reveal" id="relatorio">
@@ -241,34 +339,66 @@ export function ReportSection({
 
           <div className="metrics-block-body">
             <div className="report-section-sep">
-              <h3 className="report-section-title">Filtros do Relatório</h3>
-              <div className="btn-group">
-                <select
-                  value={selectedReportContact || "all"}
-                  onChange={(event) => setSelectedReportContact(event.target.value === "all" ? null : event.target.value)}
-                >
-                  <option value="all">Todos os usuários</option>
-                  {userOptions.map((user) => (
-                    <option value={user} key={user}>
-                      {user}
-                    </option>
-                  ))}
-                </select>
-                <select value={situationFilter} onChange={(event) => setSituationFilter(event.target.value)}>
-                  <option value="all">Todas as situações</option>
-                  {situationOptions.map((situation) => (
-                    <option value={situation} key={situation}>
-                      {situation}
-                    </option>
-                  ))}
-                </select>
-                <input
-                  type="text"
-                  value={queryFilter}
-                  onChange={(event) => setQueryFilter(event.target.value)}
-                  placeholder="Buscar por qualquer termo..."
-                />
-              </div>
+              <h3 className="report-section-title">Histórico de Execuções</h3>
+              {reportHistory.length === 0 ? (
+                <p className="empty-state">Sem execuções salvas no banco até agora.</p>
+              ) : (
+                <>
+                  {historyChunk.rows.map((run) => {
+                    const reportJson = (run.report_json || {}) as Record<string, unknown>;
+                    const rawAnalysis = (reportJson.raw_analysis || {}) as Record<string, unknown>;
+                    const rawAnalyses = Array.isArray(rawAnalysis.analyses) ? rawAnalysis.analyses : [];
+                    const logs = Array.isArray(reportJson.logs) ? reportJson.logs : [];
+                    const logsCount = Number(reportJson.logs_count || 0) || logs.length || rawAnalyses.length;
+                    return (
+                      <article className="report-card" key={run.id}>
+                        <span
+                          className="report-card-dot"
+                          style={{
+                            background:
+                              run.status === "completed"
+                                ? "var(--ok)"
+                                : run.status === "failed"
+                                  ? "var(--critical)"
+                                  : "var(--azul)",
+                          }}
+                        />
+                        <div className="report-card-content">
+                          <h4>
+                            {run.date_ref} • {run.channel}
+                          </h4>
+                          <p>
+                            Status: <strong>{run.status}</strong> • Processadas: {run.processed}/{run.total_conversations} • Sucesso:{" "}
+                            {run.success_count} • Falhas: {run.failure_count}
+                          </p>
+                          <p>Logs salvos: {logsCount}</p>
+                        </div>
+                      </article>
+                    );
+                  })}
+                  {reportHistory.length > perPage ? (
+                    <div className="pagination-row">
+                      <span>
+                        {reportHistory.length} registros • Página {historyChunk.safePage} de {historyChunk.pages}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => keepScroll(() => setHistoryPage(Math.max(1, historyChunk.safePage - 1)))}
+                        disabled={historyChunk.safePage <= 1}
+                      >
+                        {"<"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => keepScroll(() => setHistoryPage(Math.min(historyChunk.pages, historyChunk.safePage + 1)))}
+                        disabled={historyChunk.safePage >= historyChunk.pages}
+                      >
+                        {">"}
+                      </button>
+                    </div>
+                  ) : null}
+                </>
+              )}
             </div>
 
             <div className="report-section-sep">
@@ -288,46 +418,179 @@ export function ReportSection({
             </div>
 
             <div className="report-section-sep">
-              <h3 className="report-section-title">Contexto por Usuário</h3>
-              {filteredContactContextItems.length === 0 ? (
-                <p className="empty-state">Sem dados por usuário no momento.</p>
-              ) : (
-                filteredContactContextItems.map((item) => (
-                  <article className="report-card" key={item.key}>
-                    <span className="report-card-dot" style={{ background: item.risco === "Crítico" ? "var(--critical)" : "var(--azul)" }} />
-                    <div className="report-card-content">
-                      <h4>{item.contactName}</h4>
-                      <p><strong>Situação:</strong> {item.situacao}</p>
-                      <p><strong>Contexto:</strong> {item.contexto}</p>
-                      <p><strong>Evidência:</strong> {item.evidencia}</p>
-                      <p><strong>Risco:</strong> {item.risco}</p>
-                      <p><strong>Ação recomendada:</strong> {item.acao}</p>
-                    </div>
-                  </article>
-                ))
-              )}
+              <h3 className="report-section-title">Filtros do Relatório</h3>
+              <div className="orq-row" style={{ flexWrap: "wrap", gap: 12 }}>
+                <label htmlFor="report-contact-filter">Usuário</label>
+                <input
+                  id="report-contact-filter"
+                  type="text"
+                  value={localContactFilter}
+                  placeholder="Filtrar por nome"
+                  onChange={(event) => {
+                    const next = event.target.value;
+                    setLocalContactFilter(next);
+                    onSelectReportContact(next.trim() ? next : null);
+                    setContextPage(1);
+                    setGapsPage(1);
+                  }}
+                />
+                <select
+                  value={situacaoFilter}
+                  onChange={(event) => {
+                    setSituacaoFilter(event.target.value);
+                    setContextPage(1);
+                  }}
+                  style={{ minWidth: 260 }}
+                >
+                  <option value="all">Situação: todas</option>
+                  {availableSituacoes.map((situacao) => (
+                    <option value={situacao} key={situacao}>
+                      Situação: {situacao}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value={reportSeverityFilter}
+                  onChange={(event) => {
+                    onChangeReportSeverityFilter(event.target.value as SeverityFilter);
+                    setContextPage(1);
+                    setGapsPage(1);
+                  }}
+                  style={{ minWidth: 250 }}
+                >
+                  {REPORT_SEVERITY_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+                {availableContacts.length > 0 ? (
+                  <select
+                    value={localContactFilter}
+                    onChange={(event) => {
+                      const next = event.target.value;
+                      setLocalContactFilter(next);
+                      onSelectReportContact(next.trim() ? next : null);
+                      setContextPage(1);
+                      setGapsPage(1);
+                    }}
+                    style={{ minWidth: 280 }}
+                  >
+                    <option value="">Selecionar usuário</option>
+                    {availableContacts.map((name) => (
+                      <option value={name} key={name}>
+                        {name}
+                      </option>
+                    ))}
+                  </select>
+                ) : null}
+                <button
+                  className="btn btn-sm"
+                  type="button"
+                  onClick={() => {
+                    setLocalContactFilter("");
+                    setSituacaoFilter("all");
+                    setSelectedLabels([]);
+                    onSelectReportContact(null);
+                    onChangeReportSeverityFilter("all");
+                    setContextPage(1);
+                    setGapsPage(1);
+                  }}
+                >
+                  Limpar filtros
+                </button>
+              </div>
+
+              {availableLabels.length > 0 ? (
+                <div className="gap-label-row">
+                  {availableLabels.map((label) => {
+                    const selected = selectedLabels.includes(label.toLowerCase());
+                    return (
+                      <button
+                        key={label}
+                        type="button"
+                        className={`${labelClass(label)} ${selected ? "tag-selected" : ""}`}
+                        onClick={() => toggleLabel(label)}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : null}
             </div>
 
             <div className="report-section-sep">
-              <h3 className="report-section-title">Achados Críticos</h3>
-              {achadosChunk.rows.length === 0 ? (
-                <p className="empty-state">Nenhum achado crítico disponível.</p>
+              <h3 className="report-section-title">Contexto por Usuário</h3>
+              {contextChunk.rows.length === 0 ? (
+                <p className="empty-state">Sem dados por usuário no momento.</p>
               ) : (
                 <>
-                  {achadosChunk.rows.map((item) => (
+                  {contextChunk.rows.map((item) => (
                     <article className="report-card" key={item.key}>
-                      <span className="report-card-dot" style={{ background: toneColor(item.tone) }} />
+                      <span className="report-card-dot" style={{ background: toneColor(item.severity) }} />
                       <div className="report-card-content">
-                        <h4>{item.title}</h4>
-                        <p>{item.desc}</p>
+                        <h4>{item.contactName}</h4>
+                        <p>
+                          <strong>Situação:</strong> {item.situacao}
+                        </p>
+                        <p>
+                          <strong>Severidade:</strong>{" "}
+                          {item.severity === "critical"
+                            ? "Crítico"
+                            : item.severity === "high"
+                              ? "Alto"
+                              : item.severity === "medium"
+                                ? "Médio"
+                                : item.severity === "low"
+                                  ? "Baixo"
+                                  : "Informativo"}
+                        </p>
+                        <p>
+                          <strong>Contexto:</strong> {item.contexto}
+                        </p>
+                        <p>
+                          <strong>Evidência:</strong> {item.evidencia}
+                        </p>
+                        <p>
+                          <strong>Risco:</strong> {item.risco}
+                        </p>
+                        <p>
+                          <strong>Ação recomendada:</strong> {item.acao}
+                        </p>
+                        <div className="gap-label-row">
+                          {item.labels.length > 0 ? (
+                            item.labels.map((tag) => (
+                              <span className={labelClass(tag)} key={`${item.key}-${tag}`}>
+                                {tag}
+                              </span>
+                            ))
+                          ) : (
+                            <span className="tag">sem etiqueta</span>
+                          )}
+                        </div>
                       </div>
                     </article>
                   ))}
-                  {achadosChunk.pages > 1 ? (
+                  {filteredContactContextItems.length > perPage ? (
                     <div className="pagination-row">
-                      <span>Pág. {Math.min(achadosPage, achadosChunk.pages)} de {achadosChunk.pages}</span>
-                      <button onClick={() => setAchadosPage((p) => Math.max(1, p - 1))} disabled={achadosPage <= 1}>‹</button>
-                      <button onClick={() => setAchadosPage((p) => Math.min(achadosChunk.pages, p + 1))} disabled={achadosPage >= achadosChunk.pages}>›</button>
+                      <span>
+                        {filteredContactContextItems.length} registros • Página {contextChunk.safePage} de {contextChunk.pages}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => keepScroll(() => setContextPage(Math.max(1, contextChunk.safePage - 1)))}
+                        disabled={contextChunk.safePage <= 1}
+                      >
+                        {"<"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => keepScroll(() => setContextPage(Math.min(contextChunk.pages, contextChunk.safePage + 1)))}
+                        disabled={contextChunk.safePage >= contextChunk.pages}
+                      >
+                        {">"}
+                      </button>
                     </div>
                   ) : null}
                 </>
@@ -342,44 +605,43 @@ export function ReportSection({
                 <>
                   {gapsChunk.rows.map((item) => (
                     <article className="report-card" key={item.key}>
-                      <span className="report-card-dot" style={{ background: toneColor(item.tone) }} />
+                      <span className="report-card-dot" style={{ background: toneColor(item.severity) }} />
                       <div className="report-card-content">
                         <h4>{item.title}</h4>
                         <p>{item.desc}</p>
+                        <div className="gap-label-row">
+                          {item.labels.length > 0 ? (
+                            item.labels.map((tag) => (
+                              <span className={labelClass(tag)} key={`${item.key}-${tag}`}>
+                                {tag}
+                              </span>
+                            ))
+                          ) : (
+                            <span className="tag">sem etiqueta</span>
+                          )}
+                        </div>
                       </div>
                     </article>
                   ))}
-                  {gapsChunk.pages > 1 ? (
+                  {filteredGaps.length > perPage ? (
                     <div className="pagination-row">
-                      <span>Pág. {Math.min(gapsPage, gapsChunk.pages)} de {gapsChunk.pages}</span>
-                      <button onClick={() => setGapsPage((p) => Math.max(1, p - 1))} disabled={gapsPage <= 1}>‹</button>
-                      <button onClick={() => setGapsPage((p) => Math.min(gapsChunk.pages, p + 1))} disabled={gapsPage >= gapsChunk.pages}>›</button>
-                    </div>
-                  ) : null}
-                </>
-              )}
-            </div>
-
-            <div className="report-section-sep">
-              <h3 className="report-section-title">Recomendações</h3>
-              {recomChunk.rows.length === 0 ? (
-                <p className="empty-state">Sem recomendações para o período atual.</p>
-              ) : (
-                <>
-                  {recomChunk.rows.map((item) => (
-                    <article className="report-card" key={item.key}>
-                      <span className="report-card-dot" style={{ background: toneColor(item.tone) }} />
-                      <div className="report-card-content">
-                        <h4>{item.title}</h4>
-                        <p>{item.desc}</p>
-                      </div>
-                    </article>
-                  ))}
-                  {recomChunk.pages > 1 ? (
-                    <div className="pagination-row">
-                      <span>Pág. {Math.min(recomPage, recomChunk.pages)} de {recomChunk.pages}</span>
-                      <button onClick={() => setRecomPage((p) => Math.max(1, p - 1))} disabled={recomPage <= 1}>‹</button>
-                      <button onClick={() => setRecomPage((p) => Math.min(recomChunk.pages, p + 1))} disabled={recomPage >= recomChunk.pages}>›</button>
+                      <span>
+                        {filteredGaps.length} registros • Página {gapsChunk.safePage} de {gapsChunk.pages}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => keepScroll(() => setGapsPage(Math.max(1, gapsChunk.safePage - 1)))}
+                        disabled={gapsChunk.safePage <= 1}
+                      >
+                        {"<"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => keepScroll(() => setGapsPage(Math.min(gapsChunk.pages, gapsChunk.safePage + 1)))}
+                        disabled={gapsChunk.safePage >= gapsChunk.pages}
+                      >
+                        {">"}
+                      </button>
                     </div>
                   ) : null}
                 </>

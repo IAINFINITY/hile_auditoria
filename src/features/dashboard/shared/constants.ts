@@ -1,6 +1,6 @@
 ﻿import type { Severity } from "../../../types";
 
-export const INSIGHTS_COLLAPSED_LIMIT = 8;
+export const INSIGHTS_COLLAPSED_LIMIT = 5;
 
 export const severityOrder: Record<Severity, number> = {
   critical: 5,

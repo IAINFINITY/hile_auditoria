@@ -1,6 +1,13 @@
-﻿import { randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { buildDailyReport } from "@/lib/server/audit/auditService";
+import {
+  appendRunEvent,
+  createRunRecord,
+  markRunFailed,
+  persistCompletedRun,
+  updateRunProgress,
+} from "@/lib/server/audit/auditPersistence";
 import { getAppConfig, parseDateInput, readJsonBody } from "@/lib/server/apiUtils";
 import { cleanupReportJobs, getReportJobsStore, type ReportJobState } from "@/lib/server/reportJobs";
 
@@ -20,6 +27,7 @@ export async function POST(request: Request) {
 
     const initialJob: ReportJobState = {
       job_id: jobId,
+      db_run_id: null,
       date,
       status: "running",
       started_at: now,
@@ -33,6 +41,7 @@ export async function POST(request: Request) {
     };
 
     jobs.set(jobId, initialJob);
+    initialJob.db_run_id = await createRunRecord({ config, date, startedAtIso: now });
 
     void (async () => {
       try {
@@ -47,6 +56,9 @@ export async function POST(request: Request) {
             state.total = Number(event?.total || state.total || 0);
 
             if (event?.type === "contact_start") {
+              if (state.db_run_id) {
+                void appendRunEvent(state.db_run_id, "contact_start", event);
+              }
               state.current_contact = {
                 sequence: Number(event?.sequence || 0),
                 total: Number(event?.total || state.total || 0),
@@ -72,6 +84,18 @@ export async function POST(request: Request) {
                 error_message: event?.error_message ? String(event.error_message) : undefined,
                 error_code: event?.error_code ? String(event.error_code) : null,
               });
+              const processed = Number(event?.processed || state.processed || 0);
+              const successCount = state.execution_order.filter((item) => item.success).length;
+              const failureCount = Math.max(0, processed - successCount);
+              if (state.db_run_id) {
+                void appendRunEvent(state.db_run_id, "contact_done", event);
+                void updateRunProgress(state.db_run_id, {
+                  total: Number(event?.total || state.total || 0),
+                  processed,
+                  successCount,
+                  failureCount,
+                });
+              }
               state.current_contact = null;
             }
           },
@@ -79,8 +103,9 @@ export async function POST(request: Request) {
 
         const state = jobs.get(jobId);
         if (!state) return;
+        const finishedAt = new Date().toISOString();
         state.status = "completed";
-        state.updated_at = new Date().toISOString();
+        state.updated_at = finishedAt;
         state.result = {
           ...output,
           summary: {
@@ -91,13 +116,31 @@ export async function POST(request: Request) {
         };
         state.error = null;
         state.current_contact = null;
+
+        if (state.db_run_id) {
+          await persistCompletedRun({
+            runId: state.db_run_id,
+            config,
+            date,
+            finishedAtIso: finishedAt,
+            output: state.result as any,
+          });
+          await appendRunEvent(state.db_run_id, "run_completed", {
+            processed: state.processed,
+            total: state.total,
+          });
+        }
       } catch (error: any) {
         const state = jobs.get(jobId);
         if (!state) return;
+        const finishedAt = new Date().toISOString();
         state.status = "failed";
-        state.updated_at = new Date().toISOString();
+        state.updated_at = finishedAt;
         state.error = error?.message || "Falha ao gerar relatório.";
         state.current_contact = null;
+        if (state.db_run_id) {
+          await markRunFailed(state.db_run_id, finishedAt, state.error);
+        }
       }
     })();
 

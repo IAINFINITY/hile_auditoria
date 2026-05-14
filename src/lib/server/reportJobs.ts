@@ -15,6 +15,7 @@ export type ReportJobEvent = {
 
 export type ReportJobState = {
   job_id: string;
+  db_run_id?: string | null;
   date: string;
   status: ReportJobStatus;
   started_at: string;

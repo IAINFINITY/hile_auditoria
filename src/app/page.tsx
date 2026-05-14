@@ -42,6 +42,8 @@ export default function Page() {
         runTimeline={controller.runTimeline}
         runProgress={controller.runProgress}
         runCurrentContact={controller.runCurrentContact}
+        selectedDateInfo={controller.selectedDateInfo}
+        selectedDateHasSavedReport={controller.selectedDateHasSavedReport}
       />
 
       <GapsSection
@@ -75,11 +77,13 @@ export default function Page() {
       />
 
       <ReportSection
-        allInsights={controller.allInsights}
         criticalGapInsights={controller.criticalGapInsights}
         report={controller.report}
+        reportHistory={controller.reportHistory}
         selectedReportContact={controller.selectedReportContact}
-        setSelectedReportContact={controller.setSelectedReportContact}
+        onSelectReportContact={controller.setSelectedReportContact}
+        reportSeverityFilter={controller.reportSeverityFilter}
+        onChangeReportSeverityFilter={controller.setReportSeverityFilter}
       />
 
       <footer className="footer">
@@ -91,6 +95,11 @@ export default function Page() {
           <div className="modal-card">
             <h3 id="confirmOverviewTitle">Executar overview agora?</h3>
             <p>Vamos checar conexões, buscar conversas do dia, rodar análise e atualizar o relatório.</p>
+            {controller.selectedDateHasSavedReport ? (
+              <p style={{ color: "var(--critical)" }}>
+                Já existe relatório salvo para essa data. Se continuar, o novo relatório vai substituir o anterior.
+              </p>
+            ) : null}
             <div className="modal-actions">
               <button className="btn btn-sm" onClick={() => setShowConfirmModal(false)}>Cancelar</button>
               <button className="btn btn-primary btn-sm" onClick={() => void handleConfirmRun()}>Confirmar e executar</button>

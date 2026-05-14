@@ -143,6 +143,59 @@ function normalizeIdentifierKey(value) {
   return digits || raw.toLowerCase();
 }
 
+function cleanNameCandidate(value) {
+  const base = String(value || "")
+    .replace(/^["'\s]+|["'\s]+$/g, "")
+    .replace(/[|,;]+$/g, "")
+    .trim();
+  if (!base) return "";
+  if (base.toLowerCase() === "null" || base.toLowerCase() === "undefined") return "";
+  return base;
+}
+
+function extractNameFromFormMessages(messages) {
+  if (!Array.isArray(messages)) return "";
+
+  const patterns = [
+    /"nome"\s*:\s*"([^"\n\r]+)"/i,
+    /"nome"\s*:\s*([^\n\r,}]+)/i,
+    /\bnome\s*:\s*"([^"\n\r]+)"/i,
+    /\bnome\s*:\s*([^\n\r,}]+)/i,
+  ];
+
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const message = messages[i];
+    if (String(message?.role || "").toUpperCase() !== "USER") continue;
+    const text = String(message?.text || "");
+    if (!text) continue;
+
+    for (const pattern of patterns) {
+      const match = text.match(pattern);
+      const candidate = cleanNameCandidate(match?.[1] || "");
+      if (!candidate) continue;
+      if (candidate.length < 3) continue;
+      return candidate;
+    }
+  }
+
+  return "";
+}
+
+function mergeContactDisplayName(baseName, formName) {
+  const original = cleanNameCandidate(baseName);
+  const extracted = cleanNameCandidate(formName);
+  if (!extracted) return original || "";
+  if (!original) return extracted;
+
+  const originalLower = original.toLowerCase();
+  const extractedLower = extracted.toLowerCase();
+  if (originalLower === extractedLower) return original;
+  if (originalLower.includes(extractedLower)) return original;
+  if (extractedLower.includes(originalLower)) return extracted;
+
+  return `${extracted} (${original})`;
+}
+
 function buildContactLogs(conversationLogs) {
   const map = new Map();
 
@@ -382,6 +435,11 @@ export async function buildDailyConversationLogs({ config, date }) {
 
     normalized.messages = attachDay(normalized.messages, toYmd).filter((item) => item.date_ymd === date);
     normalized.total_messages_day = normalized.messages.length;
+    const formName = extractNameFromFormMessages(normalized.messages);
+    normalized.contact = {
+      ...normalized.contact,
+      name: mergeContactDisplayName(normalized.contact?.name, formName) || null,
+    };
 
     detailed.push(normalized);
   }
