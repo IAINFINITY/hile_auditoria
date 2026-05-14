@@ -138,7 +138,7 @@ export function MetricsSection({
             <span>Controles do período</span>
           </div>
           <div className="metrics-block-body">
-            <div className="orq-row">
+            <div className="orq-row orq-row-period">
               <label>Período</label>
               <div className="filter-box" style={{ flex: 1 }}>
                 <div className="filter-group" style={{ flex: 1 }}>
@@ -158,7 +158,7 @@ export function MetricsSection({
               </div>
             </div>
 
-            <div className="orq-row">
+            <div className="orq-row orq-row-exec">
               <label>Execução</label>
               <div className="filter-box">
                 <input
@@ -173,7 +173,7 @@ export function MetricsSection({
                   className="status-badge"
                   style={{
                     background: selectedDateHasSavedReport ? "rgba(16, 185, 129, 0.12)" : "rgba(245, 158, 11, 0.12)",
-                    color: selectedDateHasSavedReport ? "var(--ok)" : "var(--orange)",
+                    color: selectedDateHasSavedReport ? "#0f5132" : "#9a3412",
                     borderColor: selectedDateHasSavedReport ? "rgba(16, 185, 129, 0.45)" : "rgba(245, 158, 11, 0.45)",
                   }}
                 >
@@ -183,10 +183,7 @@ export function MetricsSection({
                   {isRunningOverview ? "Processando..." : "Executar Overview"}
                 </button>
               </div>
-              {statusLabel ? <span className="status-label">{statusLabel}</span> : null}
-            </div>
-            <div className="status-label" style={{ color: selectedDateHasSavedReport ? "var(--orange)" : undefined }}>
-              {selectedDateInfo}
+              <span className="status-label">{statusLabel || selectedDateInfo}</span>
             </div>
 
             {isRunningOverview && runTimeline.length > 0 ? (

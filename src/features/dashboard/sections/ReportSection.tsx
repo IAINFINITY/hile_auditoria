@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+﻿import { useEffect, useMemo, useState } from "react";
 import type { Severity } from "../../../types";
 import type { ReportHistoryItem, ReportPayload } from "../../../types";
 
@@ -42,12 +42,21 @@ interface ContactContextItem {
 }
 
 const REPORT_SEVERITY_OPTIONS: Array<{ value: SeverityFilter; label: string }> = [
-  { value: "all", label: "Severidade: todas" },
-  { value: "critical", label: "Severidade: crítico" },
-  { value: "high", label: "Severidade: alto" },
-  { value: "medium", label: "Severidade: médio" },
-  { value: "low", label: "Severidade: baixo" },
-  { value: "info", label: "Severidade: informativo" },
+  { value: "all", label: "Todas" },
+  { value: "critical", label: "Crítico" },
+  { value: "high", label: "Alto" },
+  { value: "medium", label: "Médio" },
+  { value: "low", label: "Baixo" },
+  { value: "info", label: "Informativo" },
+];
+
+const DEFAULT_LABEL_HINTS = [
+  "abandono",
+  "atraso_sla",
+  "falha_processo",
+  "lead_agendado",
+  "pausar_ia",
+  "transferencia",
 ];
 
 function toneColor(severity: Severity): string {
@@ -149,6 +158,7 @@ export function ReportSection({
   const [localContactFilter, setLocalContactFilter] = useState<string>("");
   const [situacaoFilter, setSituacaoFilter] = useState<string>("all");
   const [selectedLabels, setSelectedLabels] = useState<string[]>([]);
+  const [filterPulse, setFilterPulse] = useState(0);
   const perPage = 5;
 
   useEffect(() => {
@@ -279,6 +289,10 @@ export function ReportSection({
     return Array.from(all).sort((a, b) => a.localeCompare(b, "pt-BR"));
   }, [contactContextItems, reportGaps]);
 
+  const displayLabels = useMemo(() => {
+    return availableLabels.length > 0 ? availableLabels : DEFAULT_LABEL_HINTS;
+  }, [availableLabels]);
+
   const normalizedContactFilter = localContactFilter.trim().toLowerCase();
   const normalizedSituacaoFilter = situacaoFilter.trim().toLowerCase();
 
@@ -316,6 +330,7 @@ export function ReportSection({
   function toggleLabel(label: string) {
     const low = label.toLowerCase();
     setSelectedLabels((current) => (current.includes(low) ? current.filter((item) => item !== low) : [...current, low]));
+    setFilterPulse((value) => value + 1);
     setContextPage(1);
     setGapsPage(1);
   }
@@ -419,105 +434,108 @@ export function ReportSection({
 
             <div className="report-section-sep">
               <h3 className="report-section-title">Filtros do Relatório</h3>
-              <div className="orq-row filter-row" style={{ flexWrap: "wrap", gap: 12 }}>
-                <label htmlFor="report-contact-filter">Usuário</label>
-                <input
-                  id="report-contact-filter"
-                  type="text"
-                  value={localContactFilter}
-                  placeholder="Filtrar por nome"
-                  onChange={(event) => {
-                    const next = event.target.value;
-                    setLocalContactFilter(next);
-                    onSelectReportContact(next.trim() ? next : null);
-                    setContextPage(1);
-                    setGapsPage(1);
-                  }}
-                />
-                <select
-                  value={situacaoFilter}
-                  onChange={(event) => {
-                    setSituacaoFilter(event.target.value);
-                    setContextPage(1);
-                  }}
-                  style={{ minWidth: 260 }}
-                >
-                  <option value="all">Situação: todas</option>
-                  {availableSituacoes.map((situacao) => (
-                    <option value={situacao} key={situacao}>
-                      Situação: {situacao}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  value={reportSeverityFilter}
-                  onChange={(event) => {
-                    onChangeReportSeverityFilter(event.target.value as SeverityFilter);
-                    setContextPage(1);
-                    setGapsPage(1);
-                  }}
-                  style={{ minWidth: 250 }}
-                >
-                  {REPORT_SEVERITY_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-                {availableContacts.length > 0 ? (
-                  <select
-                    value={localContactFilter}
-                    onChange={(event) => {
-                      const next = event.target.value;
-                      setLocalContactFilter(next);
-                      onSelectReportContact(next.trim() ? next : null);
-                      setContextPage(1);
-                      setGapsPage(1);
-                    }}
-                    style={{ minWidth: 280 }}
-                  >
-                    <option value="">Selecionar usuário</option>
-                    {availableContacts.map((name) => (
-                      <option value={name} key={name}>
-                        {name}
-                      </option>
-                    ))}
-                  </select>
-                ) : null}
-                <button
-                  className="btn btn-sm"
-                  type="button"
-                  onClick={() => {
-                    setLocalContactFilter("");
-                    setSituacaoFilter("all");
-                    setSelectedLabels([]);
-                    onSelectReportContact(null);
-                    onChangeReportSeverityFilter("all");
-                    setContextPage(1);
-                    setGapsPage(1);
-                  }}
-                >
-                  Limpar filtros
-                </button>
-              </div>
+                            <div className="report-filters-shell" key={filterPulse}>
+                <div className="report-filters-grid">
+                  <div className="report-filter-field">
+                    <label htmlFor="report-situacao-filter">Situação</label>
+                    <select
+                      id="report-situacao-filter"
+                      value={situacaoFilter}
+                      onChange={(event) => {
+                        setSituacaoFilter(event.target.value);
+                        setFilterPulse((value) => value + 1);
+                        setContextPage(1);
+                      }}
+                    >
+                      <option value="all">Todas</option>
+                      {availableSituacoes.map((situacao) => (
+                        <option value={situacao} key={situacao}>
+                          {situacao}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
 
-              {availableLabels.length > 0 ? (
-                <div className="gap-label-row">
-                  {availableLabels.map((label) => {
-                    const selected = selectedLabels.includes(label.toLowerCase());
-                    return (
-                      <button
-                        key={label}
-                        type="button"
-                        className={`${labelClass(label)} ${selected ? "tag-selected" : ""}`}
-                        onClick={() => toggleLabel(label)}
-                      >
-                        {label}
-                      </button>
-                    );
-                  })}
+                  <div className="report-filter-field">
+                    <label htmlFor="report-severity-filter">Severidade</label>
+                    <select
+                      id="report-severity-filter"
+                      value={reportSeverityFilter}
+                      onChange={(event) => {
+                        onChangeReportSeverityFilter(event.target.value as SeverityFilter);
+                        setFilterPulse((value) => value + 1);
+                        setContextPage(1);
+                        setGapsPage(1);
+                      }}
+                    >
+                      {REPORT_SEVERITY_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="report-filter-field">
+                    <label htmlFor="report-user-filter">Usuário</label>
+                    <select
+                      id="report-user-filter"
+                      value={localContactFilter}
+                      onChange={(event) => {
+                        const next = event.target.value;
+                        setLocalContactFilter(next);
+                        onSelectReportContact(next.trim() ? next : null);
+                        setFilterPulse((value) => value + 1);
+                        setContextPage(1);
+                        setGapsPage(1);
+                      }}
+                    >
+                      <option value="">Todos</option>
+                      {availableContacts.map((name) => (
+                        <option value={name} key={name}>
+                          {name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
-              ) : null}
+
+                <div className="report-filter-labels">
+                  <span className="report-filter-label-title">Etiquetas</span>
+                  <div className="gap-label-row">
+                    {displayLabels.map((label) => {
+                      const selected = selectedLabels.includes(label.toLowerCase());
+                      return (
+                        <button
+                          key={label}
+                          type="button"
+                          className={`${labelClass(label)} ${selected ? "tag-selected" : ""}`}
+                          onClick={() => toggleLabel(label)}
+                        >
+                          {label}
+                        </button>
+                      );
+                    })}
+
+                    <button
+                      className="tag tag-clear"
+                      type="button"
+                      onClick={() => {
+                        setLocalContactFilter("");
+                        setSituacaoFilter("all");
+                        setSelectedLabels([]);
+                        onSelectReportContact(null);
+                        onChangeReportSeverityFilter("all");
+                        setFilterPulse((value) => value + 1);
+                        setContextPage(1);
+                        setGapsPage(1);
+                      }}
+                    >
+                      Limpar
+                    </button>
+                  </div>
+                </div>
+              </div>
             </div>
 
             <div className="report-section-sep">
@@ -526,52 +544,54 @@ export function ReportSection({
                 <p className="empty-state">Sem dados por usuário no momento.</p>
               ) : (
                 <>
-                  {contextChunk.rows.map((item) => (
-                    <article className="report-card" key={item.key}>
-                      <span className="report-card-dot" style={{ background: toneColor(item.severity) }} />
-                      <div className="report-card-content">
-                        <h4>{item.contactName}</h4>
-                        <p>
-                          <strong>Situação:</strong> {item.situacao}
-                        </p>
-                        <p>
-                          <strong>Severidade:</strong>{" "}
-                          {item.severity === "critical"
-                            ? "Crítico"
-                            : item.severity === "high"
-                              ? "Alto"
-                              : item.severity === "medium"
-                                ? "Médio"
-                                : item.severity === "low"
-                                  ? "Baixo"
-                                  : "Informativo"}
-                        </p>
-                        <p>
-                          <strong>Contexto:</strong> {item.contexto}
-                        </p>
-                        <p>
-                          <strong>Evidência:</strong> {item.evidencia}
-                        </p>
-                        <p>
-                          <strong>Risco:</strong> {item.risco}
-                        </p>
-                        <p>
-                          <strong>Ação recomendada:</strong> {item.acao}
-                        </p>
-                        <div className="gap-label-row">
-                          {item.labels.length > 0 ? (
-                            item.labels.map((tag) => (
-                              <span className={labelClass(tag)} key={`${item.key}-${tag}`}>
-                                {tag}
-                              </span>
-                            ))
-                          ) : (
-                            <span className="tag">sem etiqueta</span>
-                          )}
+                  <div className="report-list-animated" key={`context-${filterPulse}-${contextChunk.safePage}`}>
+                    {contextChunk.rows.map((item) => (
+                      <article className="report-card" key={item.key}>
+                        <span className="report-card-dot" style={{ background: toneColor(item.severity) }} />
+                        <div className="report-card-content">
+                          <h4>{item.contactName}</h4>
+                          <p>
+                            <strong>Situação:</strong> {item.situacao}
+                          </p>
+                          <p>
+                            <strong>Severidade:</strong>{" "}
+                            {item.severity === "critical"
+                              ? "Crítico"
+                              : item.severity === "high"
+                                ? "Alto"
+                                : item.severity === "medium"
+                                  ? "Médio"
+                                  : item.severity === "low"
+                                    ? "Baixo"
+                                    : "Informativo"}
+                          </p>
+                          <p>
+                            <strong>Contexto:</strong> {item.contexto}
+                          </p>
+                          <p>
+                            <strong>Evidência:</strong> {item.evidencia}
+                          </p>
+                          <p>
+                            <strong>Risco:</strong> {item.risco}
+                          </p>
+                          <p>
+                            <strong>Ação recomendada:</strong> {item.acao}
+                          </p>
+                          <div className="gap-label-row">
+                            {item.labels.length > 0 ? (
+                              item.labels.map((tag) => (
+                                <span className={labelClass(tag)} key={`${item.key}-${tag}`}>
+                                  {tag}
+                                </span>
+                              ))
+                            ) : (
+                              <span className="tag">sem etiqueta</span>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    </article>
-                  ))}
+                      </article>
+                    ))}
+                  </div>
                   {filteredContactContextItems.length > perPage ? (
                     <div className="pagination-row">
                       <span>
@@ -603,26 +623,28 @@ export function ReportSection({
                 <p className="empty-state">Nenhum gap operacional para exibir.</p>
               ) : (
                 <>
-                  {gapsChunk.rows.map((item) => (
-                    <article className="report-card" key={item.key}>
-                      <span className="report-card-dot" style={{ background: toneColor(item.severity) }} />
-                      <div className="report-card-content">
-                        <h4>{item.title}</h4>
-                        <p>{item.desc}</p>
-                        <div className="gap-label-row">
-                          {item.labels.length > 0 ? (
-                            item.labels.map((tag) => (
-                              <span className={labelClass(tag)} key={`${item.key}-${tag}`}>
-                                {tag}
-                              </span>
-                            ))
-                          ) : (
-                            <span className="tag">sem etiqueta</span>
-                          )}
+                  <div className="report-list-animated" key={`gaps-${filterPulse}-${gapsChunk.safePage}`}>
+                    {gapsChunk.rows.map((item) => (
+                      <article className="report-card" key={item.key}>
+                        <span className="report-card-dot" style={{ background: toneColor(item.severity) }} />
+                        <div className="report-card-content">
+                          <h4>{item.title}</h4>
+                          <p>{item.desc}</p>
+                          <div className="gap-label-row">
+                            {item.labels.length > 0 ? (
+                              item.labels.map((tag) => (
+                                <span className={labelClass(tag)} key={`${item.key}-${tag}`}>
+                                  {tag}
+                                </span>
+                              ))
+                            ) : (
+                              <span className="tag">sem etiqueta</span>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    </article>
-                  ))}
+                      </article>
+                    ))}
+                  </div>
                   {filteredGaps.length > perPage ? (
                     <div className="pagination-row">
                       <span>
@@ -653,3 +675,10 @@ export function ReportSection({
     </div>
   );
 }
+
+
+
+
+
+
+

@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+﻿import { useMemo, useState } from "react";
 import type { InsightItem } from "../../../types";
 import { Gauge } from "../charts/Gauge";
 import type { InsightFilter, RiskRow } from "../shared/types";
@@ -40,6 +40,7 @@ export function InsightsSection({
   setInsightsPage,
   onOpenReportByContact,
 }: InsightsSectionProps) {
+  const [animationSeed, setAnimationSeed] = useState(0);
   const hasInsightsData = insightsReady && riskRows.total > 0;
   const improvements = useMemo(() => visibleInsights, [visibleInsights]);
 
@@ -77,6 +78,16 @@ export function InsightsSection({
     if (typeof window !== "undefined") {
       requestAnimationFrame(() => window.scrollTo({ top: y }));
     }
+  }
+
+  function handleFilterChange(next: InsightFilter) {
+    keepScroll(() => setInsightFilter(next));
+    setAnimationSeed((value) => value + 1);
+  }
+
+  function handlePageChange(next: number) {
+    keepScroll(() => setInsightsPage(next));
+    setAnimationSeed((value) => value + 1);
   }
 
   return (
@@ -169,28 +180,28 @@ export function InsightsSection({
                 <button
                   type="button"
                   className={`gap-chip ${insightFilter === "all" ? "active" : ""}`}
-                  onClick={() => keepScroll(() => setInsightFilter("all"))}
+                  onClick={() => handleFilterChange("all")}
                 >
                   Todos
                 </button>
                 <button
                   type="button"
                   className={`gap-chip ${insightFilter === "medium" ? "active" : ""}`}
-                  onClick={() => keepScroll(() => setInsightFilter("medium"))}
+                  onClick={() => handleFilterChange("medium")}
                 >
                   Médio
                 </button>
                 <button
                   type="button"
                   className={`gap-chip ${insightFilter === "low" ? "active" : ""}`}
-                  onClick={() => keepScroll(() => setInsightFilter("low"))}
+                  onClick={() => handleFilterChange("low")}
                 >
                   Baixo
                 </button>
                 <button
                   type="button"
                   className={`gap-chip ${insightFilter === "info" ? "active" : ""}`}
-                  onClick={() => keepScroll(() => setInsightFilter("info"))}
+                  onClick={() => handleFilterChange("info")}
                 >
                   Informação
                 </button>
@@ -211,7 +222,7 @@ export function InsightsSection({
                       <span style={{ fontSize: "var(--fs-tiny)", opacity: 0.85 }}>{group.desc}</span>
                     </div>
                     <div className="metrics-block-body">
-                      <div className="insights-grid">
+                      <div className="insights-grid insights-grid-animated" key={`${group.key}-${insightFilter}-${displayPage}-${animationSeed}`}>
                         {group.items.map((item) => (
                           <div className="insight-item" key={item.id}>
                             <div className="insight-bar" style={{ background: group.color }} />
@@ -257,14 +268,14 @@ export function InsightsSection({
               </span>
               <button
                 type="button"
-                onClick={() => keepScroll(() => setInsightsPage(Math.max(1, displayPage - 1)))}
+                onClick={() => handlePageChange(Math.max(1, displayPage - 1))}
                 disabled={displayPage <= 1}
               >
                 {"<"}
               </button>
               <button
                 type="button"
-                onClick={() => keepScroll(() => setInsightsPage(Math.min(totalInsightPages, displayPage + 1)))}
+                onClick={() => handlePageChange(Math.min(totalInsightPages, displayPage + 1))}
                 disabled={displayPage >= totalInsightPages}
               >
                 {">"}
@@ -276,4 +287,3 @@ export function InsightsSection({
     </div>
   );
 }
-

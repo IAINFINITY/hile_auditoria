@@ -28,6 +28,8 @@ export function useRevealOnScroll(): void {
       return;
     }
 
+    nodes.forEach((node) => node.classList.add("is-pending"));
+
     const obs = new IntersectionObserver(
       (entries) => {
         entries.forEach((entry) => {

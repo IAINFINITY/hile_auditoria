@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+﻿import { useEffect, useMemo, useState } from "react";
 import type { InsightItem, OverviewPayload } from "../../../types";
 
 interface GapsSectionProps {
@@ -52,6 +52,7 @@ export function GapsSection({
 }: GapsSectionProps) {
   const [filter, setFilter] = useState<GapFilter>("todos");
   const [page, setPage] = useState(1);
+  const [animationSeed, setAnimationSeed] = useState(0);
   const perPage = 5;
   const accountId = Number(overview?.account?.id || 0);
   const inboxId = Number(overview?.inbox?.id || 0);
@@ -81,6 +82,11 @@ export function GapsSection({
     }
   }
 
+  function handleFilterChange(next: GapFilter) {
+    setFilter(next);
+    setAnimationSeed((value) => value + 1);
+  }
+
   return (
     <div className="section reveal" id="gaps">
       <div className="section-inner">
@@ -99,17 +105,17 @@ export function GapsSection({
           </div>
           <div className="metrics-block-body">
             <div className="btn-group" style={{ marginBottom: 14 }}>
-              <button type="button" className={`gap-chip ${filter === "todos" ? "active" : ""}`} onClick={() => setFilter("todos")}>
+              <button type="button" className={`gap-chip ${filter === "todos" ? "active" : ""}`} onClick={() => handleFilterChange("todos")}>
                 Todos
               </button>
               <button
                 type="button"
                 className={`gap-chip ${filter === "critical" ? "active" : ""}`}
-                onClick={() => setFilter("critical")}
+                onClick={() => handleFilterChange("critical")}
               >
                 Crítico
               </button>
-              <button type="button" className={`gap-chip ${filter === "high" ? "active" : ""}`} onClick={() => setFilter("high")}>
+              <button type="button" className={`gap-chip ${filter === "high" ? "active" : ""}`} onClick={() => handleFilterChange("high")}>
                 Alto
               </button>
             </div>
@@ -119,7 +125,7 @@ export function GapsSection({
             ) : filtered.length === 0 ? (
               <p className="empty-state">Nenhum gap no filtro selecionado.</p>
             ) : (
-              <div className="gaps-grid">
+              <div className="gaps-grid gaps-grid-animated" key={`${filter}-${safePage}-${animationSeed}`}>
                 {pagedItems.map((item) => {
                   const url = buildConversationLink(baseUrl, accountId, inboxId, item.conversation_id);
                   return (
@@ -195,4 +201,3 @@ export function GapsSection({
     </div>
   );
 }
-

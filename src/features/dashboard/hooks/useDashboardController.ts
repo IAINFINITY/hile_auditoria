@@ -547,6 +547,8 @@ export function useDashboardController(): DashboardController {
   const [insightsPage, setInsightsPage] = useState<number>(1);
   const [showTrend, setShowTrend] = useState<boolean>(false);
   const [activeNav, setActiveNav] = useState<string>("inicio");
+  const activeNavRef = useRef<string>("inicio");
+  const navFreezeUntilRef = useRef<number>(0);
   const [lastRunAt, setLastRunAt] = useState<string | null>(null);
   const [overviewRunCount, setOverviewRunCount] = useState<number>(0);
   const [selectedReportContact, setSelectedReportContact] = useState<string | null>(null);
@@ -637,7 +639,13 @@ export function useDashboardController(): DashboardController {
   }, []);
 
   useEffect(() => {
+    activeNavRef.current = activeNav;
+  }, [activeNav]);
+
+  useEffect(() => {
     const handler = () => {
+      if (Date.now() < navFreezeUntilRef.current) return;
+
       const doc = document.documentElement;
       const scrollTop = window.scrollY || doc.scrollTop || 0;
       const viewportHeight = window.innerHeight;
@@ -645,7 +653,10 @@ export function useDashboardController(): DashboardController {
       const pageBottom = doc.scrollHeight - 2;
 
       if (viewportBottom >= pageBottom) {
-        setActiveNav("relatorio");
+        if (activeNavRef.current !== "relatorio") {
+          activeNavRef.current = "relatorio";
+          setActiveNav("relatorio");
+        }
         return;
       }
 
@@ -663,7 +674,10 @@ export function useDashboardController(): DashboardController {
         }
       }
 
-      setActiveNav(chosen);
+      if (activeNavRef.current !== chosen) {
+        activeNavRef.current = chosen;
+        setActiveNav(chosen);
+      }
     };
 
     window.addEventListener("scroll", handler, { passive: true });
@@ -1102,6 +1116,8 @@ export function useDashboardController(): DashboardController {
     const clean = String(contactName || "").trim();
     if (!clean) return;
     setSelectedReportContact(clean);
+    navFreezeUntilRef.current = Date.now() + 850;
+    activeNavRef.current = "relatorio";
     setActiveNav("relatorio");
     const target = document.getElementById("relatorio");
     if (!target) return;
@@ -1114,6 +1130,8 @@ export function useDashboardController(): DashboardController {
     if (!target) return;
 
     const top = Math.max(0, target.offsetTop - NAVBAR_HEIGHT);
+    navFreezeUntilRef.current = Date.now() + 850;
+    activeNavRef.current = section;
     window.scrollTo({ top, behavior: "smooth" });
     setActiveNav(section);
   };
