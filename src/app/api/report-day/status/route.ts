@@ -1,10 +1,14 @@
-﻿import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { cleanupReportJobs, getReportJobsStore } from "@/lib/server/reportJobs";
+import { requireAuthorizedApiAccess } from "@/lib/server/apiUtils";
 
 export const runtime = "nodejs";
 
 export async function GET(request: Request) {
   try {
+    const authResponse = await requireAuthorizedApiAccess();
+    if (authResponse) return authResponse;
+
     cleanupReportJobs();
 
     const { searchParams } = new URL(request.url);
@@ -28,10 +32,9 @@ export async function GET(request: Request) {
     }
 
     return NextResponse.json(state);
-  } catch (error: any) {
-    return NextResponse.json(
-      { error: "report_status_failed", message: error?.message || "Não foi possível consultar o status do relatório." },
-      { status: 400 },
-    );
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Não foi possível consultar o status do relatório.";
+    return NextResponse.json({ error: "report_status_failed", message }, { status: 400 });
   }
 }
+

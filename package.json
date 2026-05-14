@@ -17,6 +17,8 @@
         "db:studio": "prisma studio"
     },
     "dependencies": {
+        "@supabase/ssr": "^0.8.0",
+        "@supabase/supabase-js": "^2.57.4",
         "@prisma/client": "^6.19.2",
         "next": "16.1.6",
         "prisma": "^6.19.2",

@@ -1,20 +1,28 @@
 import { NextResponse } from "next/server";
 import { buildDailyReport } from "@/lib/server/audit/auditService";
-import { getAppConfig, parseDateInput, readJsonBody } from "@/lib/server/apiUtils";
+import {
+  getAppConfig,
+  isUnsafeDirectAnalysisAllowed,
+  parseDateInput,
+  readJsonBody,
+  requireAuthorizedApiAccess,
+} from "@/lib/server/apiUtils";
 
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
   try {
-    const allowUnsafeDirectMode = process.env.ALLOW_UNSAFE_DIRECT_ANALYSIS === "true";
-    if (!allowUnsafeDirectMode) {
+    const authResponse = await requireAuthorizedApiAccess();
+    if (authResponse) return authResponse;
+
+    if (!isUnsafeDirectAnalysisAllowed()) {
       return NextResponse.json(
         {
           error: "direct_report_disabled",
           message:
             "Geração direta desativada para evitar duplicidade de execução. Use /api/report-day/start.",
         },
-        { status: 409 },
+        { status: 403 },
       );
     }
 
@@ -28,3 +36,4 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "report_failed", message }, { status: 400 });
   }
 }
+

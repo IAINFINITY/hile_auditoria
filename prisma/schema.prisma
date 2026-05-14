@@ -52,6 +52,19 @@ model Tenant {
   @@map("tenants")
 }
 
+model AdminUser {
+  userId      String   @id @db.Uuid
+  email       String   @unique
+  role        String   @default("admin")
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  lastLoginAt DateTime?
+
+  @@index([isActive])
+  @@map("admin_users")
+}
+
 model Channel {
   id                 String   @id @default(cuid())
   tenantId           String

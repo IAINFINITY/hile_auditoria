@@ -8,13 +8,31 @@ import {
   persistCompletedRun,
   updateRunProgress,
 } from "@/lib/server/audit/auditPersistence";
-import { getAppConfig, parseDateInput, readJsonBody } from "@/lib/server/apiUtils";
+import { getAppConfig, parseDateInput, readJsonBody, requireAuthorizedApiAccess } from "@/lib/server/apiUtils";
 import { cleanupReportJobs, getReportJobsStore, type ReportJobState } from "@/lib/server/reportJobs";
+import type { ReportPayload } from "@/types";
 
 export const runtime = "nodejs";
 
+type ProgressEvent = {
+  type?: "contact_start" | "contact_done";
+  total?: number;
+  sequence?: number;
+  contact_name?: string;
+  contact_key?: string;
+  analysis_key?: string | null;
+  conversation_ids?: number[];
+  processed?: number;
+  success?: boolean;
+  error_message?: string;
+  error_code?: string | null;
+};
+
 export async function POST(request: Request) {
   try {
+    const authResponse = await requireAuthorizedApiAccess();
+    if (authResponse) return authResponse;
+
     cleanupReportJobs();
 
     const config = getAppConfig();
@@ -74,7 +92,7 @@ export async function POST(request: Request) {
         const output = await buildDailyReport({
           config,
           date,
-          onProgress: (event: any) => {
+          onProgress: (event: ProgressEvent) => {
             const state = jobs.get(jobId);
             if (!state) return;
 
@@ -149,7 +167,7 @@ export async function POST(request: Request) {
             config,
             date,
             finishedAtIso: finishedAt,
-            output: state.result as any,
+            output: state.result as ReportPayload,
           });
           await appendRunEvent(state.db_run_id, "run_completed", {
             processed: state.processed,

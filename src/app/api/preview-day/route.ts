@@ -1,17 +1,22 @@
-﻿import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { buildDailyConversationLogs } from "@/lib/server/audit/auditService";
-import { getAppConfig, parseDateInput, readJsonBody } from "@/lib/server/apiUtils";
+import { getAppConfig, parseDateInput, readJsonBody, requireAuthorizedApiAccess } from "@/lib/server/apiUtils";
 
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
   try {
+    const authResponse = await requireAuthorizedApiAccess();
+    if (authResponse) return authResponse;
+
     const config = getAppConfig();
     const body = await readJsonBody<{ date?: string }>(request);
     const date = parseDateInput(body?.date, config.timezone);
     const output = await buildDailyConversationLogs({ config, date });
     return NextResponse.json(output);
-  } catch (error: any) {
-    return NextResponse.json({ error: "preview_failed", message: error?.message || "Falha no preview." }, { status: 400 });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Falha no preview.";
+    return NextResponse.json({ error: "preview_failed", message }, { status: 400 });
   }
 }
+

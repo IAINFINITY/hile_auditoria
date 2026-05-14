@@ -1,9 +1,12 @@
-﻿import { NextResponse } from "next/server";
-import { getAppConfig } from "@/lib/server/apiUtils";
+import { NextResponse } from "next/server";
+import { getAppConfig, requireAuthorizedApiAccess } from "@/lib/server/apiUtils";
 
 export const runtime = "nodejs";
 
 export async function GET() {
+  const authResponse = await requireAuthorizedApiAccess();
+  if (authResponse) return authResponse;
+
   const config = getAppConfig();
   return NextResponse.json({
     timezone: config.timezone,
@@ -17,3 +20,4 @@ export async function GET() {
     dify_base_url: config.dify.baseUrl,
   });
 }
+
