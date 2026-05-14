@@ -6,7 +6,7 @@ export const metadata: Metadata = {
   title: "Hilê Audit Console",
   description: "Auditoria inteligente de atendimento com Chatwoot e Dify",
   icons: {
-    icon: "/hile-1-photoaidcom-cropped.png",
+    icon: "/faviconV2.png",
   },
 };
 
