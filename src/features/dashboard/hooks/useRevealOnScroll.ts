@@ -1,7 +1,10 @@
 import { useEffect } from "react";
 
-export function useRevealOnScroll(): void {
+export function useRevealOnScroll(options?: { enabled?: boolean }): void {
+  const enabled = options?.enabled ?? true;
+
   useEffect(() => {
+    if (!enabled) return;
     if ("scrollRestoration" in window.history) {
       window.history.scrollRestoration = "manual";
     }
@@ -47,5 +50,5 @@ export function useRevealOnScroll(): void {
       window.removeEventListener("load", handleLoad);
       obs.disconnect();
     };
-  }, []);
+  }, [enabled]);
 }

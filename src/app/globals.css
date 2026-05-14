@@ -340,6 +340,11 @@ img{max-width:100%;display:block}
   font-size:var(--fs-small);
 }
 
+.login-success{
+  color:var(--low);
+  font-size:var(--fs-small);
+}
+
 .login-btn{
   width:100%;
   height:44px;

@@ -525,7 +525,8 @@ function mapRunToDashboardSnapshot(run: ReportByDateResponse["run"]): {
   };
 }
 
-export function useDashboardController(): DashboardController {
+export function useDashboardController(options?: { enabled?: boolean }): DashboardController {
+  const enabled = options?.enabled ?? true;
   const PROGRESS_STEPS = 6;
   const SECTION_IDS = ["inicio", "gaps", "insights", "movimentacao", "relatorio"] as const;
   const NAVBAR_HEIGHT = 68;
@@ -609,12 +610,14 @@ export function useDashboardController(): DashboardController {
   }
 
   useEffect(() => {
+    if (!enabled) return;
     apiGet<ApiConfigPayload>("/api/config")
       .then((data) => setApiConfig(data))
       .catch(() => setApiConfig(null));
-  }, []);
+  }, [enabled]);
 
   useEffect(() => {
+    if (!enabled) return;
     apiGet<ReportHistoryResponse>("/api/report-day/history?limit=8")
       .then((data) => {
         const items = Array.isArray(data?.items) ? data.items : [];
@@ -624,9 +627,10 @@ export function useDashboardController(): DashboardController {
         }
       })
       .catch(() => setReportHistory([]));
-  }, []);
+  }, [enabled]);
 
   useEffect(() => {
+    if (!enabled) return;
     apiGet<AvailableDatesResponse>("/api/report-day/available-dates?limit=1000")
       .then((data) => {
         const dates = Array.isArray(data?.dates) ? data.dates : [];
@@ -636,13 +640,14 @@ export function useDashboardController(): DashboardController {
         }
       })
       .catch(() => setAvailableReportDates([]));
-  }, []);
+  }, [enabled]);
 
   useEffect(() => {
     activeNavRef.current = activeNav;
   }, [activeNav]);
 
   useEffect(() => {
+    if (!enabled) return;
     const handler = () => {
       if (Date.now() < navFreezeUntilRef.current) return;
 
@@ -688,13 +693,14 @@ export function useDashboardController(): DashboardController {
       window.removeEventListener("scroll", handler);
       window.removeEventListener("resize", handler);
     };
-  }, []);
+  }, [enabled]);
 
   useEffect(() => {
     setInsightsPage(1);
   }, [insightFilter]);
 
   useEffect(() => {
+    if (!enabled) return;
     if (!date) return;
     if (isRunningOverview) return;
     if (availableReportDates.length > 0 && !availableReportDates.includes(date)) {
@@ -742,7 +748,7 @@ export function useDashboardController(): DashboardController {
     return () => {
       cancelled = true;
     };
-  }, [availableReportDates, date, isRunningOverview, lastValidDate]);
+  }, [availableReportDates, date, enabled, isRunningOverview, lastValidDate]);
 
   const sortedInsights = useMemo(() => {
     return [...insights].sort((a, b) => severityOrder[b.severity] - severityOrder[a.severity]);
@@ -952,6 +958,7 @@ export function useDashboardController(): DashboardController {
   }
 
   async function executeOverview() {
+    if (!enabled) return;
     const safeDate = clampDateInput(normalizeDateInput(date, maxDate), minDate, maxDate);
     if (safeDate !== date) {
       setDateState(safeDate);

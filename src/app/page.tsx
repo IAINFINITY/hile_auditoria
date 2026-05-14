@@ -12,12 +12,20 @@ import { MovementSection } from "@/features/dashboard/sections/MovementSection";
 import { ReportSection } from "@/features/dashboard/sections/ReportSection";
 import { SettingsView } from "@/features/dashboard/sections/SettingsView";
 import { ShellNavigation } from "@/features/dashboard/sections/ShellNavigation";
+import { supabaseBrowser } from "@/lib/supabase/browser";
 
 type AppView = "dashboard" | "settings";
 
+interface AuthStatusPayload {
+  authenticated: boolean;
+  authorized: boolean;
+  user: {
+    id: string;
+    email: string | null;
+  } | null;
+}
+
 export default function Page() {
-  useRevealOnScroll();
-  const controller = useDashboardController();
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [activeView, setActiveView] = useState<AppView>("dashboard");
   const [stage, setStage] = useState<"splash" | "login" | "app">("splash");
@@ -27,11 +35,74 @@ export default function Page() {
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
   const [isAuthenticating, setIsAuthenticating] = useState(false);
+  const [loginError, setLoginError] = useState("");
+  const [showForgotPasswordModal, setShowForgotPasswordModal] = useState(false);
   const [currentUser, setCurrentUser] = useState<{ name: string; email: string; role: string } | null>(null);
+  useRevealOnScroll({ enabled: stage === "app" });
+  const controller = useDashboardController({ enabled: stage === "app" });
+
+  function toPrettyName(emailValue: string | null | undefined): string {
+    const safeEmail = String(emailValue || "").trim().toLowerCase();
+    const nameFromEmail = safeEmail.split("@")[0] || "Usuário";
+    return nameFromEmail
+      .split(".")
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(" ");
+  }
+
+  async function fetchAuthStatus(): Promise<AuthStatusPayload | null> {
+    try {
+      const response = await fetch("/api/auth/status", {
+        method: "GET",
+        cache: "no-store",
+      });
+      if (!response.ok) return null;
+      const data = (await response.json()) as AuthStatusPayload;
+      return data;
+    } catch {
+      return null;
+    }
+  }
 
   useEffect(() => {
-    const timer = window.setTimeout(() => setStage("login"), 2300);
-    return () => window.clearTimeout(timer);
+    let cancelled = false;
+
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        const {
+          data: { session },
+        } = await supabaseBrowser.auth.getSession();
+
+        if (!session) {
+          if (!cancelled) setStage("login");
+          return;
+        }
+
+        const status = await fetchAuthStatus();
+        if (!status?.authenticated || !status?.authorized || !status.user) {
+          await supabaseBrowser.auth.signOut();
+          if (!cancelled) {
+            setLoginError("Este usuário não possui acesso autorizado no banco de dados.");
+            setStage("login");
+          }
+          return;
+        }
+
+        if (!cancelled) {
+          setCurrentUser({
+            name: toPrettyName(status.user.email),
+            email: status.user.email || "usuario@hile.com.br",
+            role: "Administrador",
+          });
+          setStage("app");
+        }
+      })();
+    }, 2300);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
   }, []);
 
   useEffect(() => {
@@ -58,38 +129,63 @@ export default function Page() {
     controller.navigateToSection(section);
   }
 
-  function handleLogin(event: FormEvent<HTMLFormElement>) {
+  async function handleLogin(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (isAuthenticating) return;
+    setLoginError("");
+    if (!email.trim() || !password.trim()) {
+      setLoginError("Preencha e-mail e senha para continuar.");
+      return;
+    }
+
     setIsAuthenticating(true);
+    try {
+      const { data, error } = await supabaseBrowser.auth.signInWithPassword({
+        email: email.trim().toLowerCase(),
+        password,
+      });
 
-    const safeEmail = email.trim().toLowerCase() || "usuario@hile.com.br";
+      if (error || !data.session) {
+        setLoginError("Credenciais inválidas ou acesso indisponível.");
+        return;
+      }
 
-    const nameFromEmail = safeEmail.split("@")[0] || "Usuário";
-    const prettyName = nameFromEmail
-      .split(".")
-      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-      .join(" ");
+      const status = await fetchAuthStatus();
+      if (!status?.authenticated || !status?.authorized || !status.user) {
+        await supabaseBrowser.auth.signOut();
+        setLoginError("Seu usuário autenticou, mas não está autorizado no banco.");
+        return;
+      }
 
-    window.setTimeout(() => {
       setCurrentUser({
-        name: prettyName,
-        email: safeEmail,
+        name: toPrettyName(status.user.email),
+        email: status.user.email || "usuario@hile.com.br",
         role: "Administrador",
       });
       setStage("app");
+    } catch {
+      setLoginError("Falha de conexão durante autenticação.");
+    } finally {
       setIsAuthenticating(false);
-    }, 850);
+    }
   }
 
-  function handleLogout() {
+  async function handleLogout() {
+    await supabaseBrowser.auth.signOut();
     setStage("login");
     setCurrentUser(null);
     setPassword("");
     setShowPassword(false);
     setIsAuthenticating(false);
+    setLoginError("");
+    setShowForgotPasswordModal(false);
     setShowConfirmModal(false);
     setActiveView("dashboard");
+  }
+
+  function handleForgotPassword() {
+    setLoginError("");
+    setShowForgotPasswordModal(true);
   }
 
   function handleOpenSettings() {
@@ -187,16 +283,23 @@ export default function Page() {
                 />
                 <span>Lembrar de mim</span>
               </label>
-              <button className="forgot-link" type="button" disabled={isAuthenticating}>
+              <button
+                className="forgot-link"
+                type="button"
+                onClick={handleForgotPassword}
+                disabled={isAuthenticating}
+              >
                 Esqueceu a senha
               </button>
             </div>
+
+            {loginError ? <p className="login-error">{loginError}</p> : null}
 
             <button className="login-btn" type="submit" disabled={isAuthenticating}>
               {isAuthenticating ? "Autenticando..." : "Acessar Sistema"}
             </button>
 
-            <p className="login-visual-hint">Modo visual: não é necessário preencher os campos.</p>
+            <p className="login-visual-hint">Acesso restrito a usuários autorizados no banco de dados.</p>
           </div>
 
           <div className="secure-session-strip" role="status" aria-live="polite">
@@ -225,6 +328,20 @@ export default function Page() {
             </a>
           </div>
         </footer>
+
+        {showForgotPasswordModal ? (
+          <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="forgotPasswordModalTitle">
+            <div className="modal-card">
+              <h3 id="forgotPasswordModalTitle">Funcionalidade em desenvolvimento</h3>
+              <p>O fluxo de recuperação de senha ainda está em desenvolvimento neste projeto.</p>
+              <div className="modal-actions">
+                <button className="btn btn-primary btn-sm" onClick={() => setShowForgotPasswordModal(false)}>
+                  Entendi
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
       </div>
     );
   }

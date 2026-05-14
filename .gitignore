@@ -42,3 +42,6 @@ src/chatwootClient.ts
 src/config.ts
 src/dateUtils.ts
 src/difyClient.ts
+
+# GSD runtime lock file
+.planning/STATE.md.lock
