@@ -86,8 +86,9 @@ model Contact {
   conversations     Conversation[]
   analyses          ConversationAnalysis[]
 
+  @@unique([tenantId, chatwootContactId])
+  @@unique([tenantId, identifierHash])
   @@index([tenantId])
-  @@index([tenantId, chatwootContactId])
   @@map("contacts")
 }
 
@@ -185,6 +186,7 @@ model ConversationAnalysis {
   insights           Insight[]
   cacheEntries       AnalysisCache[]
 
+  @@unique([runId, conversationId])
   @@index([runId])
   @@index([conversationId])
   @@map("conversation_analyses")
@@ -250,6 +252,7 @@ model AnalysisCache {
   conversation      Conversation         @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   analysis          ConversationAnalysis @relation(fields: [analysisId], references: [id], onDelete: Cascade)
 
+  @@unique([tenantId, conversationId, sourceFingerprint])
   @@index([tenantId, sourceFingerprint])
   @@index([conversationId])
   @@map("analysis_cache")

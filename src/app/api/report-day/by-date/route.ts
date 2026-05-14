@@ -15,6 +15,7 @@ export async function GET(request: Request) {
     if (!run) {
       return NextResponse.json({ error: "run_not_found", message: "Sem relatório salvo para a data selecionada." }, { status: 404 });
     }
+
     return NextResponse.json({ run });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Não foi possível buscar relatório por data.";

@@ -419,7 +419,7 @@ export function ReportSection({
 
             <div className="report-section-sep">
               <h3 className="report-section-title">Filtros do Relatório</h3>
-              <div className="orq-row" style={{ flexWrap: "wrap", gap: 12 }}>
+              <div className="orq-row filter-row" style={{ flexWrap: "wrap", gap: 12 }}>
                 <label htmlFor="report-contact-filter">Usuário</label>
                 <input
                   id="report-contact-filter"
@@ -653,4 +653,3 @@ export function ReportSection({
     </div>
   );
 }
-

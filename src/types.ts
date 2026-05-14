@@ -124,6 +124,7 @@ export interface PreviewPayload {
 
 export interface AnalysisItem {
   analysis_index?: number;
+  source_fingerprint?: string;
   contact_key: string;
   contact?: { name?: string | null; identifier?: string | null };
   conversation_ids: number[];
@@ -187,7 +188,9 @@ export interface ReportPayload {
 
 export interface ReportJobStartResponse {
   ok: boolean;
+  already_running?: boolean;
   job_id: string;
+  db_run_id?: string | null;
   status: "running";
   date: string;
 }

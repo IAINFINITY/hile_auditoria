@@ -140,7 +140,8 @@ export function MetricsSection({
           <div className="metrics-block-body">
             <div className="orq-row">
               <label>Período</label>
-              <div className="filter-group" style={{ flex: 1 }}>
+              <div className="filter-box" style={{ flex: 1 }}>
+                <div className="filter-group" style={{ flex: 1 }}>
                 {PRESETS.map((preset, index) => (
                   <Fragment key={preset.key}>
                     {index === 3 ? <div className="filter-sep" /> : null}
@@ -153,32 +154,35 @@ export function MetricsSection({
                     </button>
                   </Fragment>
                 ))}
+                </div>
               </div>
             </div>
 
             <div className="orq-row">
               <label>Execução</label>
-              <input
-                id="ref-date"
-                type="date"
-                value={date}
-                min={minDate}
-                max={maxDate}
-                onChange={(event) => setDate(event.target.value)}
-              />
-              <span
-                className="status-badge"
-                style={{
-                  background: selectedDateHasSavedReport ? "rgba(16, 185, 129, 0.12)" : "rgba(245, 158, 11, 0.12)",
-                  color: selectedDateHasSavedReport ? "var(--ok)" : "var(--orange)",
-                  borderColor: selectedDateHasSavedReport ? "rgba(16, 185, 129, 0.45)" : "rgba(245, 158, 11, 0.45)",
-                }}
-              >
-                {selectedDateHasSavedReport ? "Com relatório" : "Sem relatório"}
-              </span>
-              <button className="btn btn-primary" onClick={onRequestOverview} disabled={isBusy}>
-                {isRunningOverview ? "Processando..." : "Executar Overview"}
-              </button>
+              <div className="filter-box">
+                <input
+                  id="ref-date"
+                  type="date"
+                  value={date}
+                  min={minDate}
+                  max={maxDate}
+                  onChange={(event) => setDate(event.target.value)}
+                />
+                <span
+                  className="status-badge"
+                  style={{
+                    background: selectedDateHasSavedReport ? "rgba(16, 185, 129, 0.12)" : "rgba(245, 158, 11, 0.12)",
+                    color: selectedDateHasSavedReport ? "var(--ok)" : "var(--orange)",
+                    borderColor: selectedDateHasSavedReport ? "rgba(16, 185, 129, 0.45)" : "rgba(245, 158, 11, 0.45)",
+                  }}
+                >
+                  {selectedDateHasSavedReport ? "Com relatório" : "Sem relatório"}
+                </span>
+                <button className="btn btn-primary" onClick={onRequestOverview} disabled={isBusy}>
+                  {isRunningOverview ? "Processando..." : "Executar Overview"}
+                </button>
+              </div>
               {statusLabel ? <span className="status-label">{statusLabel}</span> : null}
             </div>
             <div className="status-label" style={{ color: selectedDateHasSavedReport ? "var(--orange)" : undefined }}>

@@ -1,6 +1,8 @@
-﻿import { createChatwootClient } from "./chatwootClient";
+﻿import { createHash } from "node:crypto";
+import { createChatwootClient } from "./chatwootClient";
 import { createDifyClient } from "./difyClient";
 import { attachDay, normalizeConversationLog, renderLogForPrompt } from "./chatMapper";
+import { getCachedAnalysisByFingerprint } from "./auditPersistence";
 import { assertYmd, formatDateTimeInTimezone, nowUnixSeconds, toYmdInTimezone, unique } from "./dateUtils";
 
 const FINALIZATION_LABELS = ["lead_agendado", "pausar_ia"];
@@ -130,6 +132,10 @@ function compactAnalysis(raw) {
     elapsed_time: raw?.metadata?.usage?.latency || raw?.data?.elapsed_time || null,
     raw,
   };
+}
+
+function buildSourceFingerprint(input) {
+  return createHash("sha256").update(String(input || "")).digest("hex");
 }
 
 function getContactKey(log) {
@@ -569,6 +575,7 @@ export async function runDailyAnalysis({ config, date, snapshot = null, onProgre
     const contactKey = log.analysis_key || log.contact_key;
     const contactName = log.contact?.name || log.contact?.identifier || log.contact_key;
     const logText = renderLogForPrompt(log);
+    const sourceFingerprint = buildSourceFingerprint(logText);
     const sequence = index + 1;
 
     if (notify) {
@@ -584,15 +591,34 @@ export async function runDailyAnalysis({ config, date, snapshot = null, onProgre
     }
 
     try {
-      const difyRaw = await difyClient.analyzeLog({
-        contactKey,
-        date,
-        logText,
+      const cachedAnalysis = await getCachedAnalysisByFingerprint({
+        config,
+        account: dailySnapshot.account,
+        inbox: {
+          id: dailySnapshot.inbox.id,
+          name: dailySnapshot.inbox.name,
+          provider: dailySnapshot.inbox.provider,
+        },
+        conversationIds: log.conversation_ids || [],
+        sourceFingerprint,
       });
+
+      const difyRaw = cachedAnalysis
+        ? {
+            answer: cachedAnalysis.answer,
+            mode: "cache",
+            event: "cached_hit",
+          }
+        : await difyClient.analyzeLog({
+            contactKey,
+            date,
+            logText,
+          });
 
       analyses.push({
         analysis_index: sequence,
         analysis_key: log.analysis_key,
+        source_fingerprint: sourceFingerprint,
         contact_key: log.contact_key,
         contact: log.contact,
         conversation_ids: log.conversation_ids,
@@ -603,9 +629,7 @@ export async function runDailyAnalysis({ config, date, snapshot = null, onProgre
         log_text: logText,
         analysis: compactAnalysis(difyRaw),
       });
-      console.log(
-        `[analyze-day] contato ${log.contact_key} analisado (${analyses.length + failures.length}/${totalToProcess}).`,
-      );
+      console.log(`[analyze-day] contato ${log.contact_key} ${cachedAnalysis ? "reaproveitado do cache" : "analisado"} (${analyses.length + failures.length}/${totalToProcess}).`);
       if (notify) {
         notify({
           type: "contact_done",
@@ -996,3 +1020,5 @@ export async function buildDailyReport({ config, date, onProgress = null }) {
     },
   };
 }
+
+

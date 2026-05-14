@@ -9,10 +9,8 @@ export async function GET(request: Request) {
     const limit = Number(searchParams.get("limit") || 10);
     const items = await listRecentRuns(limit);
     return NextResponse.json({ items, count: items.length });
-  } catch (error: any) {
-    return NextResponse.json(
-      { error: "report_history_failed", message: error?.message || "Não foi possível carregar o histórico." },
-      { status: 400 },
-    );
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Não foi possível carregar o histórico.";
+    return NextResponse.json({ error: "report_history_failed", message }, { status: 400 });
   }
 }

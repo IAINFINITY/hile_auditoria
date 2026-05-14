@@ -20,10 +20,25 @@ export async function POST(request: Request) {
     const config = getAppConfig();
     const body = await readJsonBody<{ date?: string }>(request);
     const date = parseDateInput(body?.date, config.timezone);
+    const jobs = getReportJobsStore();
+
+    const runningForDate = [...jobs.values()].find((job) => job.status === "running" && job.date === date);
+    if (runningForDate) {
+      return NextResponse.json(
+        {
+          ok: true,
+          already_running: true,
+          job_id: runningForDate.job_id,
+          db_run_id: runningForDate.db_run_id || null,
+          status: "running",
+          date,
+        },
+        { status: 202 },
+      );
+    }
 
     const jobId = randomUUID();
     const now = new Date().toISOString();
-    const jobs = getReportJobsStore();
 
     const initialJob: ReportJobState = {
       job_id: jobId,
@@ -41,7 +56,18 @@ export async function POST(request: Request) {
     };
 
     jobs.set(jobId, initialJob);
-    initialJob.db_run_id = await createRunRecord({ config, date, startedAtIso: now });
+    try {
+      initialJob.db_run_id = await createRunRecord({ config, date, startedAtIso: now });
+    } catch (error: unknown) {
+      jobs.delete(jobId);
+      const message =
+        error instanceof Error ? error.message : "Não foi possível iniciar o overview para esta data.";
+      const code = (error as { code?: string } | null)?.code;
+      if (code === "RUN_ALREADY_IN_PROGRESS") {
+        return NextResponse.json({ error: "report_already_running", message, date }, { status: 409 });
+      }
+      throw error;
+    }
 
     void (async () => {
       try {
@@ -130,13 +156,13 @@ export async function POST(request: Request) {
             total: state.total,
           });
         }
-      } catch (error: any) {
+      } catch (error: unknown) {
         const state = jobs.get(jobId);
         if (!state) return;
         const finishedAt = new Date().toISOString();
         state.status = "failed";
         state.updated_at = finishedAt;
-        state.error = error?.message || "Falha ao gerar relatório.";
+        state.error = error instanceof Error ? error.message : "Falha ao gerar relatório.";
         state.current_contact = null;
         if (state.db_run_id) {
           await markRunFailed(state.db_run_id, finishedAt, state.error);
@@ -145,10 +171,8 @@ export async function POST(request: Request) {
     })();
 
     return NextResponse.json({ ok: true, job_id: jobId, status: "running", date }, { status: 202 });
-  } catch (error: any) {
-    return NextResponse.json(
-      { error: "report_start_failed", message: error?.message || "Não foi possível iniciar o relatório." },
-      { status: 400 },
-    );
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Não foi possível iniciar o relatório.";
+    return NextResponse.json({ error: "report_start_failed", message }, { status: 400 });
   }
 }

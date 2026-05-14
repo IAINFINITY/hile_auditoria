@@ -129,6 +129,14 @@ img{max-width:100%;display:block}
 .status-badge.fail{border-color:var(--critical);color:var(--critical);background:var(--critical-bg)}
 
 .filter-group{display:flex;align-items:center;gap:6px;background:var(--branco);padding:6px;border:1px solid var(--line)}
+.filter-box{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  background:color-mix(in srgb, var(--surface) 85%, #ffffff);
+  border:1px solid var(--azul-line);
+  padding:8px 10px;
+}
 .filter-sep{width:1px;height:26px;background:var(--line);margin:0 4px}
 .filter-pill{
   padding:8px 20px;border:0;font-size:var(--fs-small);font-weight:600;cursor:pointer;
@@ -155,6 +163,16 @@ img{max-width:100%;display:block}
 .orq-row:last-of-type{margin-bottom:0}
 .orq-row label{font-size:var(--fs-small);font-weight:700;color:var(--navy);min-width:80px;text-transform:uppercase;letter-spacing:.04em}
 .orq-row input[type=date]{padding:8px 12px;border:1px solid var(--line);font-size:var(--fs-small);background:var(--branco)}
+.filter-row input,
+.filter-row select,
+.filter-row .btn{
+  border-color:var(--azul-line);
+  background:var(--branco);
+}
+.filter-row input,
+.filter-row select{
+  padding:8px 10px;
+}
 .status-label{font-size:var(--fs-small);color:var(--muted);font-weight:500}
 .orq-timeline{margin:12px 0 0;padding-left:18px;color:var(--navy);font-size:var(--fs-small)}
 .orq-timeline li+li{margin-top:6px}
