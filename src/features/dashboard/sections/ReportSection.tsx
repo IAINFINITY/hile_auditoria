@@ -1,4 +1,4 @@
-﻿import { useMemo, useState } from "react";
+﻿import { useEffect, useMemo, useState } from "react";
 import type { InsightItem, ReportPayload } from "../../../types";
 
 interface ReportSectionProps {
@@ -52,7 +52,12 @@ export function ReportSection({
   const [recomPage, setRecomPage] = useState(1);
   const [situationFilter, setSituationFilter] = useState<string>("all");
   const [queryFilter, setQueryFilter] = useState<string>("");
+  const [generatedAtLabel, setGeneratedAtLabel] = useState<string>("—");
   const perPage = 3;
+
+  useEffect(() => {
+    setGeneratedAtLabel(new Date().toLocaleString("pt-BR"));
+  }, []);
 
   const achados = useMemo<ReportItem[]>(() => {
     const source = criticalGapInsights.slice(0, 100);
@@ -231,7 +236,7 @@ export function ReportSection({
         <div className={`metrics-block ${hasReportData ? "" : "data-dim"}`}>
           <div className="metrics-block-header">
             <span>Relatório consolidado</span>
-            <span>Gerado em: {new Date().toLocaleString("pt-BR")}</span>
+            <span>Gerado em: {generatedAtLabel}</span>
           </div>
 
           <div className="metrics-block-body">
@@ -386,3 +391,4 @@ export function ReportSection({
     </div>
   );
 }
+

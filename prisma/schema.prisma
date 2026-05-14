@@ -1,0 +1,285 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum RunStatus {
+  running
+  completed
+  failed
+}
+
+enum FinalizationStatus {
+  finalizada
+  continuada
+}
+
+enum InsightSeverity {
+  critical
+  high
+  medium
+  low
+  info
+}
+
+enum GapSeverity {
+  alta
+  media
+  baixa
+  nao_informado
+}
+
+model Tenant {
+  id          String    @id @default(cuid())
+  name        String
+  slug        String    @unique
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  channels    Channel[]
+  contacts    Contact[]
+  conversations Conversation[]
+  messages    Message[]
+  runs        AnalysisRun[]
+  cacheEntries AnalysisCache[]
+  checkpoints SyncCheckpoint[]
+
+  @@map("tenants")
+}
+
+model Channel {
+  id                 String   @id @default(cuid())
+  tenantId           String
+  chatwootAccountId  Int
+  chatwootInboxId    Int
+  name               String
+  provider           String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  tenant             Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  conversations      Conversation[]
+  runs               AnalysisRun[]
+  checkpoints        SyncCheckpoint[]
+
+  @@unique([tenantId, chatwootAccountId, chatwootInboxId])
+  @@index([tenantId])
+  @@map("channels")
+}
+
+model Contact {
+  id                String   @id @default(cuid())
+  tenantId          String
+  chatwootContactId Int?
+  name              String?
+  identifierHash    String?
+  identifierLast4   String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  tenant            Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  conversations     Conversation[]
+  analyses          ConversationAnalysis[]
+
+  @@index([tenantId])
+  @@index([tenantId, chatwootContactId])
+  @@map("contacts")
+}
+
+model Conversation {
+  id                      String   @id @default(cuid())
+  tenantId                String
+  channelId               String
+  chatwootConversationId  Int
+  contactId               String?
+  status                  String?
+  labels                  String[]
+  lastActivityAt          DateTime?
+  resolvedAt              DateTime?
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  tenant                  Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  channel                 Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  contact                 Contact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  messages                Message[]
+  analyses                ConversationAnalysis[]
+  cacheEntries            AnalysisCache[]
+
+  @@unique([tenantId, chatwootConversationId])
+  @@index([tenantId, channelId])
+  @@map("conversations")
+}
+
+model Message {
+  id                String   @id @default(cuid())
+  tenantId          String
+  conversationId    String
+  chatwootMessageId Int
+  createdAt         DateTime
+  role              String
+  senderName        String?
+  content           String
+  contentHash       String?
+
+  conversation      Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  tenant            Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, chatwootMessageId])
+  @@index([tenantId, conversationId, createdAt])
+  @@map("messages")
+}
+
+model AnalysisRun {
+  id                 String   @id @default(cuid())
+  tenantId           String
+  channelId          String
+  dateRef            DateTime
+  status             RunStatus
+  startedAt          DateTime
+  finishedAt         DateTime?
+  totalConversations Int      @default(0)
+  processed          Int      @default(0)
+  successCount       Int      @default(0)
+  failureCount       Int      @default(0)
+  createdAt          DateTime @default(now())
+
+  tenant             Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  channel            Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  analyses           ConversationAnalysis[]
+  report             Report?
+  events             JobEvent[]
+
+  @@index([tenantId, dateRef])
+  @@index([channelId, dateRef])
+  @@map("analysis_runs")
+}
+
+model ConversationAnalysis {
+  id                 String   @id @default(cuid())
+  runId              String
+  conversationId     String
+  contactId          String?
+  riskLevel          String?
+  summary            String?
+  improvementsJson   Json?
+  nextStepsJson      Json?
+  aiRawJson          Json?
+  promptVersion      String?
+  model              String?
+  tokensIn           Int?
+  tokensOut          Int?
+  costUsd            Decimal? @db.Decimal(12, 6)
+  finalizationStatus FinalizationStatus?
+  createdAt          DateTime @default(now())
+
+  run                AnalysisRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  conversation       Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  contact            Contact?     @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  gaps               Gap[]
+  insights           Insight[]
+  cacheEntries       AnalysisCache[]
+
+  @@index([runId])
+  @@index([conversationId])
+  @@map("conversation_analyses")
+}
+
+model Gap {
+  id                   String      @id @default(cuid())
+  analysisId           String
+  name                 String
+  severity             GapSeverity @default(nao_informado)
+  description          String?
+  messageReference     String?
+  userReportedData     String?
+  confirmedData        String?
+  category             String?
+  isCritical           Boolean     @default(false)
+  createdAt            DateTime    @default(now())
+
+  analysis             ConversationAnalysis @relation(fields: [analysisId], references: [id], onDelete: Cascade)
+
+  @@index([analysisId, severity])
+  @@map("gaps")
+}
+
+model Insight {
+  id                   String          @id @default(cuid())
+  analysisId           String
+  type                 String?
+  severity             InsightSeverity
+  title                String
+  summary              String
+  operationalStateJson Json?
+  createdAt            DateTime        @default(now())
+
+  analysis             ConversationAnalysis @relation(fields: [analysisId], references: [id], onDelete: Cascade)
+
+  @@index([analysisId, severity])
+  @@map("insights")
+}
+
+model Report {
+  id              String   @id @default(cuid())
+  runId           String   @unique
+  reportMarkdown  String
+  reportJson      Json?
+  generatedAt     DateTime @default(now())
+  version         String?
+
+  run             AnalysisRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@map("reports")
+}
+
+model AnalysisCache {
+  id                String   @id @default(cuid())
+  tenantId          String
+  conversationId    String
+  sourceFingerprint String
+  analysisId        String
+  createdAt         DateTime @default(now())
+
+  tenant            Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  conversation      Conversation         @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  analysis          ConversationAnalysis @relation(fields: [analysisId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, sourceFingerprint])
+  @@index([conversationId])
+  @@map("analysis_cache")
+}
+
+model SyncCheckpoint {
+  id                String   @id @default(cuid())
+  tenantId          String
+  channelId         String
+  lastSyncedAt      DateTime?
+  lastChatwootCursor String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  tenant            Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  channel           Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, channelId])
+  @@map("sync_checkpoints")
+}
+
+model JobEvent {
+  id          String   @id @default(cuid())
+  runId       String
+  eventType   String
+  payloadJson Json?
+  createdAt   DateTime @default(now())
+
+  run         AnalysisRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([runId, createdAt])
+  @@map("job_events")
+}
