@@ -18,4 +18,3 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "report_history_failed", message }, { status: 400 });
   }
 }
-

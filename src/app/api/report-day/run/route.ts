@@ -32,4 +32,3 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "report_run_failed", message }, { status: 400 });
   }
 }
-

@@ -1,4 +1,4 @@
-﻿import type { ChatwootContact, NormalizedConversationLog, NormalizedMessage } from "./types";
+import type { ChatwootContact, NormalizedConversationLog, NormalizedMessage } from "./types";
 
 function normalizeSenderType(rawType: unknown): string {
   return String(rawType || "").toLowerCase();
@@ -90,6 +90,27 @@ function normalizeMessage(message: any): NormalizedMessage {
   };
 }
 
+function extractLabels(conversation: any): string[] {
+  const candidates: unknown[] = [
+    conversation?.labels,
+    conversation?.meta?.labels,
+    conversation?.meta?.conversation?.labels,
+    conversation?.additional_attributes?.labels,
+    conversation?.meta?.additional_attributes?.labels,
+  ];
+
+  const merged = new Set<string>();
+  for (const entry of candidates) {
+    if (!Array.isArray(entry)) continue;
+    for (const label of entry) {
+      const clean = String(label || "").trim();
+      if (clean) merged.add(clean);
+    }
+  }
+
+  return Array.from(merged);
+}
+
 export function extractContact(conversation: any): ChatwootContact {
   const sender = conversation?.meta?.sender;
   if (sender) {
@@ -161,7 +182,7 @@ export function normalizeConversationLog({ conversation, messages }: { conversat
     timestamp: Number(conversation?.timestamp || 0),
     unread_count: Number(conversation?.unread_count || 0),
     inbox_id: Number(conversation?.inbox_id || 0),
-    labels: Array.isArray(conversation?.labels) ? conversation.labels : [],
+    labels: extractLabels(conversation),
     contact: extractContact(conversation),
     messages: allMessages,
     total_messages_all_time: allMessages.length,
@@ -186,3 +207,4 @@ export function renderLogForPrompt(log: { messages: NormalizedMessage[] }): stri
 
   return lines.join("\n");
 }
+

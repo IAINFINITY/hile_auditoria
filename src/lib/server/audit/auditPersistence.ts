@@ -420,7 +420,6 @@ export async function persistCompletedRun(params: {
   const inboxId = Number(params.output.inbox?.id || params.config.chatwoot.inboxId || 0);
   const compactLogItems: Array<Record<string, unknown>> = [];
   const compactRawAnalyses: Array<Record<string, unknown>> = [];
-  const seenByConversation = new Set<number>();
 
   await prisma.$transaction(async (tx) => {
     const { tenant, channel } = await resolveTenantAndChannel(tx, params.config, params.output);
@@ -455,10 +454,6 @@ export async function persistCompletedRun(params: {
       if (!firstConversationId) {
         continue;
       }
-      if (seenByConversation.has(firstConversationId)) {
-        continue;
-      }
-      seenByConversation.add(firstConversationId);
 
       const conversation = await tx.conversation.upsert({
         where: {
@@ -572,6 +567,16 @@ export async function persistCompletedRun(params: {
         .map((id) => buildConversationLink(chatwootAppBase, accountId, inboxId, Number(id)))
         .filter(Boolean);
       const firstState = asRecord(analysis.conversation_operational?.[0]?.state);
+      const aggregatedLabels = Array.from(
+        new Set(
+          (analysis.conversation_operational || [])
+            .flatMap((entry) => {
+              const state = asRecord(entry?.state);
+              return Array.isArray(state.labels) ? state.labels.map((label) => String(label || "").trim()) : [];
+            })
+            .filter(Boolean),
+        ),
+      );
       compactLogItems.push({
         contact_key: analysis.contact_key,
         contact_name: analysis.contact?.name || analysis.contact?.identifier || analysis.contact_key,
@@ -592,7 +597,7 @@ export async function persistCompletedRun(params: {
         trigger_after_1h_at_local: firstState.trigger_after_1h_at_local ? String(firstState.trigger_after_1h_at_local) : null,
         trigger_ready: asBool(firstState.trigger_ready),
         minutes_overdue: asNumOrNull(firstState.minutes_overdue),
-        labels: Array.isArray(firstState.labels) ? firstState.labels : [],
+        labels: aggregatedLabels.length > 0 ? aggregatedLabels : Array.isArray(firstState.labels) ? firstState.labels : [],
         created_at: params.finishedAtIso,
       });
       compactRawAnalyses.push({
@@ -602,6 +607,7 @@ export async function persistCompletedRun(params: {
         analysis_index: analysis.analysis_index || null,
         source_fingerprint: analysis.source_fingerprint || null,
         message_count_day: analysis.message_count_day || 0,
+        log_text: analysis.log_text || "",
         conversation_operational: analysis.conversation_operational || [],
         analysis: {
           answer: analysis.analysis?.answer || null,
@@ -794,6 +800,10 @@ export async function getRunSnapshot(runId: string) {
       date_ref: run.dateRef.toISOString().slice(0, 10),
       started_at: run.startedAt.toISOString(),
       finished_at: run.finishedAt ? run.finishedAt.toISOString() : null,
+      total_conversations: run.totalConversations,
+      processed: run.processed,
+      success_count: run.successCount,
+      failure_count: run.failureCount,
     },
     report_markdown: run.report?.reportMarkdown || null,
     report_json: (run.report?.reportJson as Record<string, unknown> | null) || null,

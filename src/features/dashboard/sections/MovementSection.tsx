@@ -5,7 +5,7 @@ import { GroupedHourlyChart } from "../charts/GroupedHourlyChart";
 import { severityColors, severityLabel } from "../shared/constants";
 
 interface MovementSectionProps {
-  trendSeries: Array<{ label: string; value: number }>;
+  trendSeries: Array<{ label: string; conversas: number; ia: number; usuario: number }>;
   severitySnapshot: Record<Severity, number>;
   totalMessagesDay: number;
   totalConversationsDay: number;
@@ -18,10 +18,10 @@ export function MovementSection({
   totalConversationsDay,
 }: MovementSectionProps) {
   const hasMovementData = trendSeries.length > 0;
-  const total = trendSeries.reduce((sum, item) => sum + item.value, 0);
+  const total = trendSeries.reduce((sum, item) => sum + item.conversas, 0);
   const peak = trendSeries.reduce(
-    (best, item) => (item.value > best.value ? item : best),
-    { label: "--", value: 0 },
+    (best, item) => (item.conversas > best.value ? { label: item.label, value: item.conversas } : best),
+    { label: "--", value: 0 } as { label: string; value: number },
   );
 
   const gapTotal = useMemo(
@@ -37,22 +37,7 @@ export function MovementSection({
     return rows.sort((a, b) => b.count - a.count);
   }, [gapTotal, severitySnapshot]);
 
-  const groupedData = useMemo(() => {
-    const safeTotalConversations = totalConversationsDay > 0 ? totalConversationsDay : total || 1;
-    const avgMessagesPerConversation = totalMessagesDay > 0 ? totalMessagesDay / safeTotalConversations : 5;
-
-    return trendSeries.map((item) => {
-      const volumeMessages = Math.max(0, Math.round(item.value * avgMessagesPerConversation));
-      const ia = Math.round(volumeMessages * 0.58);
-      const usuario = Math.max(0, volumeMessages - ia);
-      return {
-        label: item.label,
-        conversas: item.value,
-        ia,
-        usuario,
-      };
-    });
-  }, [totalConversationsDay, total, totalMessagesDay, trendSeries]);
+  const groupedData = useMemo(() => trendSeries, [trendSeries]);
 
   return (
     <div className="section reveal" id="movimentacao">
@@ -68,7 +53,9 @@ export function MovementSection({
         <div className={`metrics-block ${hasMovementData ? "" : "data-dim"}`}>
           <div className="metrics-block-header">
             <span>Volume por hora</span>
-            <span>Pico: {peak.label} ({peak.value}) • Total: {total}</span>
+            <span>
+              Pico: {peak.label} ({peak.value}) • Conversas: {totalConversationsDay || total} • Mensagens: {totalMessagesDay}
+            </span>
           </div>
           <div className="metrics-block-body">
             <div className="chart-legend">

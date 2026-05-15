@@ -82,7 +82,7 @@ export default function Page() {
         if (!status?.authenticated || !status?.authorized || !status.user) {
           await supabaseBrowser.auth.signOut();
           if (!cancelled) {
-            setLoginError("Este usuário não possui acesso autorizado no banco de dados.");
+            setLoginError("Não foi possível validar seu acesso. Faça login novamente.");
             setStage("login");
           }
           return;
@@ -153,7 +153,7 @@ export default function Page() {
       const status = await fetchAuthStatus();
       if (!status?.authenticated || !status?.authorized || !status.user) {
         await supabaseBrowser.auth.signOut();
-        setLoginError("Seu usuário autenticou, mas não está autorizado no banco.");
+        setLoginError("Não foi possível validar sua sessão. Tente entrar novamente.");
         return;
       }
 
@@ -299,7 +299,7 @@ export default function Page() {
               {isAuthenticating ? "Autenticando..." : "Acessar Sistema"}
             </button>
 
-            <p className="login-visual-hint">Acesso restrito a usuários autorizados no banco de dados.</p>
+            <p className="login-visual-hint">Acesso disponível para usuários autenticados.</p>
           </div>
 
           <div className="secure-session-strip" role="status" aria-live="polite">

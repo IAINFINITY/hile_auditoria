@@ -82,7 +82,7 @@ export interface DashboardController {
   panoramaExtra: string;
   gaugeData: { current: number; total: number };
   showTrend: boolean;
-  trendSeries: Array<{ label: string; value: number }>;
+  trendSeries: Array<{ label: string; conversas: number; ia: number; usuario: number }>;
   riskRows: { rows: RiskRow[]; total: number };
   reportContacts: string[];
   selectedReportContact: string | null;

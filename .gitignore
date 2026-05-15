@@ -34,14 +34,5 @@ Thumbs.db
 # Legacy frontend folder (migrated to Next.js)
 client/
 
-# Legacy API files kept only due local file lock (use src/lib/server/audit/*)
-src/server.ts
-src/auditService.ts
-src/chatMapper.ts
-src/chatwootClient.ts
-src/config.ts
-src/dateUtils.ts
-src/difyClient.ts
-
 # GSD runtime lock file
 .planning/STATE.md.lock

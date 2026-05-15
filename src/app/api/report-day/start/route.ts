@@ -4,6 +4,7 @@ import { buildDailyReport } from "@/lib/server/audit/auditService";
 import {
   appendRunEvent,
   createRunRecord,
+  getLatestRunByDate,
   markRunFailed,
   persistCompletedRun,
   updateRunProgress,
@@ -38,6 +39,7 @@ export async function POST(request: Request) {
     const config = getAppConfig();
     const body = await readJsonBody<{ date?: string }>(request);
     const date = parseDateInput(body?.date, config.timezone);
+    const previousRun = await getLatestRunByDate(date);
     const jobs = getReportJobsStore();
 
     const runningForDate = [...jobs.values()].find((job) => job.status === "running" && job.date === date);
@@ -188,7 +190,18 @@ export async function POST(request: Request) {
       }
     })();
 
-    return NextResponse.json({ ok: true, job_id: jobId, status: "running", date }, { status: 202 });
+    return NextResponse.json(
+      {
+        ok: true,
+        job_id: jobId,
+        db_run_id: initialJob.db_run_id || null,
+        status: "running",
+        date,
+        has_previous_report: Boolean(previousRun),
+        previous_run_id: previousRun?.id || null,
+      },
+      { status: 202 },
+    );
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Não foi possível iniciar o relatório.";
     return NextResponse.json({ error: "report_start_failed", message }, { status: 400 });

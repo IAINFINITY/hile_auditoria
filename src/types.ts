@@ -193,6 +193,8 @@ export interface ReportJobStartResponse {
   db_run_id?: string | null;
   status: "running";
   date: string;
+  has_previous_report?: boolean;
+  previous_run_id?: string | null;
 }
 
 export interface ReportJobStatusResponse {
@@ -226,6 +228,7 @@ export interface ReportJobStatusResponse {
   }>;
   result: ReportPayload | null;
   error: string | null;
+  restored_from_db?: boolean;
 }
 
 export interface ReportRunResponse {
@@ -235,6 +238,10 @@ export interface ReportRunResponse {
     date_ref: string;
     started_at: string;
     finished_at: string | null;
+    total_conversations: number;
+    processed: number;
+    success_count: number;
+    failure_count: number;
   };
   report_markdown: string | null;
   report_json: Record<string, unknown> | null;

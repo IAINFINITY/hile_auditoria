@@ -211,6 +211,29 @@ function parseJsonObject(text: unknown): Record<string, unknown> {
   }
 }
 
+function parseHourlyRolesFromLogText(logText: unknown): Array<{ hour: number; role: "USER" | "AGENT" }> {
+  const lines = String(logText || "")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const parsed: Array<{ hour: number; role: "USER" | "AGENT" }> = [];
+
+  for (const line of lines) {
+    const roleMatch = line.match(/\b(USER|AGENT)\b/i);
+    if (!roleMatch) continue;
+    const role = roleMatch[1].toUpperCase() === "AGENT" ? "AGENT" : "USER";
+
+    const tsMatch = line.match(/\[(\d{4}-\d{2}-\d{2}T[^\]]+)\]/);
+    if (!tsMatch?.[1]) continue;
+    const date = new Date(tsMatch[1]);
+    if (Number.isNaN(date.getTime())) continue;
+
+    parsed.push({ hour: date.getHours(), role });
+  }
+
+  return parsed;
+}
+
 function mapRunToDashboardSnapshot(run: ReportByDateResponse["run"]): {
   overview: OverviewPayload;
   insights: InsightItem[];
@@ -414,6 +437,158 @@ function mapRunToDashboardSnapshot(run: ReportByDateResponse["run"]): {
         contact: { name: insight.contact_name, identifier: null },
       }));
 
+  const findMatchingLog = (rawItem: Record<string, unknown>, fallbackIndex: number): Record<string, unknown> | null => {
+    const rawContactKey = asString(rawItem.contact_key || "");
+    const rawConversationIds = Array.isArray(rawItem.conversation_ids)
+      ? rawItem.conversation_ids.map((v) => asNumber(v, 0)).filter((id) => id > 0)
+      : [];
+
+    const byConversation = logs.find((log) => {
+      const ids = Array.isArray(log.conversation_ids) ? log.conversation_ids.map((v) => asNumber(v, 0)) : [];
+      return ids.some((id) => rawConversationIds.includes(id));
+    });
+    if (byConversation) return byConversation;
+
+    if (rawContactKey) {
+      const byContact = logs.find((log) => asString(log.contact_key || "") === rawContactKey);
+      if (byContact) return byContact;
+    }
+
+    return logs[fallbackIndex] || null;
+  };
+
+  const analysisRows: AnalysisItem[] =
+    rawAnalyses.length > 0
+      ? rawAnalyses.map((rawItem, index) => {
+          const matchedLog = findMatchingLog(rawItem, index);
+          const conversationIds = Array.isArray(rawItem.conversation_ids)
+            ? rawItem.conversation_ids.map((v) => asNumber(v, 0)).filter((id) => id > 0)
+            : Array.isArray(matchedLog?.conversation_ids)
+              ? matchedLog.conversation_ids.map((v) => asNumber(v, 0)).filter((id) => id > 0)
+              : [];
+
+          const contactRecord = asRecord(rawItem.contact);
+          const contactName = asString(
+            contactRecord.name ||
+              contactRecord.identifier ||
+              rawItem.contact_key ||
+              matchedLog?.contact_name ||
+              matchedLog?.contact_key ||
+              `Contato ${index + 1}`,
+          );
+
+          const answerRaw = asString(asRecord(rawItem.analysis).answer || "");
+          const answerParsed = parseJsonObject(answerRaw);
+          const answerObject =
+            Object.keys(answerParsed).length > 0
+              ? answerParsed
+              : {
+                  resumo: asString(matchedLog?.summary || "Sem resumo estruturado."),
+                  pontos_melhoria: Array.isArray(matchedLog?.improvements)
+                    ? matchedLog.improvements.map((v) => String(v))
+                    : [],
+                  proximos_passos: Array.isArray(matchedLog?.next_steps)
+                    ? matchedLog.next_steps.map((v) => String(v))
+                    : [],
+                  risco_critico: asString(matchedLog?.risk_level || "").toLowerCase() === "critical",
+                };
+
+          const rawOperational = Array.isArray(rawItem.conversation_operational)
+            ? rawItem.conversation_operational.map(asRecord)
+            : [];
+
+          const operationalItems: NonNullable<AnalysisItem["conversation_operational"]> =
+            rawOperational.length > 0
+              ? rawOperational.map((entry) => {
+                  const stateRaw = asRecord(entry.state);
+                  return {
+                    conversation_id: asNumber(entry.conversation_id, 0),
+                    state: {
+                      finalization_status:
+                        asString(stateRaw.finalization_status, "continuada") === "finalizada" ? "finalizada" : "continuada",
+                      finalization_reason: asString(stateRaw.finalization_reason || ""),
+                      finalization_actor: asString(stateRaw.finalization_actor || "") || null,
+                      waiting_on_agent: asBoolean(stateRaw.waiting_on_agent),
+                      waiting_on_customer: asBoolean(stateRaw.waiting_on_customer),
+                      labels: Array.isArray(stateRaw.labels) ? stateRaw.labels.map((item) => String(item)) : [],
+                    },
+                  };
+                })
+              : conversationIds.map((conversationId) => {
+                  const stateRaw = asRecord(operationalByConversation.get(conversationId));
+                  return {
+                    conversation_id: conversationId,
+                    state: {
+                      finalization_status:
+                        asString(stateRaw.finalization_status, "continuada") === "finalizada" ? "finalizada" : "continuada",
+                      finalization_reason: asString(stateRaw.finalization_reason || ""),
+                      finalization_actor: asString(stateRaw.finalization_actor || "") || null,
+                      waiting_on_agent: asBoolean(stateRaw.waiting_on_agent),
+                      waiting_on_customer: asBoolean(stateRaw.waiting_on_customer),
+                      labels: Array.isArray(stateRaw.labels) ? stateRaw.labels.map((item) => String(item)) : [],
+                    },
+                  };
+                });
+
+          return {
+            analysis_index: asNumber(rawItem.analysis_index, index + 1),
+            source_fingerprint: asString(rawItem.source_fingerprint || ""),
+            contact_key: asString(rawItem.contact_key || `contact-${index + 1}`),
+            contact: {
+              name: contactName,
+              identifier: asString(contactRecord.identifier || "") || null,
+            },
+            conversation_ids: conversationIds,
+            message_count_day: asNumber(rawItem.message_count_day, asNumber(matchedLog?.message_count_day, 0)),
+            log_text: asString(rawItem.log_text || ""),
+            conversation_operational: operationalItems,
+            analysis: {
+              answer: JSON.stringify(answerObject, null, 2),
+            },
+          };
+        })
+      : logs.map((log, index) => {
+          const contactName = String(log.contact_name || log.contact_key || `Contato ${index + 1}`);
+          const improvements = Array.isArray(log.improvements) ? log.improvements.map((v) => String(v)) : [];
+          const nextSteps = Array.isArray(log.next_steps) ? log.next_steps.map((v) => String(v)) : [];
+          const riskCritical = String(log.risk_level || "").toLowerCase() === "critical";
+          const conversationIds = Array.isArray(log.conversation_ids) ? log.conversation_ids.map((v) => asNumber(v, 0)) : [];
+          const operationalItems: NonNullable<AnalysisItem["conversation_operational"]> = conversationIds.map((conversationId) => {
+            const stateRaw = asRecord(operationalByConversation.get(conversationId));
+            return {
+              conversation_id: conversationId,
+              state: {
+                finalization_status: asString(stateRaw.finalization_status, "continuada") === "finalizada" ? "finalizada" : "continuada",
+                finalization_reason: asString(stateRaw.finalization_reason || ""),
+                finalization_actor: asString(stateRaw.finalization_actor || "") || null,
+                waiting_on_agent: asBoolean(stateRaw.waiting_on_agent),
+                waiting_on_customer: asBoolean(stateRaw.waiting_on_customer),
+                labels: Array.isArray(stateRaw.labels) ? stateRaw.labels.map((item) => String(item)) : [],
+              },
+            };
+          });
+          return {
+            analysis_index: index + 1,
+            contact_key: String(log.contact_key || `contact-${index + 1}`),
+            contact: { name: contactName, identifier: null },
+            conversation_ids: conversationIds,
+            message_count_day: asNumber(log.message_count_day, 0),
+            conversation_operational: operationalItems,
+            analysis: {
+              answer: JSON.stringify(
+                {
+                  resumo: String(log.summary || ""),
+                  pontos_melhoria: improvements,
+                  proximos_passos: nextSteps,
+                  risco_critico: riskCritical,
+                },
+                null,
+                2,
+              ),
+            },
+          };
+        });
+
   const report: ReportPayload = {
     date: run.date_ref,
     account: {
@@ -434,7 +609,7 @@ function mapRunToDashboardSnapshot(run: ReportByDateResponse["run"]): {
       unique_contacts_today: asNumber(summary.unique_contacts_today, uniqueContacts.size),
       total_to_process: asNumber(summary.total_to_process, run.total_conversations),
       processed: asNumber(summary.processed, run.processed),
-      analyses_count: asNumber(summary.analyses_count, logs.length),
+      analyses_count: asNumber(summary.analyses_count, analysisRows.length),
       failures_count: asNumber(summary.failures_count, run.failure_count),
       critical_count: asNumber(summary.critical_count, criticalCount),
       improvements_count: asNumber(summary.improvements_count, improvementFallbackCount),
@@ -442,47 +617,7 @@ function mapRunToDashboardSnapshot(run: ReportByDateResponse["run"]): {
     },
     execution_order: [],
     raw_analysis: {
-      analyses: logs.map((log, index) => {
-        const contactName = String(log.contact_name || log.contact_key || `Contato ${index + 1}`);
-        const improvements = Array.isArray(log.improvements) ? log.improvements.map((v) => String(v)) : [];
-        const nextSteps = Array.isArray(log.next_steps) ? log.next_steps.map((v) => String(v)) : [];
-        const riskCritical = String(log.risk_level || "").toLowerCase() === "critical";
-        const conversationIds = Array.isArray(log.conversation_ids) ? log.conversation_ids.map((v) => asNumber(v, 0)) : [];
-        const operationalItems: NonNullable<AnalysisItem["conversation_operational"]> = conversationIds.map((conversationId) => {
-          const stateRaw = asRecord(operationalByConversation.get(conversationId));
-          return {
-            conversation_id: conversationId,
-            state: {
-              finalization_status: asString(stateRaw.finalization_status, "continuada") === "finalizada" ? "finalizada" : "continuada",
-              finalization_reason: asString(stateRaw.finalization_reason || ""),
-              finalization_actor: asString(stateRaw.finalization_actor || "") || null,
-              waiting_on_agent: asBoolean(stateRaw.waiting_on_agent),
-              waiting_on_customer: asBoolean(stateRaw.waiting_on_customer),
-              labels: Array.isArray(stateRaw.labels) ? stateRaw.labels.map((item) => String(item)) : [],
-            },
-          };
-        });
-        return {
-          analysis_index: index + 1,
-          contact_key: String(log.contact_key || `contact-${index + 1}`),
-          contact: { name: contactName, identifier: null },
-          conversation_ids: conversationIds,
-          message_count_day: asNumber(log.message_count_day, 0),
-          conversation_operational: operationalItems,
-          analysis: {
-            answer: JSON.stringify(
-              {
-                resumo: String(log.summary || ""),
-                pontos_melhoria: improvements,
-                proximos_passos: nextSteps,
-                risco_critico: riskCritical,
-              },
-              null,
-              2,
-            ),
-          },
-        };
-      }),
+      analyses: analysisRows,
       failures: [],
       run_stats: {
         total_to_process: run.total_conversations,
@@ -505,7 +640,12 @@ function mapRunToDashboardSnapshot(run: ReportByDateResponse["run"]): {
         conversations_scanned: run.total_conversations,
         conversations_entered_today: report.summary.conversations_entered_today,
         unique_contacts_today: report.summary.unique_contacts_today,
-        conversations_total_analyzed_day: run.processed,
+        conversations_total_analyzed_day: Math.max(
+          0,
+          run.processed,
+          report.summary.processed,
+          report.summary.analyses_count,
+        ),
         total_analysis_count: report.summary.analyses_count,
         total_messages_day: totalMessagesDay,
         repeated_identifier_count: 0,
@@ -561,6 +701,8 @@ export function useDashboardController(options?: { enabled?: boolean }): Dashboa
   const [runCurrentContact, setRunCurrentContact] = useState<string | null>(null);
   const [reportHistory, setReportHistory] = useState<ReportHistoryResponse["items"]>([]);
   const [availableReportDates, setAvailableReportDates] = useState<string[]>([]);
+  const [hasLoadedAvailableDates, setHasLoadedAvailableDates] = useState<boolean>(false);
+  const [isLoadingDateReport, setIsLoadingDateReport] = useState<boolean>(false);
   const [lastValidDate, setLastValidDate] = useState<string>(maxDate);
   const lastLoadedDateRef = useRef<string | null>(null);
   const isBusy = loading !== null;
@@ -605,8 +747,7 @@ export function useDashboardController(options?: { enabled?: boolean }): Dashboa
       return;
     }
 
-    setStatus(`Nenhum relatório salvo no período ${value}. Data ajustada para referência do período.`);
-    setDate(fromDate);
+    setStatus(`Nenhum relatório salvo no período ${value}. Mantivemos a data selecionada.`);
   }
 
   useEffect(() => {
@@ -635,11 +776,15 @@ export function useDashboardController(options?: { enabled?: boolean }): Dashboa
       .then((data) => {
         const dates = Array.isArray(data?.dates) ? data.dates : [];
         setAvailableReportDates(dates);
+        setHasLoadedAvailableDates(true);
         if (dates.includes(date)) {
           setLastValidDate(date);
         }
       })
-      .catch(() => setAvailableReportDates([]));
+      .catch(() => {
+        setAvailableReportDates([]);
+        setHasLoadedAvailableDates(true);
+      });
   }, [enabled]);
 
   useEffect(() => {
@@ -703,21 +848,14 @@ export function useDashboardController(options?: { enabled?: boolean }): Dashboa
     if (!enabled) return;
     if (!date) return;
     if (isRunningOverview) return;
-    if (availableReportDates.length > 0 && !availableReportDates.includes(date)) {
-      lastLoadedDateRef.current = null;
-      setOverview(null);
-      setInsights([]);
-      setReport(null);
-      setFailures([]);
-      setRawOutput("Sem relatório salvo para essa data. Você pode gerar um novo overview.");
-      setInsightsReady(false);
-      setShowTrend(false);
-      return;
-    }
+    if (!hasLoadedAvailableDates) return;
+
     if (lastLoadedDateRef.current === date) return;
 
     let cancelled = false;
     lastLoadedDateRef.current = date;
+    setIsLoadingDateReport(true);
+    setStatus(`Carregando relatório salvo de ${date}...`);
     apiGet<ReportByDateResponse>(`/api/report-day/by-date?date=${encodeURIComponent(date)}`)
       .then((payload) => {
         if (cancelled || !payload?.run) return;
@@ -731,6 +869,7 @@ export function useDashboardController(options?: { enabled?: boolean }): Dashboa
         setShowTrend(true);
         setLastRunAt(payload.run.started_at || new Date().toISOString());
         setStatus(`Dados atualizados automaticamente para ${date}.`);
+        setAvailableReportDates((current) => (current.includes(date) ? current : [date, ...current]));
       })
       .catch(() => {
         if (cancelled) return;
@@ -743,12 +882,17 @@ export function useDashboardController(options?: { enabled?: boolean }): Dashboa
         setRawOutput("Sem relatório salvo para essa data. Você pode gerar um novo overview.");
         setInsightsReady(false);
         setShowTrend(false);
+        setAvailableReportDates((current) => current.filter((item) => item !== date));
+      })
+      .finally(() => {
+        if (cancelled) return;
+        setIsLoadingDateReport(false);
       });
 
     return () => {
       cancelled = true;
     };
-  }, [availableReportDates, date, enabled, isRunningOverview, lastValidDate]);
+  }, [availableReportDates, date, enabled, hasLoadedAvailableDates, isRunningOverview, lastValidDate]);
 
   const sortedInsights = useMemo(() => {
     return [...insights].sort((a, b) => severityOrder[b.severity] - severityOrder[a.severity]);
@@ -790,19 +934,45 @@ export function useDashboardController(options?: { enabled?: boolean }): Dashboa
   }, [sortedInsights]);
 
   const trendSeries = useMemo(() => {
-    if (!overview?.conversation_operational?.length) return [] as Array<{ label: string; value: number }>;
+    const hourlyConversations = new Array<number>(24).fill(0);
+    const hourlyIa = new Array<number>(24).fill(0);
+    const hourlyUsuario = new Array<number>(24).fill(0);
 
-    const hours = new Array<number>(24).fill(0);
-    for (const item of overview.conversation_operational) {
-      const hour = parseHour(item.last_interaction_at_local || item.trigger_after_1h_at_local);
-      if (hour === null) continue;
-      hours[hour] += 1;
+    if (overview?.conversation_operational?.length) {
+      for (const item of overview.conversation_operational) {
+        const hour = parseHour(item.last_interaction_at_local || item.trigger_after_1h_at_local);
+        if (hour === null || hour < 0 || hour > 23) continue;
+        hourlyConversations[hour] += 1;
+      }
     }
 
-    return hours
-      .map((value, hour) => ({ label: `${String(hour).padStart(2, "0")}h`, value }))
-      .filter((item) => item.value > 0);
-  }, [overview]);
+    if (report?.raw_analysis?.analyses?.length) {
+      for (const analysis of report.raw_analysis.analyses) {
+        const pairs = parseHourlyRolesFromLogText(analysis.log_text || "");
+        for (const pair of pairs) {
+          if (pair.hour < 0 || pair.hour > 23) continue;
+          if (pair.role === "AGENT") {
+            hourlyIa[pair.hour] += 1;
+          } else {
+            hourlyUsuario[pair.hour] += 1;
+          }
+        }
+      }
+    }
+
+    const hasConversations = hourlyConversations.some((value) => value > 0);
+    const hasRoles = hourlyIa.some((value) => value > 0) || hourlyUsuario.some((value) => value > 0);
+    if (!hasConversations && !hasRoles) return [] as Array<{ label: string; conversas: number; ia: number; usuario: number }>;
+
+    return hourlyConversations
+      .map((conversas, hour) => ({
+        label: `${String(hour).padStart(2, "0")}h`,
+        conversas,
+        ia: hourlyIa[hour],
+        usuario: hourlyUsuario[hour],
+      }))
+      .filter((item) => item.conversas > 0 || item.ia > 0 || item.usuario > 0);
+  }, [overview, report]);
 
   const metricCards = useMemo<MetricCard[]>(() => {
     const baseCards: MetricCard[] = [
@@ -867,10 +1037,15 @@ export function useDashboardController(options?: { enabled?: boolean }): Dashboa
   }, [severitySnapshot]);
 
   const selectedDateHasSavedReport = useMemo(() => {
-    return availableReportDates.includes(date);
-  }, [availableReportDates, date]);
+    const loadedReportDate = String(report?.date || "").trim();
+    return availableReportDates.includes(date) || loadedReportDate === date;
+  }, [availableReportDates, date, report?.date]);
 
   const selectedDateInfo = useMemo(() => {
+    if (isLoadingDateReport) {
+      return "Carregando relatório salvo da data selecionada...";
+    }
+
     const today = maxDate;
     if (date === today) {
       return selectedDateHasSavedReport
@@ -885,7 +1060,7 @@ export function useDashboardController(options?: { enabled?: boolean }): Dashboa
     }
 
     return "Data fora do intervalo permitido.";
-  }, [date, maxDate, selectedDateHasSavedReport]);
+  }, [date, isLoadingDateReport, maxDate, selectedDateHasSavedReport]);
 
   const reportContacts = useMemo(() => {
     if (!report?.raw_analysis?.analyses?.length) return [] as string[];
@@ -1008,8 +1183,9 @@ export function useDashboardController(options?: { enabled?: boolean }): Dashboa
 
         while (Date.now() - pollStartedAt < maxWaitMs) {
           await sleep(1200);
+          const runIdQuery = reportJob.db_run_id ? `&run_id=${encodeURIComponent(reportJob.db_run_id)}` : "";
           const statusData = await apiGet<ReportJobStatusResponse>(
-            `/api/report-day/status?job_id=${encodeURIComponent(reportJob.job_id)}`,
+            `/api/report-day/status?job_id=${encodeURIComponent(reportJob.job_id)}${runIdQuery}`,
           );
 
           finalStatus = statusData;
@@ -1040,11 +1216,23 @@ export function useDashboardController(options?: { enabled?: boolean }): Dashboa
           }
         }
 
-        if (!finalStatus || finalStatus.status !== "completed" || !finalStatus.result) {
+        if (!finalStatus || finalStatus.status !== "completed") {
           throw new Error("Tempo de espera excedido ao gerar relatório.");
         }
 
-        const reportData = finalStatus.result as ReportPayload;
+        let reportData: ReportPayload | null = finalStatus.result as ReportPayload | null;
+        if (!reportData) {
+          const persistedByDate = await apiGet<ReportByDateResponse>(
+            `/api/report-day/by-date?date=${encodeURIComponent(safeDate)}`,
+          );
+          if (!persistedByDate?.run) {
+            throw new Error("Relatório concluído, mas o payload final não foi localizado.");
+          }
+          reportData = mapRunToDashboardSnapshot(persistedByDate.run).report;
+        }
+        if (!reportData) {
+          throw new Error("Relatório concluído, mas sem dados válidos para carregar.");
+        }
         finalReportData = reportData;
         finalFailures = reportData.raw_analysis?.failures || [];
         finalOverviewData = overviewData;
