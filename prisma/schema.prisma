@@ -48,6 +48,8 @@ model Tenant {
   runs        AnalysisRun[]
   cacheEntries AnalysisCache[]
   checkpoints SyncCheckpoint[]
+  clientRecords ClientRecord[]
+  clientStates  ClientState[]
 
   @@map("tenants")
 }
@@ -66,6 +68,8 @@ model Channel {
   conversations      Conversation[]
   runs               AnalysisRun[]
   checkpoints        SyncCheckpoint[]
+  clientRecords      ClientRecord[]
+  clientStates       ClientState[]
 
   @@unique([tenantId, chatwootAccountId, chatwootInboxId])
   @@index([tenantId])
@@ -155,6 +159,8 @@ model AnalysisRun {
   analyses           ConversationAnalysis[]
   report             Report?
   events             JobEvent[]
+  clientRecords      ClientRecord[]
+  clientStates       ClientState[]
 
   @@index([tenantId, dateRef])
   @@index([channelId, dateRef])
@@ -285,4 +291,66 @@ model JobEvent {
 
   @@index([runId, createdAt])
   @@map("job_events")
+}
+
+model ClientRecord {
+  id              String   @id @default(cuid())
+  tenantId        String
+  channelId       String
+  runId           String
+  dateRef         DateTime
+  phonePk         String
+  contactName     String?
+  companyName     String?
+  cnpj            String?
+  gapsJson        Json?
+  attentionsJson  Json?
+  labels          String[]
+  conversationIds Int[]
+  chatLinks       String[]
+  openedAt        DateTime?
+  closedAt        DateTime?
+  status          String
+  severity        InsightSeverity @default(info)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  tenant          Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  channel         Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  run             AnalysisRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@unique([runId, phonePk])
+  @@index([tenantId, channelId, dateRef])
+  @@index([tenantId, phonePk])
+  @@map("client_records")
+}
+
+model ClientState {
+  id                  String   @id @default(cuid())
+  tenantId            String
+  channelId           String
+  phonePk             String
+  contactName         String?
+  companyName         String?
+  cnpj                String?
+  firstSeenAt         DateTime
+  lastSeenAt          DateTime
+  firstIssueAt        DateTime?
+  lastIssueAt         DateTime?
+  resolvedAt          DateTime?
+  currentStatus       String
+  currentSeverity     InsightSeverity @default(info)
+  currentLabels       String[]
+  openConversationIds Int[]
+  lastRunId           String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  tenant              Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  channel             Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  lastRun             AnalysisRun? @relation(fields: [lastRunId], references: [id], onDelete: SetNull)
+
+  @@unique([tenantId, channelId, phonePk])
+  @@index([tenantId, channelId, currentStatus])
+  @@map("client_states")
 }
