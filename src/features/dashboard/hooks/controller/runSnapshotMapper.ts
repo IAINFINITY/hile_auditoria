@@ -1,5 +1,5 @@
 ﻿import type { AnalysisItem, InsightItem, OverviewPayload, ReportByDateResponse, ReportPayload, Severity } from "../../../../types";
-import { asBoolean, asNumber, asRecord, asString, parseJsonObject } from "./common";
+import { asBoolean, asNumber, asRecord, asString, inferSeverityFromValue, normalizeTextForMatch, parseJsonObject } from "./common";
 
 export type DashboardRunSnapshot = {
   overview: OverviewPayload;
@@ -7,6 +7,33 @@ export type DashboardRunSnapshot = {
   report: ReportPayload;
   rawOutput: string;
 };
+
+function extractMaxSeverityFromAnswer(answer: Record<string, unknown>): string {
+  const topLevel = asString(answer.severidade || answer.severity || answer.nivel_risco || answer.risco || "");
+  if (topLevel && /crit|alt|med|baix|info/.test(normalizeTextForMatch(topLevel))) return topLevel;
+
+  const gaps = Array.isArray(answer.gaps_operacionais) ? answer.gaps_operacionais.map(asRecord) : [];
+  let highest = "info";
+  const order = (s: string) => {
+    const n = normalizeTextForMatch(s);
+    if (n.includes("crit")) return 1;
+    if (n.includes("alt")) return 2;
+    if (n.includes("med")) return 3;
+    if (n.includes("baix")) return 4;
+    if (n.includes("info")) return 5;
+    return 99;
+  };
+
+  for (const gap of gaps) {
+    const sev = asString(gap.severidade || gap.severity || gap.nivel || gap.prioridade || "");
+    if (!sev) continue;
+    if (order(sev) < order(highest)) highest = sev;
+  }
+
+  if (order(highest) < 5) return highest;
+  if (asBoolean(answer.risco_critico)) return "critical";
+  return "info";
+}
 
 export function mapRunToDashboardSnapshot(run: ReportByDateResponse["run"]): DashboardRunSnapshot {
   const reportJson = asRecord(run.report_json);
@@ -67,7 +94,7 @@ export function mapRunToDashboardSnapshot(run: ReportByDateResponse["run"]): Das
           contact_key: String(item.contact_key || `contact-${index + 1}`),
           contact_name: String(contact.name || contact.identifier || item.contact_key || `Contato ${index + 1}`),
           conversation_ids: Array.isArray(item.conversation_ids) ? item.conversation_ids : [],
-          risk_level: parsedAnswer.risco_critico ? "critical" : "non_critical",
+          risk_level: extractMaxSeverityFromAnswer(parsedAnswer),
           summary: String(parsedAnswer.resumo || ""),
           improvements: Array.isArray(parsedAnswer.pontos_melhoria) ? parsedAnswer.pontos_melhoria : [],
           next_steps: Array.isArray(parsedAnswer.proximos_passos) ? parsedAnswer.proximos_passos : [],
@@ -76,6 +103,19 @@ export function mapRunToDashboardSnapshot(run: ReportByDateResponse["run"]): Das
           labels: Array.isArray(firstOpState.labels) ? firstOpState.labels : [],
         };
       });
+
+  if (compactLogs.length > 0 && rawAnalyses.length > 0) {
+    for (const log of logs) {
+      const logContactKey = asString(log.contact_key || "");
+      if (!logContactKey) continue;
+      const raw = rawAnalyses.find((r) => asString(r.contact_key || "") === logContactKey);
+      if (!raw) continue;
+      const parsed = parseJsonObject(asRecord(raw.analysis).answer);
+      if (Object.keys(parsed).length > 0) {
+        log.risk_level = extractMaxSeverityFromAnswer(parsed);
+      }
+    }
+  }
 
   if (operationalRows.length === 0 && compactLogs.length > 0) {
     for (const log of compactLogs) {
@@ -150,7 +190,8 @@ export function mapRunToDashboardSnapshot(run: ReportByDateResponse["run"]): Das
       ? log.conversation_ids.map((id) => asNumber(id, 0)).filter((id) => id > 0)
       : [];
 
-    const severity: Severity = String(log.risk_level || "").toLowerCase() === "critical" ? "critical" : "info";
+    const riskLevelRaw = String(log.risk_level || "").toLowerCase();
+    const severity: Severity = riskLevelRaw === "non_critical" ? "info" : inferSeverityFromValue(riskLevelRaw);
     return (conversationIds.length ? conversationIds : [index + 1]).map((conversationId, subIndex) => ({
       ...(operationalByConversation.get(conversationId) || {}),
       id: `${run.id}-${index + 1}-${subIndex + 1}`,
