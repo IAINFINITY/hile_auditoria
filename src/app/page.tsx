@@ -2,11 +2,13 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import { FiEye, FiEyeOff, FiLock, FiMail } from "react-icons/fi";
-import { FaFacebookF, FaInstagram, FaLinkedinIn, FaXTwitter } from "react-icons/fa6";
 import { useDashboardController } from "@/features/dashboard/hooks/useDashboardController";
 import { useRevealOnScroll } from "@/features/dashboard/hooks/useRevealOnScroll";
+import { AppFooter } from "@/features/dashboard/sections/AppFooter";
 import { GapsSection } from "@/features/dashboard/sections/GapsSection";
 import { InsightsSection } from "@/features/dashboard/sections/InsightsSection";
+import { AccountsView } from "@/features/dashboard/sections/AccountsView";
+import { LogsView } from "@/features/dashboard/sections/LogsView";
 import { MetricsSection } from "@/features/dashboard/sections/MetricsSection";
 import { MovementSection } from "@/features/dashboard/sections/MovementSection";
 import { ReportSection } from "@/features/dashboard/sections/ReportSection";
@@ -14,7 +16,7 @@ import { SettingsView } from "@/features/dashboard/sections/SettingsView";
 import { ShellNavigation } from "@/features/dashboard/sections/ShellNavigation";
 import { supabaseBrowser } from "@/lib/supabase/browser";
 
-type AppView = "dashboard" | "settings";
+type AppView = "dashboard" | "clients" | "logs" | "settings";
 
 interface AuthStatusPayload {
   authenticated: boolean;
@@ -195,6 +197,20 @@ export default function Page() {
     });
   }
 
+  function handleOpenClients() {
+    setActiveView("clients");
+    requestAnimationFrame(() => {
+      window.scrollTo({ top: 0, behavior: "auto" });
+    });
+  }
+
+  function handleOpenLogs() {
+    setActiveView("logs");
+    requestAnimationFrame(() => {
+      window.scrollTo({ top: 0, behavior: "auto" });
+    });
+  }
+
   if (stage === "splash") {
     return (
       <div className="splash-screen">
@@ -310,24 +326,7 @@ export default function Page() {
           </div>
         </form>
 
-        <footer className="brand-footer login-page-footer">
-          <div className="brand-footer-left">Dev by <strong>IA Infinity</strong></div>
-          <div className="brand-footer-center">© 2026 Hilê – Fábrica de suplementos alimentares</div>
-          <div className="brand-footer-right brand-footer-socials">
-            <a href="https://www.facebook.com" target="_blank" rel="noreferrer" aria-label="Facebook">
-              <FaFacebookF />
-            </a>
-            <a href="https://x.com" target="_blank" rel="noreferrer" aria-label="Twitter">
-              <FaXTwitter />
-            </a>
-            <a href="https://www.instagram.com/hileterceirizacao/" target="_blank" rel="noreferrer" aria-label="Instagram">
-              <FaInstagram />
-            </a>
-            <a href="https://www.linkedin.com" target="_blank" rel="noreferrer" aria-label="LinkedIn">
-              <FaLinkedinIn />
-            </a>
-          </div>
-        </footer>
+        <AppFooter loginMode />
 
         {showForgotPasswordModal ? (
           <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="forgotPasswordModalTitle">
@@ -354,33 +353,34 @@ export default function Page() {
         onNavigate={handleNavigate}
         onOpenSettings={handleOpenSettings}
         onOpenDashboard={() => setActiveView("dashboard")}
+        onOpenClients={handleOpenClients}
+        onOpenLogs={handleOpenLogs}
         currentUser={currentUser || { name: "Usuário", email: "usuario@hile.com.br", role: "Operador" }}
         onLogout={handleLogout}
       />
 
       <main className="main-content-shell">
-        {activeView === "dashboard" ? (
+        <div className="main-view-slot">
+          {activeView === "dashboard" ? (
           <div className="dashboard-animated" key={`dashboard-${viewAnimationKey}`}>
               <MetricsSection
                 date={controller.date}
                 setDate={controller.setDate}
               minDate={controller.minDate}
               maxDate={controller.maxDate}
-              periodPreset={controller.periodPreset}
+                periodPreset={controller.periodPreset}
               applyPeriodPreset={controller.applyPeriodPreset}
                 isBusy={controller.isBusy}
                 isRunningOverview={controller.isRunningOverview}
                 onRequestOverview={() => setShowConfirmModal(true)}
+                onOpenLogs={handleOpenLogs}
                 overviewExecutionMode={controller.overviewExecutionMode}
                 setOverviewExecutionMode={controller.setOverviewExecutionMode}
-                lastRunAt={controller.lastRunAt}
-              loading={Boolean(controller.loading)}
-              systemCheck={controller.systemCheck}
               overview={controller.overview}
               severitySnapshot={controller.severitySnapshot}
-              runTimeline={controller.runTimeline}
               runProgress={controller.runProgress}
               runCurrentContact={controller.runCurrentContact}
+              runEtaLabel={controller.runEtaLabel}
               selectedDateInfo={controller.selectedDateInfo}
               selectedDateHasSavedReport={controller.selectedDateHasSavedReport}
             />
@@ -423,32 +423,30 @@ export default function Page() {
               onSelectReportContact={controller.setSelectedReportContact}
               reportSeverityFilter={controller.reportSeverityFilter}
               onChangeReportSeverityFilter={controller.setReportSeverityFilter}
+              selectedDate={controller.date}
             />
           </div>
-        ) : (
-          <div className="settings-animated" key={`settings-${viewAnimationKey}`}>
-            <SettingsView />
-          </div>
-        )}
+          ) : activeView === "clients" ? (
+            <div className="settings-animated" key={`clients-${viewAnimationKey}`}>
+              <AccountsView report={controller.report} chatwootBaseUrl={controller.apiConfig?.chatwoot_base_url || ""} />
+            </div>
+          ) : activeView === "logs" ? (
+            <div className="settings-animated" key={`logs-${viewAnimationKey}`}>
+              <LogsView
+                systemCheck={controller.systemCheck}
+                reportHistory={controller.reportHistory}
+                currentStatus={controller.status}
+                selectedDate={controller.date}
+              />
+            </div>
+          ) : (
+            <div className="settings-animated" key={`settings-${viewAnimationKey}`}>
+              <SettingsView />
+            </div>
+          )}
+        </div>
 
-        <footer className="footer brand-footer">
-          <div className="brand-footer-left">Dev by <strong>IA Infinity</strong></div>
-          <div className="brand-footer-center">© 2026 Hilê – Fábrica de suplementos alimentares</div>
-          <div className="brand-footer-right brand-footer-socials">
-            <a href="https://www.facebook.com" target="_blank" rel="noreferrer" aria-label="Facebook">
-              <FaFacebookF />
-            </a>
-            <a href="https://x.com" target="_blank" rel="noreferrer" aria-label="Twitter">
-              <FaXTwitter />
-            </a>
-            <a href="https://www.instagram.com/hileterceirizacao/" target="_blank" rel="noreferrer" aria-label="Instagram">
-              <FaInstagram />
-            </a>
-            <a href="https://www.linkedin.com" target="_blank" rel="noreferrer" aria-label="LinkedIn">
-              <FaLinkedinIn />
-            </a>
-          </div>
-        </footer>
+        <AppFooter />
       </main>
 
         {showConfirmModal && activeView === "dashboard" ? (

@@ -1,5 +1,5 @@
 ﻿import { Fragment, useMemo } from "react";
-import type { OverviewPayload, Severity, SystemCheckResponse } from "../../../types";
+import type { OverviewPayload, Severity } from "../../../types";
 import type { OverviewExecutionMode, PeriodPreset } from "../shared/types";
 
 interface MetricsSectionProps {
@@ -12,16 +12,14 @@ interface MetricsSectionProps {
   isBusy: boolean;
   isRunningOverview: boolean;
   onRequestOverview: () => void;
+  onOpenLogs: () => void;
   overviewExecutionMode: OverviewExecutionMode;
   setOverviewExecutionMode: (value: OverviewExecutionMode) => void;
-  lastRunAt: string | null;
-  loading: boolean;
-  systemCheck: SystemCheckResponse | null;
   overview: OverviewPayload | null;
   severitySnapshot: Record<Severity, number>;
-  runTimeline: string[];
   runProgress: number;
   runCurrentContact: string | null;
+  runEtaLabel: string;
   selectedDateInfo: string;
   selectedDateHasSavedReport: boolean;
 }
@@ -64,16 +62,14 @@ export function MetricsSection({
   isBusy,
   isRunningOverview,
   onRequestOverview,
+  onOpenLogs,
   overviewExecutionMode,
   setOverviewExecutionMode,
-  lastRunAt,
-  loading,
-  systemCheck,
   overview,
   severitySnapshot,
-  runTimeline,
   runProgress,
   runCurrentContact,
+  runEtaLabel,
   selectedDateInfo,
   selectedDateHasSavedReport,
 }: MetricsSectionProps) {
@@ -109,10 +105,6 @@ export function MetricsSection({
     };
   }, [kpis.finalizadas, kpis.gapsCriticosAltos, kpis.gatilhos, summary?.conversations_total_analyzed_day, summary?.total_messages_day]);
 
-  const statusLabel = isRunningOverview
-    ? `Executando overview... ${runProgress}%`
-    : "";
-
   return (
     <div className="section reveal" id="inicio">
       <div className="section-inner">
@@ -124,19 +116,6 @@ export function MetricsSection({
           </div>
         </div>
 
-        <div className="status-row">
-          <span className={`status-badge ${isRunningOverview ? "" : systemCheck?.chatwoot ? (systemCheck.chatwoot.ok ? "ok" : "fail") : ""}`}>
-            Chatwoot: {isRunningOverview ? "verificando" : systemCheck?.chatwoot ? (systemCheck.chatwoot.ok ? "OK" : "Falha") : "aguardando"}
-          </span>
-          <span className={`status-badge ${isRunningOverview ? "" : systemCheck?.dify ? (systemCheck.dify.ok ? "ok" : "fail") : ""}`}>
-            Dify: {isRunningOverview ? "verificando" : systemCheck?.dify ? (systemCheck.dify.ok ? "OK" : "Falha") : "aguardando"}
-          </span>
-          <span className={`status-badge ${loading ? "" : "ok"}`}>
-            API: {loading ? "executando" : "OK"}
-          </span>
-          {lastRunAt ? <span className="status-badge">Última execução: {new Date(lastRunAt).toLocaleTimeString("pt-BR")}</span> : null}
-        </div>
-
         <div className="metrics-block">
           <div className="metrics-block-header">
             <span>Controles do período</span>
@@ -146,18 +125,18 @@ export function MetricsSection({
               <label>Período</label>
               <div className="filter-box" style={{ flex: 1 }}>
                 <div className="filter-group" style={{ flex: 1 }}>
-                {PRESETS.map((preset, index) => (
-                  <Fragment key={preset.key}>
-                    {index === 3 ? <div className="filter-sep" /> : null}
-                    <button
-                      type="button"
-                      className={`filter-pill ${periodPreset === preset.key ? "active" : ""}`}
-                      onClick={() => applyPeriodPreset(preset.key)}
-                    >
-                      {preset.label}
-                    </button>
-                  </Fragment>
-                ))}
+                  {PRESETS.map((preset, index) => (
+                    <Fragment key={preset.key}>
+                      {index === 3 ? <div className="filter-sep" /> : null}
+                      <button
+                        type="button"
+                        className={`filter-pill ${periodPreset === preset.key ? "active" : ""}`}
+                        onClick={() => applyPeriodPreset(preset.key)}
+                      >
+                        {preset.label}
+                      </button>
+                    </Fragment>
+                  ))}
                 </div>
               </div>
             </div>
@@ -200,25 +179,37 @@ export function MetricsSection({
                     <button className="btn btn-primary orq-run-btn" onClick={onRequestOverview} disabled={isBusy}>
                       {isRunningOverview ? "Processando..." : "Executar Overview"}
                     </button>
-                    <span className="orq-inline-note">{statusLabel || selectedDateInfo}</span>
+                    <span className="orq-inline-note">{selectedDateInfo}</span>
                   </div>
                 </div>
+
+                {isRunningOverview ? (
+                  <div className="filter-box orq-progress-box">
+                    <div className="orq-progress-head">
+                      <strong>{runCurrentContact ? `Analisando: ${runCurrentContact}` : "Processando overview"}</strong>
+                      <span>{runProgress}%</span>
+                    </div>
+                    <div className="orq-progress-track" role="progressbar" aria-valuenow={runProgress} aria-valuemin={0} aria-valuemax={100}>
+                      <div className="orq-progress-fill" style={{ width: `${runProgress}%` }} />
+                    </div>
+                    <div className="orq-progress-meta">
+                      <span>Tempo estimado restante: {runEtaLabel}</span>
+                      <button type="button" className="link-btn" onClick={onOpenLogs}>
+                        Acompanhar detalhes em Logs
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="orq-hint-box">
+                    Se quiser acompanhar o processo detalhado da execução, abra a seção{" "}
+                    <button type="button" className="link-btn" onClick={onOpenLogs}>
+                      Logs
+                    </button>
+                    .
+                  </div>
+                )}
               </div>
             </div>
-
-            {isRunningOverview && (runTimeline.length > 0 || runCurrentContact) ? (
-              <div className="orq-row orq-row-logs">
-                <label>Logs</label>
-                <div className="filter-box orq-log-box">
-                  {runCurrentContact ? <div className="status-label">Contato em análise: {runCurrentContact}</div> : null}
-                  {runTimeline.length > 0 ? (
-                    <ul className="orq-timeline">
-                      {runTimeline.map((entry, index) => <li key={`${entry}-${index}`}>{entry}</li>)}
-                    </ul>
-                  ) : null}
-                </div>
-              </div>
-            ) : null}
           </div>
         </div>
 

@@ -1,0 +1,53 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600;700&family=Sora:wght@500;600;700;800&display=swap");
+
+@import "tailwindcss";
+
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{margin:0;font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--preto)}
+img{max-width:100%;display:block}
+
+:root{
+  --preto:#111827;
+  --navy:#0d3f73;
+  --azul:#106bb6;
+  --azul-claro:#45a3ff;
+  --azul-soft:#e8f3ff;
+  --azul-line:#b9daf5;
+  --branco:#ffffff;
+  --bg:#f2f8ff;
+  --surface:#f8fbff;
+  --line:#cfe2f3;
+  --muted:#4a6380;
+  --text-muted:#4a6380;
+  --critical:#dc2626;
+  --high:#ea580c;
+  --medium:#d97706;
+  --low:#16a34a;
+  --info:var(--azul);
+  --critical-bg:#fef2f2;
+  --high-bg:#fff7ed;
+  --medium-bg:#fefce8;
+  --low-bg:#f0fdf4;
+  --info-bg:#eff6ff;
+
+  --fs-hero:clamp(2rem,1.45rem + 1.8vw,3rem);
+  --fs-h1:clamp(1.6rem,1.2rem + 1.1vw,2.2rem);
+  --fs-h2:clamp(1.24rem,1rem + 0.55vw,1.55rem);
+  --fs-h3:clamp(1.02rem,0.92rem + 0.32vw,1.2rem);
+  --fs-body:clamp(0.98rem,0.93rem + 0.16vw,1.06rem);
+  --fs-small:clamp(0.86rem,0.82rem + 0.14vw,0.94rem);
+  --fs-tiny:clamp(0.74rem,0.72rem + 0.08vw,0.8rem);
+
+  --shell-max:2400px;
+  --shell-gutter:clamp(16px,2.6vw,64px);
+  --nav-h:68px;
+  --footer-h:56px;
+
+  --font-display:'Inter',system-ui,sans-serif;
+  --font-mono:'JetBrains Mono',monospace;
+  --font-nav:'Sora',system-ui,sans-serif;
+  --sidebar-w:240px;
+  --bounce:cubic-bezier(0.34,1.56,0.64,1);
+}
+

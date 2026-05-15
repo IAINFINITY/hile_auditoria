@@ -32,6 +32,7 @@ interface ReportSectionProps {
   onSelectReportContact: (value: string | null) => void;
   reportSeverityFilter: SeverityFilter;
   onChangeReportSeverityFilter: (value: SeverityFilter) => void;
+  selectedDate: string;
 }
 
 export function ReportSection({
@@ -42,6 +43,7 @@ export function ReportSection({
   onSelectReportContact,
   reportSeverityFilter,
   onChangeReportSeverityFilter,
+  selectedDate,
 }: ReportSectionProps) {
   const hasReportData = Boolean(report?.raw_analysis?.analyses?.length) || criticalGapInsights.length > 0;
   const [historyPage, setHistoryPage] = useState(1);
@@ -57,12 +59,18 @@ export function ReportSection({
     setLocalContactFilter(selectedReportContact || "");
   }, [selectedReportContact]);
 
+  const historyForSelectedDate = useMemo(() => {
+    const target = String(selectedDate || "").trim();
+    if (!target) return [] as ReportHistoryItem[];
+    return reportHistory.filter((item) => String(item.date_ref || "").trim() === target);
+  }, [reportHistory, selectedDate]);
+
   const generatedAtLabel = useMemo(() => {
-    const latest = reportHistory[0];
+    const latest = historyForSelectedDate[0];
     const dateIso = latest?.finished_at || latest?.started_at || "";
     if (!dateIso) return "--";
     return new Date(dateIso).toLocaleString("pt-BR");
-  }, [reportHistory]);
+  }, [historyForSelectedDate]);
 
   const contextOverview = useMemo(() => {
     const analyses = report?.raw_analysis?.analyses || [];
@@ -207,7 +215,7 @@ export function ReportSection({
     });
   }, [reportGaps, normalizedContactFilter, selectedLabels, reportSeverityFilter]);
 
-  const historyChunk = paginate(reportHistory, historyPage, perPage);
+  const historyChunk = paginate(historyForSelectedDate, historyPage, perPage);
   const contextChunk = paginate(filteredContactContextItems, contextPage, perPage);
   const gapsChunk = paginate(filteredGaps, gapsPage, perPage);
 
@@ -247,8 +255,8 @@ export function ReportSection({
           <div className="metrics-block-body">
             <div className="report-section-sep">
               <h3 className="report-section-title">Histórico de Execuções</h3>
-              {reportHistory.length === 0 ? (
-                <p className="empty-state">Sem execuções salvas no banco até agora.</p>
+              {historyForSelectedDate.length === 0 ? (
+                <p className="empty-state">Sem execuções salvas para {selectedDate}.</p>
               ) : (
                 <>
                   {historyChunk.rows.map((run) => {
@@ -283,9 +291,9 @@ export function ReportSection({
                       </article>
                     );
                   })}
-                  {reportHistory.length > perPage ? (
+                  {historyForSelectedDate.length > perPage ? (
                     <PaginationControls
-                      total={reportHistory.length}
+                      total={historyForSelectedDate.length}
                       safePage={historyChunk.safePage}
                       pages={historyChunk.pages}
                       onPrev={() => keepScroll(() => setHistoryPage(Math.max(1, historyChunk.safePage - 1)))}

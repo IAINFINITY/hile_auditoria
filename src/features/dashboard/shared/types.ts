@@ -98,6 +98,7 @@ export interface DashboardController {
   runTimeline: string[];
   runProgress: number;
   runCurrentContact: string | null;
+  runEtaLabel: string;
   reportLinks: ReportLinkItem[];
   reportHistory: ReportHistoryItem[];
   selectedDateInfo: string;

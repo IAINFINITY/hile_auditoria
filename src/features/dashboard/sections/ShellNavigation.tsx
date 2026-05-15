@@ -1,13 +1,15 @@
 ﻿import type { MouseEvent } from "react";
 import { BsDiamond } from "react-icons/bs";
-import { FiBell, FiSettings } from "react-icons/fi";
+import { FiAlertTriangle, FiBarChart2, FiBell, FiFileText, FiLayers, FiSettings, FiTrendingUp, FiUsers, FiZap } from "react-icons/fi";
 
 interface ShellNavigationProps {
-  activeView: "dashboard" | "settings";
+  activeView: "dashboard" | "clients" | "logs" | "settings";
   navClass: (section: string) => string;
   onNavigate: (section: string) => void;
   onOpenSettings: () => void;
   onOpenDashboard: () => void;
+  onOpenClients: () => void;
+  onOpenLogs: () => void;
   currentUser: {
     name: string;
     email: string;
@@ -26,6 +28,8 @@ export function ShellNavigation({
   onNavigate,
   onOpenSettings,
   onOpenDashboard,
+  onOpenClients,
+  onOpenLogs,
   currentUser,
   onLogout,
 }: ShellNavigationProps) {
@@ -38,7 +42,14 @@ export function ShellNavigation({
   };
 
   const activeSection = Object.keys(sectionLabels).find((key) => navClass(key) === "active") || "inicio";
-  const currentBreadcrumb = activeView === "dashboard" ? sectionLabels[activeSection] : "Configurações";
+  const currentBreadcrumb =
+    activeView === "dashboard"
+      ? sectionLabels[activeSection]
+      : activeView === "clients"
+        ? "Clientes"
+        : activeView === "logs"
+          ? "Logs Operacionais"
+          : "Configurações";
 
   function handleSection(section: string, event: MouseEvent<HTMLButtonElement>) {
     event.preventDefault();
@@ -69,14 +80,17 @@ export function ShellNavigation({
             <div className="side-subnav">
               <button type="button" className={`side-sub-item ${navClass("inicio")}`} onClick={(event) => handleSection("inicio", event)}>
                 <span className="side-sub-dot" />
+                <span className="side-sub-icon"><FiBarChart2 /></span>
                 Métricas
               </button>
               <button type="button" className={`side-sub-item ${navClass("gaps")}`} onClick={(event) => handleSection("gaps", event)}>
                 <span className="side-sub-dot" />
+                <span className="side-sub-icon"><FiAlertTriangle /></span>
                 Gaps
               </button>
               <button type="button" className={`side-sub-item ${navClass("insights")}`} onClick={(event) => handleSection("insights", event)}>
                 <span className="side-sub-dot" />
+                <span className="side-sub-icon"><FiZap /></span>
                 Insights
               </button>
               <button
@@ -85,14 +99,30 @@ export function ShellNavigation({
                 onClick={(event) => handleSection("movimentacao", event)}
               >
                 <span className="side-sub-dot" />
+                <span className="side-sub-icon"><FiTrendingUp /></span>
                 Movimentação
               </button>
               <button type="button" className={`side-sub-item ${navClass("relatorio")}`} onClick={(event) => handleSection("relatorio", event)}>
                 <span className="side-sub-dot" />
+                <span className="side-sub-icon"><FiFileText /></span>
                 Relatório
               </button>
             </div>
           ) : null}
+
+          <button type="button" className={sideItemClass(activeView === "clients")} onClick={onOpenClients}>
+            <span className="side-item-icon" aria-hidden="true">
+              <FiUsers />
+            </span>
+            <span>Clientes</span>
+          </button>
+
+          <button type="button" className={sideItemClass(activeView === "logs")} onClick={onOpenLogs}>
+            <span className="side-item-icon" aria-hidden="true">
+              <FiLayers />
+            </span>
+            <span>Logs</span>
+          </button>
 
           <button type="button" className={sideItemClass(activeView === "settings")} onClick={onOpenSettings}>
             <span className="side-item-icon" aria-hidden="true">
@@ -130,4 +160,3 @@ export function ShellNavigation({
     </>
   );
 }
-

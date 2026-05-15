@@ -74,6 +74,7 @@ export function useDashboardController(options?: { enabled?: boolean }): Dashboa
   ]);
   const [runProgress, setRunProgress] = useState<number>(0);
   const [runCurrentContact, setRunCurrentContact] = useState<string | null>(null);
+  const [runStartedAt, setRunStartedAt] = useState<number | null>(null);
   const [overviewExecutionMode, setOverviewExecutionMode] = useState<OverviewExecutionMode>("reuse");
   const [reportHistory, setReportHistory] = useState<ReportHistoryResponse["items"]>([]);
   const [availableReportDates, setAvailableReportDates] = useState<string[]>([]);
@@ -515,6 +516,18 @@ export function useDashboardController(options?: { enabled?: boolean }): Dashboa
     return links;
   }, [apiConfig?.chatwoot_base_url, report, selectedReportContact]);
 
+  const runEtaLabel = useMemo(() => {
+    if (!isRunningOverview || !runStartedAt || runProgress <= 0) return "--";
+    const elapsedSeconds = Math.max(1, Math.round((Date.now() - runStartedAt) / 1000));
+    if (runProgress >= 100) return "0s";
+    const estimatedTotal = Math.round((elapsedSeconds / Math.max(1, runProgress)) * 100);
+    const remaining = Math.max(0, estimatedTotal - elapsedSeconds);
+    if (remaining < 60) return `${remaining}s`;
+    const minutes = Math.floor(remaining / 60);
+    const seconds = remaining % 60;
+    return `${minutes}m ${String(seconds).padStart(2, "0")}s`;
+  }, [isRunningOverview, runProgress, runStartedAt]);
+
   function pushRunStep(step: string) {
     setRunTimeline((current) => [...current, step]);
   }
@@ -539,6 +552,7 @@ export function useDashboardController(options?: { enabled?: boolean }): Dashboa
     setRunTimeline(["Iniciando overview do dia..."]);
     updateRunProgress(1);
     setRunCurrentContact(null);
+    setRunStartedAt(Date.now());
     setInsightsReady(false);
     setShowTrend(false);
     setOverview(null);
@@ -684,6 +698,7 @@ export function useDashboardController(options?: { enabled?: boolean }): Dashboa
       pushRunStep(`Overview finalizado em ${elapsed}s.`);
       updateRunProgress(6);
       setRunTimeline([]);
+      setRunStartedAt(null);
       apiGet<ReportHistoryResponse>("/api/report-day/history?limit=8")
         .then((data) => setReportHistory(Array.isArray(data?.items) ? data.items : []))
         .catch(() => undefined);
@@ -704,6 +719,7 @@ export function useDashboardController(options?: { enabled?: boolean }): Dashboa
       pushRunStep(`Parou com erro: ${message}`);
       setRunCurrentContact(null);
       setRunTimeline([]);
+      setRunStartedAt(null);
     } finally {
       setLoading(null);
     }
@@ -788,6 +804,7 @@ export function useDashboardController(options?: { enabled?: boolean }): Dashboa
     runTimeline,
     runProgress,
     runCurrentContact,
+    runEtaLabel,
     reportLinks,
     reportHistory,
     selectedDateInfo,

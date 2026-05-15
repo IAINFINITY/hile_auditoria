@@ -1,0 +1,144 @@
+﻿@keyframes splashPop{
+  0%{transform:scale(0) rotate(-14deg);opacity:0}
+  100%{transform:scale(1) rotate(0);opacity:1}
+}
+
+@keyframes ringPulse{
+  0%,100%{transform:scale(1);opacity:1}
+  50%{transform:scale(1.12);opacity:.5}
+}
+
+@keyframes splashTextIn{
+  0%{opacity:0;transform:translateY(16px)}
+  100%{opacity:1;transform:translateY(0)}
+}
+
+@keyframes cardIn{
+  0%{transform:scale(.94) translateY(14px);opacity:0}
+  100%{transform:scale(1) translateY(0);opacity:1}
+}
+
+@keyframes slideLeftIn{
+  0%{transform:translateX(-26px);opacity:0}
+  100%{transform:translateX(0);opacity:1}
+}
+
+@keyframes slideTopIn{
+  0%{transform:translateY(-18px);opacity:0}
+  100%{transform:translateY(0);opacity:1}
+}
+
+@keyframes fadeIn{
+  0%{opacity:0}
+  100%{opacity:1}
+}
+
+@keyframes sectionRevealIn{
+  0%{opacity:0;transform:translateY(16px)}
+  100%{opacity:1;transform:translateY(0)}
+}
+
+@keyframes filterPop{
+  0%{transform:scale(.985);opacity:.72}
+  100%{transform:scale(1);opacity:1}
+}
+
+@keyframes gapSlideIn{
+  0%{opacity:0;transform:translateX(-18px)}
+  100%{opacity:1;transform:translateX(0)}
+}
+
+.reveal{opacity:1;transform:none}
+.reveal.is-pending{opacity:0;transform:translateY(14px);transition:opacity 450ms ease,transform 450ms ease}
+.reveal.is-pending.in{opacity:1;transform:translateY(0)}
+
+@media(max-width:1200px){
+  :root{
+    --shell-gutter:clamp(14px,2vw,24px);
+  }
+  .kpi-grid{grid-template-columns:repeat(4,1fr)}
+}
+@media(max-width:920px){
+  :root{--sidebar-w:56px}
+  .side-brand-text,
+  .side-item > span:last-child,
+  .side-account-text,
+  .side-subnav{display:none}
+  .side-item{justify-content:center;padding:10px}
+  .side-nav{padding:12px 8px}
+  .side-account{
+    grid-template-columns:1fr;
+    justify-items:center;
+    padding:10px;
+  }
+  .side-account-logout{width:100%;text-align:center}
+  .app-topbar{left:56px}
+  .main-content-shell{margin-left:56px}
+}
+@media(max-width:900px){
+  .insights-top,.movement-pie-wrap{grid-template-columns:1fr}
+  .report-filters-grid{grid-template-columns:1fr}
+  .accounts-filter-row{grid-template-columns:1fr 1fr}
+  .accounts-switch-row{gap:16px}
+  .account-grid{grid-template-columns:1fr 1fr}
+  .account-points-grid{grid-template-columns:1fr}
+  .logs-grid{grid-template-columns:1fr}
+}
+@media(max-width:640px){
+  :root{ --shell-gutter: 12px; --nav-h: 62px; --sidebar-w:56px; }
+  .topbar-breadcrumb{font-size:11px}
+  .kpi-grid{grid-template-columns:repeat(2,1fr)}
+  .panorama-grid{grid-template-columns:1fr}
+  .accounts-filter-row{grid-template-columns:1fr}
+  .accounts-switch-row{display:grid;gap:8px}
+  .account-grid{grid-template-columns:1fr}
+  .orq-row{
+    grid-template-columns:1fr;
+    gap:8px;
+  }
+  .orq-row label{
+    line-height:1.2;
+  }
+  .orq-exec-stack{min-width:100%}
+  .orq-action-sep{display:none}
+  .orq-inline-note{
+    width:100%;
+    border-left:0;
+    border-top:1px solid var(--line);
+    margin-left:0;
+    padding-left:0;
+    padding-top:8px;
+  }
+  .orq-exec-mode-hint{min-width:100%}
+  .login-card-header{padding:28px 20px 22px}
+  .login-card-body{padding:22px 20px 16px}
+  .login-logo-circle{width:60px;height:60px}
+  .login-logo-circle img{width:36px;height:36px}
+  .login-brand-logo{width:108px;margin-bottom:12px}
+  .brand-footer{
+    grid-template-columns:1fr;
+    justify-items:center;
+    gap:6px;
+    min-height:74px;
+    padding:10px 14px;
+    letter-spacing:.11em;
+    font-size:9.5px;
+    text-align:center;
+  }
+  .brand-footer-left,
+  .brand-footer-center,
+  .brand-footer-right{justify-self:center}
+}
+
+@media (min-width: 1600px){
+  :root{
+    --fs-body:1.06rem;
+    --fs-small:0.96rem;
+    --fs-tiny:0.82rem;
+  }
+  .section-inner{gap:24px}
+  .metrics-block-body{padding:24px}
+  .kpi-card{padding:26px 18px}
+}
+
+
