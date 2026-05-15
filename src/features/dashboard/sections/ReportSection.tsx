@@ -3,7 +3,6 @@ import type { Severity } from "../../../types";
 import type { ReportHistoryItem, ReportPayload } from "../../../types";
 import { PaginationControls } from "./report/PaginationControls";
 import {
-  DEFAULT_LABEL_HINTS,
   REPORT_SEVERITY_OPTIONS,
   extractStateLabels,
   includesAnyLabel,
@@ -46,7 +45,6 @@ export function ReportSection({
   selectedDate,
 }: ReportSectionProps) {
   const hasReportData = Boolean(report?.raw_analysis?.analyses?.length) || criticalGapInsights.length > 0;
-  const [historyPage, setHistoryPage] = useState(1);
   const [contextPage, setContextPage] = useState(1);
   const [gapsPage, setGapsPage] = useState(1);
   const [localContactFilter, setLocalContactFilter] = useState<string>("");
@@ -190,7 +188,7 @@ export function ReportSection({
   }, [contactContextItems, reportGaps]);
 
   const displayLabels = useMemo(() => {
-    return availableLabels.length > 0 ? availableLabels : DEFAULT_LABEL_HINTS;
+    return availableLabels;
   }, [availableLabels]);
 
   const normalizedContactFilter = localContactFilter.trim().toLowerCase();
@@ -215,7 +213,6 @@ export function ReportSection({
     });
   }, [reportGaps, normalizedContactFilter, selectedLabels, reportSeverityFilter]);
 
-  const historyChunk = paginate(historyForSelectedDate, historyPage, perPage);
   const contextChunk = paginate(filteredContactContextItems, contextPage, perPage);
   const gapsChunk = paginate(filteredGaps, gapsPage, perPage);
 
@@ -253,57 +250,6 @@ export function ReportSection({
           </div>
 
           <div className="metrics-block-body">
-            <div className="report-section-sep">
-              <h3 className="report-section-title">Histórico de Execuções</h3>
-              {historyForSelectedDate.length === 0 ? (
-                <p className="empty-state">Sem execuções salvas para {selectedDate}.</p>
-              ) : (
-                <>
-                  {historyChunk.rows.map((run) => {
-                    const reportJson = (run.report_json || {}) as Record<string, unknown>;
-                    const rawAnalysis = (reportJson.raw_analysis || {}) as Record<string, unknown>;
-                    const rawAnalyses = Array.isArray(rawAnalysis.analyses) ? rawAnalysis.analyses : [];
-                    const logs = Array.isArray(reportJson.logs) ? reportJson.logs : [];
-                    const logsCount = Number(reportJson.logs_count || 0) || logs.length || rawAnalyses.length;
-                    return (
-                      <article className="report-card" key={run.id}>
-                        <span
-                          className="report-card-dot"
-                          style={{
-                            background:
-                              run.status === "completed"
-                                ? "var(--ok)"
-                                : run.status === "failed"
-                                  ? "var(--critical)"
-                                  : "var(--azul)",
-                          }}
-                        />
-                        <div className="report-card-content">
-                          <h4>
-                            {run.date_ref} • {run.channel}
-                          </h4>
-                          <p>
-                            Status: <strong>{run.status}</strong> • Processadas: {run.processed}/{run.total_conversations} • Sucesso:{" "}
-                            {run.success_count} • Falhas: {run.failure_count}
-                          </p>
-                          <p>Logs salvos: {logsCount}</p>
-                        </div>
-                      </article>
-                    );
-                  })}
-                  {historyForSelectedDate.length > perPage ? (
-                    <PaginationControls
-                      total={historyForSelectedDate.length}
-                      safePage={historyChunk.safePage}
-                      pages={historyChunk.pages}
-                      onPrev={() => keepScroll(() => setHistoryPage(Math.max(1, historyChunk.safePage - 1)))}
-                      onNext={() => keepScroll(() => setHistoryPage(Math.min(historyChunk.pages, historyChunk.safePage + 1)))}
-                    />
-                  ) : null}
-                </>
-              )}
-            </div>
-
             <div className="report-section-sep">
               <h3 className="report-section-title">Contexto do Dia</h3>
               {contextOverview.length === 0 ? (

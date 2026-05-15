@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { FiEye, FiEyeOff, FiLock, FiMail } from "react-icons/fi";
 import { useDashboardController } from "@/features/dashboard/hooks/useDashboardController";
 import { useRevealOnScroll } from "@/features/dashboard/hooks/useRevealOnScroll";
+import { useNotifications } from "@/features/dashboard/hooks/useNotifications";
 import { AppFooter } from "@/features/dashboard/sections/AppFooter";
 import { GapsSection } from "@/features/dashboard/sections/GapsSection";
 import { InsightsSection } from "@/features/dashboard/sections/InsightsSection";
@@ -29,7 +30,13 @@ interface AuthStatusPayload {
 
 export default function Page() {
   const [showConfirmModal, setShowConfirmModal] = useState(false);
-  const [activeView, setActiveView] = useState<AppView>("dashboard");
+  const [activeView, setActiveView] = useState<AppView>(() => {
+    if (typeof window !== "undefined") {
+      const saved = sessionStorage.getItem("hile_active_view") as AppView | null;
+      if (saved === "dashboard" || saved === "clients" || saved === "logs" || saved === "settings") return saved;
+    }
+    return "dashboard";
+  });
   const [stage, setStage] = useState<"boot" | "splash" | "login" | "app">("boot");
   const [viewAnimationKey, setViewAnimationKey] = useState(0);
   const [email, setEmail] = useState("");
@@ -43,6 +50,25 @@ export default function Page() {
   const [currentUser, setCurrentUser] = useState<{ name: string; email: string; role: string } | null>(null);
   useRevealOnScroll({ enabled: stage === "app" });
   const controller = useDashboardController({ enabled: stage === "app" });
+
+  const notifyPrefs = useMemo(() => {
+    try {
+      return {
+        report: localStorage.getItem("hile_settings_notify_report") !== "false",
+        log: localStorage.getItem("hile_settings_notify_log") !== "false",
+        client: localStorage.getItem("hile_settings_notify_client") !== "false",
+      };
+    } catch { return { report: true, log: true, client: true }; }
+  }, [stage]);
+
+  const { state: notificationState, clear: clearNotifications } = useNotifications({
+    enabled: stage === "app",
+    notifyReport: notifyPrefs.report,
+    notifyLog: notifyPrefs.log,
+    notifyClient: notifyPrefs.client,
+    currentDate: controller.date,
+  });
+
   const clientsSnapshotDate = useMemo(() => {
     return controller.reportHistory[0]?.date_ref || controller.date;
   }, [controller.date, controller.reportHistory]);
@@ -104,6 +130,15 @@ export default function Page() {
           data: { session },
         } = await supabaseBrowser.auth.getSession();
 
+        const persistSession = localStorage.getItem("hile_remember") === "true";
+        const tabSession = sessionStorage.getItem("hile_tab_session") === "true";
+
+        if (session && !persistSession && !tabSession) {
+          await supabaseBrowser.auth.signOut();
+          if (!cancelled) setStage("login");
+          return;
+        }
+
         if (!session) {
           if (!cancelled) setStage("login");
           return;
@@ -120,10 +155,11 @@ export default function Page() {
         }
 
         if (!cancelled) {
+          const meta = session.user?.user_metadata || {};
           setCurrentUser({
-            name: toPrettyName(status.user.email),
+            name: meta.name || toPrettyName(status.user.email),
             email: status.user.email || "usuario@hile.com.br",
-            role: "Administrador",
+            role: meta.role || "Administrador",
           });
           setStage("app");
         }
@@ -137,6 +173,7 @@ export default function Page() {
   }, []);
 
   useEffect(() => {
+    try { sessionStorage.setItem("hile_active_view", activeView); } catch { /* noop */ }
     if (stage !== "app") return;
     setViewAnimationKey((value) => value + 1);
   }, [activeView, stage]);
@@ -169,31 +206,39 @@ export default function Page() {
       return;
     }
 
-    setIsAuthenticating(true);
-    try {
-      const { data, error } = await supabaseBrowser.auth.signInWithPassword({
-        email: email.trim().toLowerCase(),
-        password,
-      });
+      setIsAuthenticating(true);
+      try {
+        const { data, error } = await supabaseBrowser.auth.signInWithPassword({
+          email: email.trim().toLowerCase(),
+          password,
+        });
 
-      if (error || !data.session) {
-        setLoginError("Credenciais inválidas ou acesso indisponível.");
-        return;
-      }
+        if (error || !data.session) {
+          setLoginError("Credenciais inválidas ou acesso indisponível.");
+          return;
+        }
 
-      const status = await fetchAuthStatus();
-      if (!status?.authenticated || !status?.authorized || !status.user) {
-        await supabaseBrowser.auth.signOut();
-        setLoginError("Não foi possível validar sua sessão. Tente entrar novamente.");
-        return;
-      }
+        const status = await fetchAuthStatus();
+        if (!status?.authenticated || !status?.authorized || !status.user) {
+          await supabaseBrowser.auth.signOut();
+          setLoginError("Não foi possível validar sua sessão. Tente entrar novamente.");
+          return;
+        }
 
-      setCurrentUser({
-        name: toPrettyName(status.user.email),
-        email: status.user.email || "usuario@hile.com.br",
-        role: "Administrador",
-      });
-      setStage("app");
+        if (rememberMe) {
+          localStorage.setItem("hile_remember", "true");
+        } else {
+          localStorage.removeItem("hile_remember");
+        }
+        sessionStorage.setItem("hile_tab_session", "true");
+
+        const meta = data.session.user?.user_metadata || {};
+        setCurrentUser({
+          name: meta.name || toPrettyName(status.user.email),
+          email: status.user.email || "usuario@hile.com.br",
+          role: meta.role || "Administrador",
+        });
+        setStage("app");
     } catch {
       setLoginError("Falha de conexão durante autenticação.");
     } finally {
@@ -279,6 +324,19 @@ export default function Page() {
 
   function handleOpenLogs() {
     setActiveView("logs");
+    requestAnimationFrame(() => {
+      window.scrollTo({ top: 0, behavior: "auto" });
+    });
+  }
+
+  function handleUpdateProfile(updates: { name?: string; role?: string }) {
+    setCurrentUser((prev) =>
+      prev ? { ...prev, ...updates } : prev
+    );
+  }
+
+  function handleOpenView(view: "clients" | "logs") {
+    setActiveView(view);
     requestAnimationFrame(() => {
       window.scrollTo({ top: 0, behavior: "auto" });
     });
@@ -434,6 +492,9 @@ export default function Page() {
         onOpenLogs={handleOpenLogs}
         currentUser={currentUser || { name: "Usuário", email: "usuario@hile.com.br", role: "Operador" }}
         onLogout={() => setShowLogoutConfirmModal(true)}
+        notificationState={notificationState}
+        onClearNotifications={clearNotifications}
+        onOpenView={handleOpenView}
       />
 
       <main className="main-content-shell">
@@ -522,7 +583,10 @@ export default function Page() {
             </div>
           ) : (
             <div className="settings-animated" key={`settings-${viewAnimationKey}`}>
-              <SettingsView />
+              <SettingsView
+                currentUser={currentUser || { name: "Usuário", email: "usuario@hile.com.br", role: "Operador" }}
+                onUpdateProfile={handleUpdateProfile}
+              />
             </div>
           )}
         </div>

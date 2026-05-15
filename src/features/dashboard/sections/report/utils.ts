@@ -32,13 +32,9 @@ export const REPORT_SEVERITY_OPTIONS: Array<{ value: SeverityFilter; label: stri
   { value: "info", label: "Informativo" },
 ];
 
-export const DEFAULT_LABEL_HINTS = [
-  "abandono",
-  "atraso_sla",
-  "falha_processo",
+export const KNOWN_LABELS = [
   "lead_agendado",
   "pausar_ia",
-  "transferencia",
 ];
 
 export function toneColor(severity: Severity): string {
@@ -53,7 +49,6 @@ export function labelClass(tag: string): string {
   const value = String(tag || "").toLowerCase();
   if (value.includes("lead_agendado")) return "tag tag-ok";
   if (value.includes("pausar_ia")) return "tag tag-pause";
-  if (value.includes("quente")) return "tag tag-warm";
   return "tag";
 }
 

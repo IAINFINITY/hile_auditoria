@@ -86,12 +86,65 @@
   font-size:var(--fs-small);
 }
 
-.settings-toggle-row{
+.settings-select{
+  height:40px;
+  border:1px solid var(--line);
+  background:var(--branco);
+  color:var(--navy);
+  padding:0 10px;
+  font-size:var(--fs-small);
+  cursor:pointer;
+}
+
+.settings-save-row{
+  display:flex;
+  justify-content:flex-end;
+  align-items:center;
+  gap:12px;
+  padding-top:4px;
+}
+
+.save-feedback{
+  font-size:var(--fs-tiny);
+  color:var(--low);
+  font-weight:600;
+  animation:fadeIn .3s ease;
+}
+
+/* ====== toggle items (preferences) ====== */
+.settings-toggle-item{
   display:flex;
   align-items:center;
-  justify-content:space-between;
+  gap:14px;
+  padding:14px 0;
+  border-bottom:1px solid var(--line);
+}
+.settings-toggle-item:last-child{
+  border-bottom:none;
+  padding-bottom:0;
+}
+.settings-toggle-dot{
+  width:10px;
+  height:10px;
+  border-radius:50%;
+  flex-shrink:0;
+}
+.settings-toggle-content{
+  flex:1;
+  display:flex;
+  flex-direction:column;
+  gap:2px;
+}
+.settings-toggle-title{
   font-size:var(--fs-body);
-  color:var(--navy);
+  font-weight:600;
+  color:var(--preto);
+  line-height:1.3;
+}
+.settings-toggle-desc{
+  font-size:var(--fs-tiny);
+  color:var(--muted);
+  line-height:1.3;
 }
 
 .settings-toggle-pill{
@@ -101,6 +154,10 @@
   background:#d1d5db;
   position:relative;
   display:inline-block;
+  border-radius:14px;
+  cursor:pointer;
+  flex-shrink:0;
+  transition:background .25s ease,border-color .25s ease;
 }
 
 .settings-toggle-pill::after{
@@ -111,7 +168,8 @@
   top:2px;
   left:2px;
   background:#fff;
-  transition:transform .2s ease;
+  border-radius:50%;
+  transition:transform .25s cubic-bezier(.34,1.56,.64,1);
 }
 
 .settings-toggle-pill.on{
@@ -121,6 +179,46 @@
 
 .settings-toggle-pill.on::after{
   transform:translateX(20px);
+}
+
+/* ====== password strength ====== */
+.strength-bar{
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+.strength-track{
+  flex:1;
+  height:4px;
+  background:var(--line);
+  overflow:hidden;
+  border-radius:2px;
+}
+.strength-fill{
+  height:100%;
+  transition:width .25s ease;
+  border-radius:2px;
+}
+.strength-label{
+  font-size:var(--fs-tiny);
+  font-weight:700;
+  white-space:nowrap;
+}
+.strength-checks{
+  display:grid;
+  gap:3px;
+}
+.strength-check{
+  display:flex;
+  align-items:center;
+  gap:6px;
+  font-size:var(--fs-tiny);
+  color:var(--muted);
+}
+.strength-check svg{
+  width:12px;
+  height:12px;
+  flex-shrink:0;
 }
 
 .accounts-shell{

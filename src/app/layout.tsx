@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Hilê Audit Console",
+  title: "Hilê Auditoria",
   description: "Auditoria inteligente de atendimento com Chatwoot e Dify",
   icons: {
     icon: "/faviconV2.png",

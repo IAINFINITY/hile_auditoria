@@ -1,6 +1,8 @@
-﻿import type { MouseEvent } from "react";
+﻿import { useCallback, useEffect, useRef, useState } from "react";
+import type { MouseEvent } from "react";
 import { BsDiamond } from "react-icons/bs";
 import { FiAlertTriangle, FiBarChart2, FiBell, FiFileText, FiLayers, FiSettings, FiTrendingUp, FiUsers, FiZap } from "react-icons/fi";
+import type { NotificationState } from "../hooks/useNotifications";
 
 interface ShellNavigationProps {
   activeView: "dashboard" | "clients" | "logs" | "settings";
@@ -16,6 +18,9 @@ interface ShellNavigationProps {
     role: string;
   };
   onLogout: () => void;
+  notificationState: NotificationState;
+  onClearNotifications: () => void;
+  onOpenView: (view: "clients" | "logs") => void;
 }
 
 function sideItemClass(isActive: boolean): string {
@@ -32,7 +37,38 @@ export function ShellNavigation({
   onOpenLogs,
   currentUser,
   onLogout,
+  notificationState,
+  onClearNotifications,
+  onOpenView,
 }: ShellNavigationProps) {
+  const [notifyOpen, setNotifyOpen] = useState(false);
+  const notifyRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!notifyOpen) return;
+    function handleClick(e: MouseEvent | globalThis.MouseEvent) {
+      if (notifyRef.current && !notifyRef.current.contains(e.target as Node)) {
+        setNotifyOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [notifyOpen]);
+
+  const handleNotifyClick = useCallback(() => {
+    setNotifyOpen((v) => !v);
+  }, []);
+
+  const handleClearAndClose = useCallback(() => {
+    onClearNotifications();
+    setNotifyOpen(false);
+  }, [onClearNotifications]);
+
+  function handleNotifyItemClick(view: "clients" | "logs") {
+    onOpenView(view);
+    handleClearAndClose();
+  }
+
   const sectionLabels: Record<string, string> = {
     inicio: "Métricas do Dia",
     gaps: "Gaps Identificados",
@@ -151,10 +187,64 @@ export function ShellNavigation({
           <strong>{currentBreadcrumb}</strong>
         </div>
         <div className="topbar-actions">
-          <button type="button" className="topbar-notify" aria-label="Notificações">
-            <FiBell className="topbar-notify-icon" aria-hidden="true" />
-            <span className="topbar-notify-badge">4</span>
-          </button>
+          <div ref={notifyRef} style={{ position: "relative" }}>
+            <button type="button" className="topbar-notify" aria-label="Notificações" onClick={handleNotifyClick}>
+              <FiBell className="topbar-notify-icon" aria-hidden="true" />
+              {notificationState.total > 0 ? (
+                <span className="topbar-notify-badge">{notificationState.total}</span>
+              ) : null}
+            </button>
+            {notifyOpen && (
+              <div
+                style={{
+                  position: "absolute",
+                  top: "calc(100% + 6px)",
+                  right: 0,
+                  width: 280,
+                  background: "#fff",
+                  border: "1px solid var(--line)",
+                  boxShadow: "0 4px 20px rgba(0,0,0,.1)",
+                  zIndex: 1200,
+                  padding: 0,
+                }}
+              >
+                <div style={{ padding: "10px 14px", borderBottom: "1px solid var(--line)", fontWeight: 700, fontSize: "var(--fs-small)", color: "var(--navy)" }}>
+                  Notificações
+                </div>
+                {notificationState.total === 0 ? (
+                  <div style={{ padding: "16px 14px", fontSize: "var(--fs-small)", color: "var(--muted)" }}>
+                    Nenhuma notificação nova.
+                  </div>
+                ) : (
+                  <div style={{ display: "grid" }}>
+                    {notificationState.newReport && (
+                      <button type="button" onClick={() => handleNotifyItemClick("logs")} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", border: 0, background: "transparent", cursor: "pointer", textAlign: "left", fontSize: "var(--fs-small)", color: "var(--navy)", borderBottom: "1px solid var(--line)" }}>
+                        <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--azul)", flexShrink: 0 }} />
+                        <span>Relatório executado / finalizado</span>
+                      </button>
+                    )}
+                    {notificationState.newLog && (
+                      <button type="button" onClick={() => handleNotifyItemClick("logs")} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", border: 0, background: "transparent", cursor: "pointer", textAlign: "left", fontSize: "var(--fs-small)", color: "var(--navy)", borderBottom: "1px solid var(--line)" }}>
+                        <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--azul)", flexShrink: 0 }} />
+                        <span>Log novo</span>
+                      </button>
+                    )}
+                    {notificationState.newClient && (
+                      <button type="button" onClick={() => handleNotifyItemClick("clients")} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", border: 0, background: "transparent", cursor: "pointer", textAlign: "left", fontSize: "var(--fs-small)", color: "var(--navy)" }}>
+                        <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--azul)", flexShrink: 0 }} />
+                        <span>Cliente novo</span>
+                      </button>
+                    )}
+                  </div>
+                )}
+                {notificationState.total > 0 && (
+                  <button type="button" onClick={handleClearAndClose} style={{ width: "100%", padding: "8px 14px", border: 0, borderTop: "1px solid var(--line)", background: "transparent", cursor: "pointer", fontSize: "var(--fs-small)", color: "var(--muted)", textAlign: "center" }}>
+                    Limpar notificações
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       </header>
     </>

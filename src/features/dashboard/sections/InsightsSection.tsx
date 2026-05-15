@@ -211,7 +211,7 @@ export function InsightsSection({
 
           <div id="insightGroups">
             {improvements.length === 0 ? (
-              <p className="empty-state">Sem insights de melhoria no filtro atual.</p>
+              <p className="empty-state insight-empty">Sem insights de melhoria no filtro atual.</p>
             ) : (
               groups.map((group) => {
                 if (!group.items.length) return null;

@@ -38,6 +38,8 @@ import {
   type ReportSeverityFilter,
 } from "./controller/common";
 import { buildStructuredReportMarkdown } from "./controller/reportMarkdown";
+import { aggregateSnapshots } from "./controller/periodAggregation";
+import type { DashboardRunSnapshot } from "./controller/runSnapshotMapper";
 import { mapRunToDashboardSnapshot } from "./controller/runSnapshotMapper";
 
 export function useDashboardController(options?: { enabled?: boolean }): DashboardController {
@@ -88,6 +90,13 @@ export function useDashboardController(options?: { enabled?: boolean }): Dashboa
   const isBusy = loading !== null;
   const isRunningOverview = loading === "overview";
   const insightsPageSize = INSIGHTS_COLLAPSED_LIMIT;
+  const [etaTick, setEtaTick] = useState<number>(0);
+
+  useEffect(() => {
+    if (!isRunningOverview) return;
+    const id = setInterval(() => setEtaTick((t) => t + 1), 1000);
+    return () => clearInterval(id);
+  }, [isRunningOverview]);
 
   function setDate(value: string) {
     const normalized = normalizeDateInput(value, maxDate);
@@ -95,6 +104,92 @@ export function useDashboardController(options?: { enabled?: boolean }): Dashboa
     if (safe > maxDate) return;
     setDateState(safe);
     setLastValidDate(safe);
+  }
+
+  const isPeriodMode = periodPreset === "week" || periodPreset === "month" || periodPreset === "year";
+  const loadedPeriodDatesRef = useRef<string | null>(null);
+  const isLoadingPeriodRef = useRef(false);
+
+  async function loadPeriodData(preset: PeriodPreset, dates: string[]) {
+    if (isLoadingPeriodRef.current) return;
+
+    const now = new Date();
+    const toDate = toDateInputValue(now);
+    const from = new Date(now);
+    if (preset === "week") from.setDate(now.getDate() - 6);
+    else if (preset === "month") from.setDate(now.getDate() - 29);
+    else if (preset === "year") from.setDate(now.getDate() - 364);
+    const fromDate = toDateInputValue(from);
+
+    const datesInRange = [...dates]
+      .filter((d) => d >= fromDate && d <= toDate)
+      .sort();
+
+    if (datesInRange.length === 0) {
+      setStatus("Nenhum relatório salvo no período selecionado.");
+      setOverview(null);
+      setInsights([]);
+      setReport(null);
+      setFailures([]);
+      setRawOutput("Sem relatórios no período.");
+      setInsightsReady(false);
+      setShowTrend(false);
+      return;
+    }
+
+    const periodKey = `${preset}-${datesInRange.join(",")}`;
+    if (loadedPeriodDatesRef.current === periodKey) return;
+
+    isLoadingPeriodRef.current = true;
+    setStatus(`Agregando dados de ${datesInRange.length} dia(s)...`);
+    setOverview(null);
+    setInsights([]);
+    setReport(null);
+    setFailures([]);
+    setRawOutput("Carregando dados do período...");
+    setInsightsReady(false);
+    setShowTrend(false);
+
+    try {
+      const promises = datesInRange.map((d) =>
+        apiGet<ReportByDateResponse>(`/api/report-day/by-date?date=${encodeURIComponent(d)}`)
+          .then((payload) => (payload?.run ? mapRunToDashboardSnapshot(payload.run) : null))
+          .catch(() => null),
+      );
+
+      const results = (await Promise.all(promises)).filter((r): r is DashboardRunSnapshot => r !== null);
+
+      if (results.length === 0) {
+        setStatus("Nenhum relatório carregado no período.");
+        isLoadingPeriodRef.current = false;
+        return;
+      }
+
+      loadedPeriodDatesRef.current = periodKey;
+      const dateLabel = `${fromDate} a ${toDate}`;
+      const aggregated = aggregateSnapshots(results, dateLabel);
+      setOverview(aggregated.overview);
+      setInsights(aggregated.insights);
+      setReport(aggregated.report);
+      setFailures(aggregated.report?.raw_analysis?.failures || []);
+      setRawOutput(aggregated.rawOutput);
+      setInsightsReady(true);
+      setShowTrend(true);
+      setLastRunAt(new Date().toISOString());
+      setStatus(`Período agregado: ${datesInRange.length} dia(s), ${aggregated.insights.length} contato(s), ${aggregated.overview.overview.critical_insights_count} crítico(s).`);
+    } catch (err) {
+      loadedPeriodDatesRef.current = null;
+      setOverview(null);
+      setInsights([]);
+      setReport(null);
+      setFailures([]);
+      setRawOutput("Erro ao agregar período.");
+      setInsightsReady(false);
+      setShowTrend(false);
+      setStatus(`Erro ao carregar período: ${err instanceof Error ? err.message : "Erro desconhecido"}`);
+    } finally {
+      isLoadingPeriodRef.current = false;
+    }
   }
 
   function applyPeriodPreset(value: PeriodPreset) {
@@ -114,20 +209,8 @@ export function useDashboardController(options?: { enabled?: boolean }): Dashboa
       return;
     }
 
-    const nowText = toDateInputValue(now);
-    const rangeStart = new Date(now);
-    if (value === "week") rangeStart.setDate(now.getDate() - 6);
-    if (value === "month") rangeStart.setDate(now.getDate() - 29);
-    if (value === "year") rangeStart.setDate(now.getDate() - 364);
-    const fromDate = toDateInputValue(rangeStart);
-
-    const candidate = availableReportDates.find((item) => item <= nowText && item >= fromDate);
-    if (candidate) {
-      setDate(candidate);
-      return;
-    }
-
-    setStatus(`Nenhum relatório salvo no período ${value}. Mantivemos a data selecionada.`);
+    loadedPeriodDatesRef.current = null;
+    void loadPeriodData(value, availableReportDates);
   }
 
   useEffect(() => {
@@ -189,10 +272,18 @@ export function useDashboardController(options?: { enabled?: boolean }): Dashboa
         if (dates.includes(date)) {
           setLastValidDate(date);
         }
+        if (periodPreset === "week" || periodPreset === "month" || periodPreset === "year") {
+          loadedPeriodDatesRef.current = null;
+          loadPeriodData(periodPreset, dates);
+        }
       })
       .catch(() => {
         setAvailableReportDates([]);
         setHasLoadedAvailableDates(true);
+        if (periodPreset === "week" || periodPreset === "month" || periodPreset === "year") {
+          loadedPeriodDatesRef.current = null;
+          loadPeriodData(periodPreset, []);
+        }
       });
   }, [enabled]);
 
@@ -259,6 +350,7 @@ export function useDashboardController(options?: { enabled?: boolean }): Dashboa
     if (!date) return;
     if (isRunningOverview) return;
     if (!hasLoadedAvailableDates) return;
+    if (isPeriodMode) return;
 
     const clearLoadedReportView = (message: string) => {
       setOverview(null);
@@ -318,7 +410,7 @@ export function useDashboardController(options?: { enabled?: boolean }): Dashboa
     return () => {
       cancelled = true;
     };
-  }, [date, enabled, hasLoadedAvailableDates, isDateHydrated, isRunningOverview]);
+  }, [date, enabled, hasLoadedAvailableDates, isDateHydrated, isRunningOverview, isPeriodMode]);
 
   const sortedInsights = useMemo(() => {
     return [...insights].sort((a, b) => severityOrder[b.severity] - severityOrder[a.severity]);
@@ -473,10 +565,25 @@ export function useDashboardController(options?: { enabled?: boolean }): Dashboa
     }
 
     const today = maxDate;
+    const yesterday = addDays(new Date(today), -1).toISOString().slice(0, 10);
+    const dayBeforeYesterday = addDays(new Date(today), -2).toISOString().slice(0, 10);
+
     if (date === today) {
       return selectedDateHasSavedReport
         ? "Você está em hoje e já existe relatório salvo para esta data."
         : "Você está em hoje e ainda não existe relatório salvo.";
+    }
+
+    if (date === yesterday) {
+      return selectedDateHasSavedReport
+        ? "Você está em ontem com relatório salvo."
+        : "Você está em ontem sem relatório salvo ainda.";
+    }
+
+    if (date === dayBeforeYesterday) {
+      return selectedDateHasSavedReport
+        ? "Você está em anteontem com relatório salvo."
+        : "Você está em anteontem sem relatório salvo ainda.";
     }
 
     if (date < today) {
@@ -555,7 +662,7 @@ export function useDashboardController(options?: { enabled?: boolean }): Dashboa
     const minutes = Math.floor(remaining / 60);
     const seconds = remaining % 60;
     return `${minutes}m ${String(seconds).padStart(2, "0")}s`;
-  }, [isRunningOverview, runProgress, runStartedAt]);
+  }, [isRunningOverview, runProgress, runStartedAt, etaTick]);
 
   function pushRunStep(step: string) {
     setRunTimeline((current) => [...current, step]);

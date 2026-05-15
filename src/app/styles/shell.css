@@ -880,6 +880,7 @@
 .pagination-row span{font-size:var(--fs-tiny);color:var(--muted);margin-right:4px}
 
 .empty-state{color:var(--muted);font-size:var(--fs-body);padding:20px 0;text-align:center}
+.insight-empty{opacity:.55}
 
 .risk-table{width:100%;border-collapse:collapse}
 .risk-table th,.risk-table td{border-bottom:1px solid var(--line);padding:10px 8px;font-size:var(--fs-small)}
