@@ -59,6 +59,11 @@ export function getConfig(): AppConfig {
       userPrefix: process.env.DIFY_USER_PREFIX || "chatwoot-contact",
       requestTimeoutMs: Number(process.env.DIFY_REQUEST_TIMEOUT_MS || 90000),
     },
+    incremental: {
+      minRelevanceScore: Math.max(1, Number(process.env.INCREMENTAL_MIN_RELEVANCE_SCORE || 2)),
+      unansweredMinutesThreshold: Math.max(5, Number(process.env.INCREMENTAL_UNANSWERED_MINUTES || 30)),
+      fullRebaseDays: Math.max(1, Number(process.env.INCREMENTAL_FULL_REBASE_DAYS || 7)),
+    },
   };
 }
 

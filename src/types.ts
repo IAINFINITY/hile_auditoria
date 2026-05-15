@@ -306,6 +306,15 @@ export interface ClientRecordItem {
     currentStatus: string;
     currentSeverity: Severity;
   } | null;
+  timeline?: Array<{
+    dateRef: string;
+    conversationId: number;
+    eventType: "issue_opened" | "issue_updated" | "issue_resolved" | "moved_out_of_ai" | string;
+    severity: Severity | string;
+    reason: string;
+    source: "full" | "delta" | string;
+    createdAt: string;
+  }>;
   phonePk: string;
   contactName: string;
   companyName: string;

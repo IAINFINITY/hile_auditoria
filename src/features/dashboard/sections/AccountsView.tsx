@@ -47,6 +47,14 @@ function statusLabel(status: AccountStatus): string {
   return "Em acompanhamento";
 }
 
+function timelineEventLabel(eventType: string): string {
+  if (eventType === "issue_opened") return "Problema aberto";
+  if (eventType === "issue_updated") return "Problema atualizado";
+  if (eventType === "issue_resolved") return "Problema resolvido";
+  if (eventType === "moved_out_of_ai") return "Saiu do fluxo da IA";
+  return eventType || "Evento operacional";
+}
+
 function severityLabel(severity: Severity): string {
   if (severity === "critical") return "Crítico";
   if (severity === "high") return "Alto";
@@ -530,6 +538,23 @@ export function AccountsView({ selectedDate, knownRunId = null, refreshHint = nu
               <div className="modal-row">
                 <strong>Último problema</strong>
                 <span>{toDateTimeBr(selectedRecord.lifecycle?.lastIssueAt || null)}</span>
+              </div>
+
+              <div className="modal-section">
+                <h4>Linha do tempo operacional</h4>
+                {Array.isArray(selectedRecord.timeline) && selectedRecord.timeline.length > 0 ? (
+                  <ul className="orq-timeline">
+                    {selectedRecord.timeline.map((event, idx) => (
+                      <li key={`${selectedRecord.phonePk}-timeline-${idx}`}>
+                        <strong>{timelineEventLabel(event.eventType)}</strong>{" "}
+                        em {toDateTimeBr(event.createdAt)}{" "}
+                        {event.reason ? <>- {normalizeNarrativeDateTokens(event.reason)}</> : null}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p>Sem eventos de timeline ainda.</p>
+                )}
               </div>
 
               <div className="modal-section">

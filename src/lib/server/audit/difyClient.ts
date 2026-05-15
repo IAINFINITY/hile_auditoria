@@ -33,6 +33,8 @@ interface AnalyzeInput {
   contactKey: string;
   date: string;
   logText: string;
+  analysisMode?: "full" | "delta";
+  extraInputs?: Record<string, unknown>;
 }
 
 interface RecoverFromHistoryInput {
@@ -327,7 +329,7 @@ export function createDifyClient({
     });
   }
 
-  async function analyzeLog({ contactKey, date, logText }: AnalyzeInput): Promise<any> {
+  async function analyzeLog({ contactKey, date, logText, analysisMode = "full", extraInputs = {} }: AnalyzeInput): Promise<any> {
     const user = `${userPrefix}-${contactKey || "unknown"}`;
 
     if (mode === "chat") {
@@ -346,7 +348,10 @@ export function createDifyClient({
         query: prompt,
         user,
         response_mode: "blocking",
-        inputs: {},
+        inputs: {
+          analysis_mode: analysisMode,
+          ...extraInputs,
+        },
       });
     }
 
@@ -354,8 +359,10 @@ export function createDifyClient({
       user,
       response_mode: "blocking",
       inputs: {
+        analysis_mode: analysisMode,
         date,
         [inputLogField]: logText,
+        ...extraInputs,
       },
     });
   }

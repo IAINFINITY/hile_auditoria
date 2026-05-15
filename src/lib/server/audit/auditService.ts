@@ -1,7 +1,12 @@
 ﻿import { createChatwootClient } from "./chatwootClient";
 import { createDifyClient } from "./difyClient";
 import { attachDay, normalizeConversationLog, renderLogForPrompt } from "./chatMapper";
-import { getCachedAnalysisByFingerprint } from "./auditPersistence";
+import {
+  getCachedAnalysisByFingerprint,
+  getConversationDeltaStates,
+  getLatestConversationAnalysis,
+  upsertConversationDeltaStates,
+} from "./auditPersistence";
 import { assertYmd, nowUnixSeconds, toYmdInTimezone, unique } from "./dateUtils";
 import {
   buildContactLogs,
@@ -25,7 +30,12 @@ import {
   toChatwootAppBase,
   tryParseJson,
 } from "./service/reportHelpers";
-
+import {
+  buildDeltaHash,
+  evaluateDeltaRelevance,
+  filterNewMessages,
+  getLastMessageId,
+} from "./service/incrementalHelpers";
 
 function normalizeText(value) {
   return String(value || "").trim().toLowerCase();
@@ -318,6 +328,25 @@ export async function runDailyAnalysis({
   const notify = typeof onProgress === "function" ? onProgress : null;
   const nowUnix = nowUnixSeconds();
   const operationalByConversation = new Map();
+  const allConversationIds = unique(
+    (dailySnapshot.logs_by_conversation || [])
+      .map((item) => Number(item?.conversation_id || 0))
+      .filter((id) => id > 0),
+  )
+    .map((id) => Number(id || 0))
+    .filter((id) => id > 0);
+  const incrementalContext = await getConversationDeltaStates({
+    config,
+    account: dailySnapshot.account,
+    inbox: {
+      id: dailySnapshot.inbox.id,
+      name: dailySnapshot.inbox.name,
+      provider: dailySnapshot.inbox.provider,
+    },
+    conversationIds: allConversationIds,
+  });
+  const incrementalStates = incrementalContext.statesByConversationId;
+  const incrementalUpdates = [];
 
   for (const conversationLog of dailySnapshot.logs_by_conversation || []) {
     const state = deriveConversationOperationalState(conversationLog, config.timezone, nowUnix);
@@ -331,6 +360,76 @@ export async function runDailyAnalysis({
     const logText = renderLogForPrompt(log);
     const sourceFingerprint = buildSourceFingerprint(logText);
     const sequence = index + 1;
+    const primaryConversationId = Number(log?.conversation_ids?.[0] || 0);
+    const operationalState = operationalByConversation.get(primaryConversationId) || null;
+    const previousDelta = primaryConversationId > 0 ? incrementalStates.get(primaryConversationId) || null : null;
+    const newMessages = filterNewMessages(log.messages || [], previousDelta?.lastAnalyzedMessageId ?? null);
+    const deltaHash = buildDeltaHash({
+      conversationId: primaryConversationId || Number(log?.conversation_id || 0) || 0,
+      status: log?.status || null,
+      labels: operationalState?.labels || log?.labels || [],
+      messages: newMessages,
+    });
+    const relevance =
+      mode === "force"
+        ? { relevant: true, score: 999, reasons: ["modo reprocessar forçado"], hasCriticalRule: true }
+        : evaluateDeltaRelevance({
+            newMessages,
+            previous: previousDelta
+              ? {
+                  lastAnalyzedMessageId: previousDelta.lastAnalyzedMessageId,
+                  lastStatus: previousDelta.lastStatus,
+                  lastLabels: previousDelta.lastLabels || [],
+                  lastMessageRole: previousDelta.lastMessageRole,
+                }
+              : null,
+            currentLabels: operationalState?.labels || log?.labels || [],
+            currentStatus: log?.status || null,
+            unansweredMinutes: Number(operationalState?.minutes_overdue || 0),
+            unansweredThresholdMinutes: Number(config?.incremental?.unansweredMinutesThreshold || 30),
+          });
+    const isRelevantDelta =
+      mode === "force"
+        ? true
+        : Boolean(relevance?.hasCriticalRule) ||
+          Number(relevance?.score || 0) >= Number(config?.incremental?.minRelevanceScore || 2);
+    const previousFullAt = previousDelta?.lastFullAt ? new Date(previousDelta.lastFullAt) : null;
+    const fullRebaseDays = Number(config?.incremental?.fullRebaseDays || 7);
+    const staleFull =
+      !previousFullAt ||
+      Number.isNaN(previousFullAt.getTime()) ||
+      (Date.now() - previousFullAt.getTime()) / (1000 * 60 * 60 * 24) >= fullRebaseDays;
+    const previousStatus = String(previousDelta?.lastStatus || "").toLowerCase();
+    const currentStatus = String(log?.status || "").toLowerCase();
+    const previousLabels = new Set((previousDelta?.lastLabels || []).map((label) => String(label || "").toLowerCase().trim()));
+    const currentLabels = new Set((operationalState?.labels || log?.labels || []).map((label) => String(label || "").toLowerCase().trim()));
+    const enteredOutOfAiLabel =
+      (!previousLabels.has("lead_agendado") && currentLabels.has("lead_agendado")) ||
+      (!previousLabels.has("pausar_ia") && currentLabels.has("pausar_ia"));
+    const statusIncoherence =
+      (previousStatus === "resolved" && currentStatus === "open" && !enteredOutOfAiLabel) ||
+      (previousLabels.has("lead_agendado") && currentStatus === "open" && !currentLabels.has("lead_agendado"));
+    const shouldForceFull = mode === "force" || staleFull || statusIncoherence;
+    const shouldRunAi =
+      shouldForceFull ||
+      !previousDelta ||
+      !previousDelta.stateSummary ||
+      isRelevantDelta;
+    const analysisMode: "full" | "delta" =
+      shouldForceFull || !previousDelta || !previousDelta.stateSummary ? "full" : "delta";
+    const difyDeltaInputs = {
+      state_summary_anterior: previousDelta?.stateSummary || null,
+      new_messages: newMessages,
+      event_context: {
+        status: log?.status || null,
+        labels: operationalState?.labels || log?.labels || [],
+        assignee: null,
+        unanswered_minutes: Number(operationalState?.minutes_overdue || 0),
+        inactivity_window_minutes: Number(config?.incremental?.unansweredMinutesThreshold || 30),
+      },
+      conversation_id: primaryConversationId || null,
+      contact_key: contactKey || null,
+    };
 
     if (notify) {
       notify({
@@ -345,8 +444,21 @@ export async function runDailyAnalysis({
     }
 
     try {
+      const latestDbAnalysis =
+        mode === "reuse" && !shouldRunAi
+          ? await getLatestConversationAnalysis({
+              config,
+              account: dailySnapshot.account,
+              inbox: {
+                id: dailySnapshot.inbox.id,
+                name: dailySnapshot.inbox.name,
+                provider: dailySnapshot.inbox.provider,
+              },
+              conversationIds: log.conversation_ids || [],
+            })
+          : null;
       const cachedAnalysis =
-        mode === "reuse"
+        mode === "reuse" && !latestDbAnalysis
           ? await getCachedAnalysisByFingerprint({
               config,
               account: dailySnapshot.account,
@@ -361,7 +473,7 @@ export async function runDailyAnalysis({
           : null;
 
       const difyHistoryUser = `${config.dify.userPrefix || "chatwoot-contact"}-${contactKey || "unknown"}`;
-      const recoveredFromHistory = mode !== "reuse" || cachedAnalysis
+      const recoveredFromHistory = mode !== "reuse" || cachedAnalysis || latestDbAnalysis
         ? null
         : await difyClient.recoverAnalysisFromHistory({
             user: difyHistoryUser,
@@ -370,7 +482,13 @@ export async function runDailyAnalysis({
             logText,
           });
 
-      const difyRaw = cachedAnalysis
+      let difyRaw = latestDbAnalysis
+        ? {
+            answer: latestDbAnalysis.answer,
+            mode: "incremental",
+            event: "delta_not_relevant_reused_latest_analysis",
+          }
+        : cachedAnalysis
         ? {
             answer: cachedAnalysis.answer,
             mode: "cache",
@@ -390,7 +508,19 @@ export async function runDailyAnalysis({
                 contactKey,
                 date,
                 logText,
+                analysisMode,
+                extraInputs: difyDeltaInputs,
               });
+
+      if (!difyRaw && !shouldRunAi) {
+        difyRaw = await difyClient.analyzeLog({
+          contactKey,
+          date,
+          logText,
+          analysisMode: "full",
+          extraInputs: difyDeltaInputs,
+        });
+      }
 
       if (!difyRaw) {
         const missingError = new Error(
@@ -400,10 +530,45 @@ export async function runDailyAnalysis({
         throw missingError;
       }
 
+      const parsed = tryParseJson(difyRaw?.answer);
+      const summaryText =
+        String(parsed?.resumo || "").trim() ||
+        String(operationalState?.finalization_reason || "").trim() ||
+        previousDelta?.stateSummary ||
+        null;
+      const lastMessageId = getLastMessageId(log.messages || []);
+      const lastMessage = (log.messages || []).slice().sort((a, b) => Number(a?.created_at || 0) - Number(b?.created_at || 0)).pop();
+      if (primaryConversationId > 0) {
+        incrementalUpdates.push({
+          chatwootConversationId: primaryConversationId,
+          lastAnalyzedMessageId: lastMessageId,
+          lastAnalyzedAt: new Date().toISOString(),
+          lastMessageAt: lastMessage?.created_at ? new Date(Number(lastMessage.created_at) * 1000).toISOString() : null,
+          lastMessageRole: lastMessage?.role || null,
+          stateSummary: summaryText,
+          lastDeltaHash: deltaHash,
+          lastStatus: log?.status || null,
+          lastLabels: operationalState?.labels || log?.labels || [],
+          lastFullAt: analysisMode === "full" ? new Date().toISOString() : previousDelta?.lastFullAt || null,
+          lastRunMode: analysisMode,
+        });
+      }
+
       analyses.push({
         analysis_index: sequence,
         analysis_key: log.analysis_key,
         source_fingerprint: sourceFingerprint,
+        incremental: {
+          should_run_ai: shouldRunAi,
+          delta_message_count: newMessages.length,
+          delta_relevance_score: relevance.score,
+          delta_relevance_reasons: relevance.reasons,
+          delta_relevant: isRelevantDelta,
+          delta_hash: deltaHash,
+          forced_full: shouldForceFull,
+          forced_full_reason: mode === "force" ? "modo force" : staleFull ? "rebase periódico" : statusIncoherence ? "incoerência de status/labels" : null,
+          analysis_mode: analysisMode,
+        },
         contact_key: log.contact_key,
         contact: log.contact,
         conversation_ids: log.conversation_ids,
@@ -416,7 +581,13 @@ export async function runDailyAnalysis({
       });
       console.log(
         `[analyze-day] contato ${log.contact_key} ${
-          cachedAnalysis ? "reaproveitado do cache" : recoveredFromHistory ? "recuperado do histórico Dify" : "analisado"
+          latestDbAnalysis
+            ? "reaproveitado do último estado (delta sem impacto)"
+            : cachedAnalysis
+              ? "reaproveitado do cache"
+              : recoveredFromHistory
+                ? "recuperado do histórico Dify"
+                : "analisado"
         } (${analyses.length + failures.length}/${totalToProcess}).`,
       );
       if (notify) {
@@ -463,6 +634,14 @@ export async function runDailyAnalysis({
         });
       }
     }
+  }
+
+  if (incrementalUpdates.length > 0) {
+    await upsertConversationDeltaStates({
+      tenantId: incrementalContext.tenantId,
+      channelId: incrementalContext.channelId,
+      items: incrementalUpdates,
+    });
   }
 
   return {
@@ -577,6 +756,7 @@ export async function buildDailyReport({
     },
   };
 }
+
 
 
 

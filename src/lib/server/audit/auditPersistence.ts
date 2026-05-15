@@ -31,6 +31,24 @@ const insightSeverityRank: Record<string, number> = {
   info: 1,
 };
 
+function normalizeTimelineStatus(value: unknown): string {
+  const v = String(value || "").toLowerCase();
+  if (v === "resolvido") return "resolvido";
+  if (v === "atencao") return "atencao";
+  return "aberto";
+}
+
+function pickTimelineEventType(params: {
+  previousStatus: string | null;
+  nextStatus: string;
+  movedOutOfAi: boolean;
+}): "issue_opened" | "issue_updated" | "issue_resolved" | "moved_out_of_ai" {
+  if (params.movedOutOfAi) return "moved_out_of_ai";
+  if (params.nextStatus === "resolvido") return "issue_resolved";
+  if (!params.previousStatus || params.previousStatus === "resolvido") return "issue_opened";
+  return "issue_updated";
+}
+
 function hasRenderableReportData(reportJson: Record<string, unknown> | null | undefined): boolean {
   if (!reportJson || typeof reportJson !== "object") return false;
   const rawAnalysis = (reportJson.raw_analysis || {}) as Record<string, unknown>;
@@ -163,6 +181,190 @@ export async function getCachedAnalysisByFingerprint(params: {
   return {
     answer: JSON.stringify(rawJson, null, 2),
   };
+}
+
+export interface ConversationDeltaStateSnapshot {
+  chatwootConversationId: number;
+  lastAnalyzedMessageId: number | null;
+  lastAnalyzedAt: string | null;
+  lastMessageAt: string | null;
+  lastMessageRole: string | null;
+  stateSummary: string | null;
+  lastDeltaHash: string | null;
+  lastStatus: string | null;
+  lastLabels: string[];
+  lastFullAt: string | null;
+  lastRunMode: string | null;
+}
+
+export async function getConversationDeltaStates(params: {
+  config: AppConfig;
+  account: { id: number; name: string | null };
+  inbox: { id: number; name: string | null; provider: string | null };
+  conversationIds: number[];
+}): Promise<{
+  tenantId: string;
+  channelId: string;
+  statesByConversationId: Map<number, ConversationDeltaStateSnapshot>;
+}> {
+  const reportLike = {
+    account: params.account,
+    inbox: params.inbox,
+  } as unknown as ReportPayload;
+  const { tenant, channel } = await resolveTenantAndChannel(prisma, params.config, reportLike);
+  const ids = [...new Set((params.conversationIds || []).map((id) => Number(id || 0)).filter((id) => id > 0))];
+
+  if (ids.length === 0) {
+    return {
+      tenantId: tenant.id,
+      channelId: channel.id,
+      statesByConversationId: new Map(),
+    };
+  }
+
+  const rows = await prisma.conversationDeltaState.findMany({
+    where: {
+      tenantId: tenant.id,
+      channelId: channel.id,
+      chatwootConversationId: { in: ids },
+    },
+    select: {
+      chatwootConversationId: true,
+      lastAnalyzedMessageId: true,
+      lastAnalyzedAt: true,
+      lastMessageAt: true,
+      lastMessageRole: true,
+      stateSummary: true,
+      lastDeltaHash: true,
+      lastStatus: true,
+      lastLabels: true,
+      lastFullAt: true,
+      lastRunMode: true,
+    },
+  });
+
+  return {
+    tenantId: tenant.id,
+    channelId: channel.id,
+    statesByConversationId: new Map(
+      rows.map((row) => [
+        Number(row.chatwootConversationId),
+        {
+          chatwootConversationId: Number(row.chatwootConversationId),
+          lastAnalyzedMessageId: row.lastAnalyzedMessageId ?? null,
+          lastAnalyzedAt: row.lastAnalyzedAt ? row.lastAnalyzedAt.toISOString() : null,
+          lastMessageAt: row.lastMessageAt ? row.lastMessageAt.toISOString() : null,
+          lastMessageRole: row.lastMessageRole ?? null,
+          stateSummary: row.stateSummary ?? null,
+          lastDeltaHash: row.lastDeltaHash ?? null,
+          lastStatus: row.lastStatus ?? null,
+          lastLabels: Array.isArray(row.lastLabels) ? row.lastLabels : [],
+          lastFullAt: row.lastFullAt ? row.lastFullAt.toISOString() : null,
+          lastRunMode: row.lastRunMode ?? null,
+        } satisfies ConversationDeltaStateSnapshot,
+      ]),
+    ),
+  };
+}
+
+export async function upsertConversationDeltaStates(params: {
+  tenantId: string;
+  channelId: string;
+  items: Array<{
+    chatwootConversationId: number;
+    lastAnalyzedMessageId: number | null;
+    lastAnalyzedAt: string;
+    lastMessageAt: string | null;
+    lastMessageRole: string | null;
+    stateSummary: string | null;
+    lastDeltaHash: string | null;
+    lastStatus: string | null;
+    lastLabels: string[];
+    lastFullAt?: string | null;
+    lastRunMode?: string | null;
+  }>;
+}) {
+  const rows = (params.items || [])
+    .map((item) => ({
+      ...item,
+      chatwootConversationId: Number(item.chatwootConversationId || 0),
+    }))
+    .filter((item) => item.chatwootConversationId > 0);
+
+  for (const item of rows) {
+    await prisma.conversationDeltaState.upsert({
+      where: {
+        tenantId_channelId_chatwootConversationId: {
+          tenantId: params.tenantId,
+          channelId: params.channelId,
+          chatwootConversationId: item.chatwootConversationId,
+        },
+      },
+      update: {
+        lastAnalyzedMessageId: item.lastAnalyzedMessageId,
+        lastAnalyzedAt: item.lastAnalyzedAt ? new Date(item.lastAnalyzedAt) : null,
+        lastMessageAt: item.lastMessageAt ? new Date(item.lastMessageAt) : null,
+        lastMessageRole: item.lastMessageRole,
+        stateSummary: item.stateSummary,
+        lastDeltaHash: item.lastDeltaHash,
+        lastStatus: item.lastStatus,
+        lastLabels: item.lastLabels || [],
+        lastFullAt: item.lastFullAt ? new Date(item.lastFullAt) : undefined,
+        lastRunMode: item.lastRunMode || undefined,
+      },
+      create: {
+        tenantId: params.tenantId,
+        channelId: params.channelId,
+        chatwootConversationId: item.chatwootConversationId,
+        lastAnalyzedMessageId: item.lastAnalyzedMessageId,
+        lastAnalyzedAt: item.lastAnalyzedAt ? new Date(item.lastAnalyzedAt) : null,
+        lastMessageAt: item.lastMessageAt ? new Date(item.lastMessageAt) : null,
+        lastMessageRole: item.lastMessageRole,
+        stateSummary: item.stateSummary,
+        lastDeltaHash: item.lastDeltaHash,
+        lastStatus: item.lastStatus,
+        lastLabels: item.lastLabels || [],
+        lastFullAt: item.lastFullAt ? new Date(item.lastFullAt) : null,
+        lastRunMode: item.lastRunMode || null,
+      },
+    });
+  }
+}
+
+export async function getLatestConversationAnalysis(params: {
+  config: AppConfig;
+  account: { id: number; name: string | null };
+  inbox: { id: number; name: string | null; provider: string | null };
+  conversationIds: number[];
+}): Promise<{ answer: string } | null> {
+  const reportLike = {
+    account: params.account,
+    inbox: params.inbox,
+  } as unknown as ReportPayload;
+  const { tenant } = await resolveTenantAndChannel(prisma, params.config, reportLike);
+  const ids = [...new Set((params.conversationIds || []).map((id) => Number(id || 0)).filter((id) => id > 0))];
+  if (ids.length === 0) return null;
+
+  const conversations = await prisma.conversation.findMany({
+    where: {
+      tenantId: tenant.id,
+      chatwootConversationId: { in: ids },
+    },
+    select: { id: true },
+  });
+  if (!conversations.length) return null;
+
+  const latest = await prisma.conversationAnalysis.findFirst({
+    where: {
+      conversationId: { in: conversations.map((conversation) => conversation.id) },
+    },
+    orderBy: { createdAt: "desc" },
+    select: { aiRawJson: true },
+  });
+
+  const raw = latest?.aiRawJson as Record<string, unknown> | null | undefined;
+  if (!raw || typeof raw !== "object") return null;
+  return { answer: JSON.stringify(raw, null, 2) };
 }
 
 export async function appendRunEvent(runId: string, eventType: string, payloadJson: unknown) {
@@ -519,6 +721,15 @@ export async function persistCompletedRun(params: {
         const effectiveClosedAt = record.closedAt || new Date(params.finishedAtIso);
         const hasIssue = record.status === "atencao";
         const isResolved = record.status === "resolvido";
+        const normalizedNextStatus = normalizeTimelineStatus(record.status);
+        const movedOutOfAi = (record.labels || []).some((label) => {
+          const key = String(label || "")
+            .toLowerCase()
+            .trim()
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "");
+          return key === "lead_agendado" || key === "pausar_ia";
+        });
 
         if (!existing) {
           await tx.clientState.create({
@@ -539,6 +750,27 @@ export async function persistCompletedRun(params: {
               currentLabels: record.labels,
               openConversationIds: isResolved ? [] : record.conversationIds,
               lastRunId: params.runId,
+            },
+          });
+
+          await tx.conversationTimelineEvent.create({
+            data: {
+              tenantId: tenant.id,
+              channelId: channel.id,
+              dateRef: toDateRef(params.date),
+              chatwootConversationId: Number(record.conversationIds?.[0] || 0),
+              phonePk: record.phonePk,
+              eventType: pickTimelineEventType({
+                previousStatus: null,
+                nextStatus: normalizedNextStatus,
+                movedOutOfAi,
+              }),
+              severity: record.severity,
+              reason:
+                (record.gaps || [])[0] ||
+                (record.attentions || [])[0] ||
+                (movedOutOfAi ? "Conversa saiu do fluxo da IA por etiqueta operacional." : "Registro inicial da conversa."),
+              source: "full",
             },
           });
           continue;
@@ -572,6 +804,29 @@ export async function persistCompletedRun(params: {
             currentLabels: record.labels,
             openConversationIds: isResolved ? [] : record.conversationIds,
             lastRunId: params.runId,
+          },
+        });
+
+        await tx.conversationTimelineEvent.create({
+          data: {
+            tenantId: tenant.id,
+            channelId: channel.id,
+            dateRef: toDateRef(params.date),
+            chatwootConversationId: Number(record.conversationIds?.[0] || 0),
+            phonePk: record.phonePk,
+            eventType: pickTimelineEventType({
+              previousStatus: normalizeTimelineStatus(existing.currentStatus),
+              nextStatus: normalizedNextStatus,
+              movedOutOfAi,
+            }),
+            severity: record.severity,
+            reason:
+              (record.gaps || [])[0] ||
+              (record.attentions || [])[0] ||
+              (movedOutOfAi
+                ? "Conversa saiu do fluxo da IA por etiqueta operacional."
+                : `Atualização operacional de status: ${existing.currentStatus} -> ${normalizedNextStatus}.`),
+            source: "full",
           },
         });
       }
@@ -898,6 +1153,50 @@ export async function listClientsByDate(date: string) {
     },
   });
   const stateByPhone = new Map(states.map((item) => [item.phonePk, item]));
+  const phonesForTimeline = Array.from(new Set((runForDate?.clientRecords || []).map((item) => String(item.phonePk || "").trim()).filter(Boolean)));
+  const timelineEvents = phonesForTimeline.length
+    ? await prisma.conversationTimelineEvent.findMany({
+        where: {
+          tenantId: contextRun.tenantId,
+          channelId: contextRun.channelId,
+          phonePk: { in: phonesForTimeline },
+        },
+        orderBy: [{ createdAt: "asc" }],
+        select: {
+          phonePk: true,
+          dateRef: true,
+          chatwootConversationId: true,
+          eventType: true,
+          severity: true,
+          reason: true,
+          source: true,
+          createdAt: true,
+        },
+      })
+    : [];
+  const timelineByPhone = new Map<string, Array<{
+    dateRef: string;
+    conversationId: number;
+    eventType: string;
+    severity: string;
+    reason: string;
+    source: string;
+    createdAt: string;
+  }>>();
+  for (const event of timelineEvents) {
+    const key = String(event.phonePk || "").trim();
+    if (!key) continue;
+    if (!timelineByPhone.has(key)) timelineByPhone.set(key, []);
+    timelineByPhone.get(key)?.push({
+      dateRef: event.dateRef.toISOString().slice(0, 10),
+      conversationId: Number(event.chatwootConversationId || 0),
+      eventType: String(event.eventType || ""),
+      severity: String(event.severity || ""),
+      reason: String(event.reason || ""),
+      source: String(event.source || ""),
+      createdAt: event.createdAt.toISOString(),
+    });
+  }
 
   const reportDrafts = (() => {
     const reportJson = (runForDate?.report?.reportJson as Record<string, unknown> | null) || null;
@@ -1290,6 +1589,7 @@ export async function listClientsByDate(date: string) {
         currentSeverity: state.currentSeverity,
       };
     })(),
+    timeline: timelineByPhone.get(item.phonePk) || [],
     phonePk: item.phonePk,
     contactName: toTitleCaseName(item.contactName || fallback?.contactName || ""),
     companyName: item.companyName || "",
@@ -1371,6 +1671,7 @@ export async function listClientsByDate(date: string) {
                 currentSeverity: state.currentSeverity,
               }
             : null,
+          timeline: timelineByPhone.get(draft.phonePk) || [],
           phonePk: draft.phonePk,
           contactName: toTitleCaseName(draft.contactName || ""),
           companyName: draft.companyName || "",
@@ -1414,6 +1715,7 @@ export async function listClientsByDate(date: string) {
           currentStatus: state.currentStatus,
           currentSeverity: state.currentSeverity,
         },
+        timeline: timelineByPhone.get(state.phonePk) || [],
         phonePk: state.phonePk,
         contactName: toTitleCaseName(state.contactName || ""),
         companyName: state.companyName || "",
@@ -1494,6 +1796,7 @@ export async function listClientsByDate(date: string) {
 
     return {
       lifecycle: null,
+      timeline: timelineByPhone.get(phonePk) || [],
       phonePk,
       contactName: toTitleCaseName(String(contact.name || "").trim()),
       companyName: "",

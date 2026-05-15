@@ -25,6 +25,11 @@ export interface AppConfig {
   timezone: string;
   chatwoot: ChatwootConfig;
   dify: DifyConfig;
+  incremental: {
+    minRelevanceScore: number;
+    unansweredMinutesThreshold: number;
+    fullRebaseDays: number;
+  };
 }
 
 export interface ErrorWithMeta extends Error {

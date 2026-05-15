@@ -27,6 +27,18 @@ enum InsightSeverity {
   info
 }
 
+enum TimelineEventType {
+  issue_opened
+  issue_updated
+  issue_resolved
+  moved_out_of_ai
+}
+
+enum AnalysisSource {
+  full
+  delta
+}
+
 enum GapSeverity {
   alta
   media
@@ -50,6 +62,8 @@ model Tenant {
   checkpoints SyncCheckpoint[]
   clientRecords ClientRecord[]
   clientStates  ClientState[]
+  conversationDeltaStates ConversationDeltaState[]
+  timelineEvents ConversationTimelineEvent[]
 
   @@map("tenants")
 }
@@ -70,6 +84,8 @@ model Channel {
   checkpoints        SyncCheckpoint[]
   clientRecords      ClientRecord[]
   clientStates       ClientState[]
+  conversationDeltaStates ConversationDeltaState[]
+  timelineEvents ConversationTimelineEvent[]
 
   @@unique([tenantId, chatwootAccountId, chatwootInboxId])
   @@index([tenantId])
@@ -353,4 +369,52 @@ model ClientState {
   @@unique([tenantId, channelId, phonePk])
   @@index([tenantId, channelId, currentStatus])
   @@map("client_states")
+}
+
+model ConversationDeltaState {
+  id                    String   @id @default(cuid())
+  tenantId              String
+  channelId             String
+  chatwootConversationId Int
+  lastAnalyzedMessageId Int?
+  lastAnalyzedAt        DateTime?
+  lastMessageAt         DateTime?
+  lastMessageRole       String?
+  stateSummary          String?
+  lastDeltaHash         String?
+  lastStatus            String?
+  lastLabels            String[]
+  lastFullAt            DateTime?
+  lastRunMode           String?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  tenant                Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  channel               Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, channelId, chatwootConversationId])
+  @@index([tenantId, channelId, lastAnalyzedAt])
+  @@map("conversation_delta_states")
+}
+
+model ConversationTimelineEvent {
+  id                    String            @id @default(cuid())
+  tenantId              String
+  channelId             String
+  dateRef               DateTime
+  chatwootConversationId Int
+  phonePk               String
+  eventType             TimelineEventType
+  severity              InsightSeverity   @default(info)
+  reason                String
+  source                AnalysisSource
+  createdAt             DateTime          @default(now())
+
+  tenant                Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  channel               Channel           @relation(fields: [channelId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, channelId, dateRef])
+  @@index([tenantId, channelId, phonePk, createdAt])
+  @@index([tenantId, channelId, chatwootConversationId, createdAt])
+  @@map("conversation_timeline_events")
 }
