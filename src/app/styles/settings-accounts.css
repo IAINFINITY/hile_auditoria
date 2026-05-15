@@ -42,6 +42,8 @@
 .settings-card{
   border:1px solid var(--line);
   background:var(--branco);
+  border-radius:14px;
+  overflow:hidden;
   transition:box-shadow .2s ease,border-color .2s ease;
 }
 .settings-card:hover{box-shadow:0 2px 16px rgba(16,107,182,0.06);border-color:var(--azul-line)}
@@ -129,6 +131,11 @@
   gap:20px;
 }
 
+.accounts-shell .settings-card{
+  border-radius:14px;
+  overflow:hidden;
+}
+
 .accounts-header h1{
   margin:0;
   color:var(--navy);
@@ -155,6 +162,7 @@
   background:var(--branco);
   padding:0 12px;
   height:42px;
+  border-radius:10px;
 }
 
 .accounts-search svg{
@@ -195,6 +203,7 @@
   color:var(--navy);
   padding:0 10px;
   font-size:var(--fs-small);
+  border-radius:8px;
 }
 
 .accounts-switch{
@@ -229,19 +238,130 @@
   gap:12px;
 }
 
+.accounts-kanban{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(260px,1fr));
+  gap:12px;
+  align-items:start;
+  min-height:0;
+}
+
+.accounts-kanban.is-filtered{
+  grid-template-columns:repeat(auto-fit,minmax(320px,420px));
+  justify-content:flex-start;
+}
+
+.accounts-kanban-col{
+  border:1px solid var(--line);
+  background:#f8fbff;
+  border-radius:14px;
+  overflow:hidden;
+}
+
+.accounts-kanban-col-head{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  padding:11px 12px;
+  border-bottom:1px solid var(--line);
+  background:var(--branco);
+  color:var(--navy);
+  font-size:var(--fs-small);
+  font-weight:700;
+  text-transform:uppercase;
+  letter-spacing:.04em;
+}
+
+.accounts-kanban-badge{
+  margin-left:auto;
+  font-size:11px;
+  font-weight:700;
+  padding:2px 10px;
+  border-radius:999px;
+}
+
+.accounts-kanban-badge.status-aberto{
+  color:var(--azul);
+  background:rgba(16,107,182,.12);
+}
+
+.accounts-kanban-badge.status-atencao{
+  color:var(--high);
+  background:rgba(234,88,12,.13);
+}
+
+.accounts-kanban-badge.status-resolvido{
+  color:var(--low);
+  background:rgba(22,163,74,.13);
+}
+
+.accounts-kanban-col-body{
+  display:grid;
+  gap:8px;
+  padding:10px;
+  height:clamp(460px,68vh,820px);
+  min-height:0;
+  overflow:auto;
+  align-content:start;
+  align-items:start;
+  grid-auto-rows:max-content;
+  scrollbar-width:none;
+  -ms-overflow-style:none;
+}
+
+.accounts-kanban.is-filtered .accounts-kanban-col-body{
+  height:auto;
+  max-height:72vh;
+  min-height:220px;
+}
+
+.accounts-kanban-col-body::-webkit-scrollbar{
+  width:0;
+  height:0;
+}
+
+.accounts-kanban-empty{
+  margin:0;
+  color:#7c94b0;
+  font-style:italic;
+  font-size:var(--fs-small);
+  text-align:center;
+  padding:26px 10px;
+}
+
 .account-card{
   border:1px solid var(--line);
   background:var(--branco);
-  padding:16px;
+  padding:14px;
   display:grid;
-  gap:12px;
+  gap:10px;
+  border-radius:12px;
+  align-self:start;
+}
+
+.account-card.compact{
+  grid-template-rows:none;
+}
+
+.account-card.is-favorite{
+  border-color:#f59e0b;
+  box-shadow:0 0 0 2px rgba(245,158,11,.14);
+}
+
+.account-card.is-pinned{
+  border-color:var(--azul);
+  box-shadow:0 0 0 2px rgba(16,107,182,.15);
+}
+
+.account-card.is-favorite.is-pinned{
+  box-shadow:0 0 0 2px rgba(16,107,182,.15),0 0 0 4px rgba(245,158,11,.1);
 }
 
 .account-card-head{
   display:flex;
   justify-content:space-between;
   align-items:flex-start;
-  gap:10px;
+  gap:8px;
 }
 
 .account-card-head h3{
@@ -251,15 +371,68 @@
 }
 
 .account-card-head p{
+  margin:2px 0 0;
+  color:var(--muted);
+  font-size:var(--fs-small);
+}
+
+.k-card-phone{
   margin:4px 0 0;
   color:var(--muted);
   font-size:var(--fs-small);
+  font-family:var(--font-mono);
+}
+
+.k-card-meta{
+  margin:2px 0 0;
+  color:var(--muted);
+  font-size:var(--fs-body);
+  display:flex;
+  align-items:center;
+  gap:6px;
+  flex-wrap:wrap;
+}
+
+.k-card-meta-sep{
+  color:#7d96b2;
+  user-select:none;
 }
 
 .account-actions{
   display:flex;
   align-items:center;
   gap:8px;
+}
+
+.account-highlight-tags{
+  margin-top:8px;
+  display:flex;
+  align-items:center;
+  gap:8px;
+  flex-wrap:wrap;
+}
+
+.account-highlight-tag{
+  display:inline-flex;
+  align-items:center;
+  padding:2px 8px;
+  border:1px solid var(--line);
+  font-size:11px;
+  font-weight:700;
+  letter-spacing:.02em;
+  border-radius:999px;
+}
+
+.account-highlight-tag.pinned{
+  color:var(--azul);
+  border-color:rgba(16,107,182,.35);
+  background:rgba(16,107,182,.09);
+}
+
+.account-highlight-tag.favorite{
+  color:#a16207;
+  border-color:rgba(245,158,11,.38);
+  background:rgba(245,158,11,.14);
 }
 
 .icon-toggle{
@@ -271,6 +444,7 @@
   display:grid;
   place-items:center;
   cursor:pointer;
+  border-radius:8px;
 }
 
 .icon-toggle.on{
@@ -284,10 +458,29 @@
   height:16px;
 }
 
+.sev-dot{
+  width:8px;
+  height:8px;
+  border-radius:999px;
+  display:inline-block;
+  flex-shrink:0;
+  margin-top:6px;
+}
+
+.sev-critical{ background:#dc2626; }
+.sev-high{ background:#ea580c; }
+.sev-medium{ background:#d97706; }
+.sev-low{ background:#16a34a; }
+.sev-info{ background:#5a7496; }
+
 .account-grid{
   display:grid;
   grid-template-columns:repeat(3,minmax(180px,1fr));
   gap:8px 14px;
+}
+
+.account-grid.compact-grid{
+  grid-template-columns:repeat(2,minmax(160px,1fr));
 }
 
 .account-grid p{
@@ -315,14 +508,15 @@
 
 .account-tags{
   display:flex;
+  align-items:center;
   flex-wrap:wrap;
-  gap:8px;
+  gap:6px;
 }
 
 .account-points-grid{
   display:grid;
   grid-template-columns:1fr 1fr;
-  gap:14px;
+  gap:12px;
 }
 
 .account-points-grid h4{
@@ -331,11 +525,22 @@
   font-size:var(--fs-small);
 }
 
+.points-column{
+  border:1px solid #dbe7f5;
+  border-radius:10px;
+  background:var(--branco);
+  padding:12px;
+  display:grid;
+  gap:8px;
+  align-content:start;
+}
+
 .account-points-grid ul{
   margin:0;
   padding-left:18px;
+  list-style:disc;
   display:grid;
-  gap:6px;
+  gap:8px;
 }
 
 .account-points-grid li,
@@ -343,6 +548,7 @@
   color:var(--muted);
   font-size:var(--fs-small);
   margin:0;
+  line-height:1.5;
 }
 
 .account-links{
@@ -365,10 +571,31 @@
   font-size:var(--fs-small);
   text-decoration:none;
   word-break:break-all;
+  display:flex;
+  align-items:flex-start;
+  gap:6px;
 }
 
 .account-link-list a:hover{
   text-decoration:underline;
+}
+
+.account-compact-actions{
+  display:flex;
+  align-items:center;
+  justify-content:flex-start;
+  gap:7px;
+  margin-top:2px;
+}
+
+.account-status-inline{
+  justify-self:start;
+  font-size:11px;
+  font-weight:700;
+  border:1px solid var(--line);
+  padding:2px 8px;
+  border-radius:999px;
+  background:#f8fbff;
 }
 
 .logs-grid{
@@ -500,6 +727,90 @@
   width: calc(100vw - 32px);
   display: grid;
   gap: 12px;
+}
+
+.account-detail-modal{
+  max-width:780px;
+  max-height:82vh;
+  overflow:auto;
+  border-radius:14px;
+}
+.account-detail-modal .modal-header{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:14px;
+  padding-bottom:14px;
+  border-bottom:1px solid var(--line);
+}
+
+.account-detail-modal .modal-close{
+  width:34px;
+  height:34px;
+  border:1px solid var(--line);
+  border-radius:10px;
+  background:var(--branco);
+  color:var(--muted);
+  font-size:20px;
+  line-height:1;
+  display:grid;
+  place-items:center;
+  cursor:pointer;
+  transition:.2s ease;
+}
+
+.account-detail-modal .modal-close:hover{
+  border-color:var(--azul);
+  color:var(--azul);
+  background:var(--azul-soft);
+}
+
+.account-detail-modal .modal-body{
+  display:grid;
+  gap:10px;
+}
+
+.account-detail-modal .modal-row{
+  display:grid;
+  grid-template-columns:180px 1fr;
+  gap:12px;
+  align-items:center;
+  padding:8px 0;
+  border-bottom:1px dashed #d8e5f5;
+}
+
+.account-detail-modal .modal-row strong{
+  color:#3c5a7b;
+  font-size:var(--fs-small);
+}
+
+.account-detail-modal .modal-row span{
+  color:var(--navy);
+  font-size:var(--fs-small);
+}
+
+.account-detail-modal .modal-section{
+  margin-top:10px;
+  padding:12px;
+  border:1px solid #dbe7f5;
+  border-radius:12px;
+  background:#f8fbff;
+  display:grid;
+  gap:10px;
+}
+
+.account-detail-modal .modal-section > h4{
+  margin:0;
+  color:var(--navy);
+  font-size:var(--fs-body);
+  font-weight:700;
+}
+
+.account-detail-modal .modal-chats{
+  border:1px solid #dbe7f5;
+  border-radius:10px;
+  padding:10px;
+  background:var(--branco);
 }
 .modal-card h3 {
   margin: 0;

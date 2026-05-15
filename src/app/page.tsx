@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { FiEye, FiEyeOff, FiLock, FiMail } from "react-icons/fi";
 import { useDashboardController } from "@/features/dashboard/hooks/useDashboardController";
 import { useRevealOnScroll } from "@/features/dashboard/hooks/useRevealOnScroll";
@@ -30,7 +30,7 @@ interface AuthStatusPayload {
 export default function Page() {
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [activeView, setActiveView] = useState<AppView>("dashboard");
-  const [stage, setStage] = useState<"splash" | "login" | "app">("splash");
+  const [stage, setStage] = useState<"boot" | "splash" | "login" | "app">("boot");
   const [viewAnimationKey, setViewAnimationKey] = useState(0);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -39,9 +39,33 @@ export default function Page() {
   const [isAuthenticating, setIsAuthenticating] = useState(false);
   const [loginError, setLoginError] = useState("");
   const [showForgotPasswordModal, setShowForgotPasswordModal] = useState(false);
+  const [showLogoutConfirmModal, setShowLogoutConfirmModal] = useState(false);
   const [currentUser, setCurrentUser] = useState<{ name: string; email: string; role: string } | null>(null);
   useRevealOnScroll({ enabled: stage === "app" });
   const controller = useDashboardController({ enabled: stage === "app" });
+  const clientsSnapshotDate = useMemo(() => {
+    return controller.reportHistory[0]?.date_ref || controller.date;
+  }, [controller.date, controller.reportHistory]);
+
+  const selectedDateKnownRunId = useMemo(() => {
+    let bestRun: { id: string; started_at: string } | null = null;
+    for (const run of controller.reportHistory) {
+      if (run.date_ref !== clientsSnapshotDate || !run.has_report) continue;
+      if (!bestRun) {
+        bestRun = { id: run.id, started_at: run.started_at };
+        continue;
+      }
+      if (new Date(run.started_at).getTime() > new Date(bestRun.started_at).getTime()) {
+        bestRun = { id: run.id, started_at: run.started_at };
+      }
+    }
+    return bestRun?.id || null;
+  }, [clientsSnapshotDate, controller.reportHistory]);
+  const sessionIdleTimeoutMs = useMemo(() => {
+    const minutes = Number(process.env.NEXT_PUBLIC_SESSION_TIMEOUT_MINUTES || 30);
+    if (!Number.isFinite(minutes) || minutes <= 0) return 30 * 60 * 1000;
+    return minutes * 60 * 1000;
+  }, []);
 
   function toPrettyName(emailValue: string | null | undefined): string {
     const safeEmail = String(emailValue || "").trim().toLowerCase();
@@ -68,7 +92,12 @@ export default function Page() {
 
   useEffect(() => {
     let cancelled = false;
-
+    const shouldShowSplash = window.sessionStorage.getItem("hile_splash_seen") !== "1";
+    if (shouldShowSplash) {
+      window.sessionStorage.setItem("hile_splash_seen", "1");
+      setStage("splash");
+    }
+    const delayMs = shouldShowSplash ? 2300 : 0;
     const timer = window.setTimeout(() => {
       void (async () => {
         const {
@@ -99,7 +128,7 @@ export default function Page() {
           setStage("app");
         }
       })();
-    }, 2300);
+    }, delayMs);
 
     return () => {
       cancelled = true;
@@ -182,8 +211,52 @@ export default function Page() {
     setLoginError("");
     setShowForgotPasswordModal(false);
     setShowConfirmModal(false);
+    setShowLogoutConfirmModal(false);
     setActiveView("dashboard");
   }
+
+  useEffect(() => {
+    if (stage !== "app") return;
+
+    let timer: number | null = null;
+    let didLogout = false;
+
+    const forceLogoutByInactivity = async () => {
+      if (didLogout) return;
+      didLogout = true;
+      await supabaseBrowser.auth.signOut();
+      setCurrentUser(null);
+      setStage("login");
+      setPassword("");
+      setShowPassword(false);
+      setIsAuthenticating(false);
+      setShowForgotPasswordModal(false);
+      setShowConfirmModal(false);
+      setShowLogoutConfirmModal(false);
+      setActiveView("dashboard");
+      setLoginError("Sessão encerrada por inatividade. Entre novamente para continuar.");
+    };
+
+    const resetIdleTimer = () => {
+      if (timer) window.clearTimeout(timer);
+      timer = window.setTimeout(() => {
+        void forceLogoutByInactivity();
+      }, sessionIdleTimeoutMs);
+    };
+
+    const events: Array<keyof WindowEventMap> = ["mousemove", "mousedown", "keydown", "scroll", "touchstart"];
+    for (const eventName of events) {
+      window.addEventListener(eventName, resetIdleTimer, { passive: true });
+    }
+    resetIdleTimer();
+
+    return () => {
+      if (timer) window.clearTimeout(timer);
+      for (const eventName of events) {
+        window.removeEventListener(eventName, resetIdleTimer);
+      }
+    };
+  }, [sessionIdleTimeoutMs, stage]);
 
   function handleForgotPassword() {
     setLoginError("");
@@ -225,6 +298,10 @@ export default function Page() {
         </div>
       </div>
     );
+  }
+
+  if (stage === "boot") {
+    return null;
   }
 
   if (stage === "login") {
@@ -356,7 +433,7 @@ export default function Page() {
         onOpenClients={handleOpenClients}
         onOpenLogs={handleOpenLogs}
         currentUser={currentUser || { name: "Usuário", email: "usuario@hile.com.br", role: "Operador" }}
-        onLogout={handleLogout}
+        onLogout={() => setShowLogoutConfirmModal(true)}
       />
 
       <main className="main-content-shell">
@@ -428,7 +505,11 @@ export default function Page() {
           </div>
           ) : activeView === "clients" ? (
             <div className="settings-animated" key={`clients-${viewAnimationKey}`}>
-              <AccountsView report={controller.report} chatwootBaseUrl={controller.apiConfig?.chatwoot_base_url || ""} />
+              <AccountsView
+                selectedDate={clientsSnapshotDate}
+                knownRunId={selectedDateKnownRunId}
+                refreshHint={controller.lastRunAt}
+              />
             </div>
           ) : activeView === "logs" ? (
             <div className="settings-animated" key={`logs-${viewAnimationKey}`}>
@@ -471,6 +552,19 @@ export default function Page() {
             <div className="modal-actions">
               <button className="btn btn-sm" onClick={() => setShowConfirmModal(false)}>Cancelar</button>
               <button className="btn btn-primary btn-sm" onClick={() => void handleConfirmRun()}>Confirmar e executar</button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {showLogoutConfirmModal ? (
+        <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="confirmLogoutTitle">
+          <div className="modal-card">
+            <h3 id="confirmLogoutTitle">Sair da conta?</h3>
+            <p>Você deseja realmente encerrar sua sessão agora?</p>
+            <div className="modal-actions">
+              <button className="btn btn-sm" onClick={() => setShowLogoutConfirmModal(false)}>Cancelar</button>
+              <button className="btn btn-primary btn-sm" onClick={() => void handleLogout()}>Sair da conta</button>
             </div>
           </div>
         </div>

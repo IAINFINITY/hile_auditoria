@@ -295,3 +295,35 @@ export interface ReportByDateResponse {
     report_markdown: string | null;
   };
 }
+
+export interface ClientRecordItem {
+  lifecycle?: {
+    firstSeenAt: string;
+    lastSeenAt: string;
+    firstIssueAt: string | null;
+    lastIssueAt: string | null;
+    resolvedAt: string | null;
+    currentStatus: string;
+    currentSeverity: Severity;
+  } | null;
+  phonePk: string;
+  contactName: string;
+  companyName: string;
+  cnpj: string;
+  gaps: string[];
+  attentions: string[];
+  labels: string[];
+  conversationIds: number[];
+  chatLinks: string[];
+  openedAt: string | null;
+  closedAt: string | null;
+  status: "aberto" | "atencao" | "resolvido" | string;
+  severity: Severity;
+}
+
+export interface ClientsByDateResponse {
+  date: string;
+  runId: string | null;
+  generatedAt: string | null;
+  items: ClientRecordItem[];
+}

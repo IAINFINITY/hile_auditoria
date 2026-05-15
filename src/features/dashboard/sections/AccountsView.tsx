@@ -1,36 +1,21 @@
-﻿import { useEffect, useMemo, useState } from "react";
-import { FiMapPin, FiSearch, FiStar } from "react-icons/fi";
-import type { ReportPayload, Severity } from "../../../types";
-import { buildConversationLink, toChatwootAppBase } from "../hooks/controller/common";
-import { PaginationControls } from "./report/PaginationControls";
-import { labelClass, parseLabelsFromLogText, parsePossibleJsonObject } from "./report/utils";
+﻿import { useEffect, useMemo, useRef, useState } from "react";
+import { FiExternalLink, FiMapPin, FiSearch, FiStar } from "react-icons/fi";
+import { apiGet } from "@/lib/api";
+import type { ClientRecordItem, ClientsByDateResponse, Severity } from "../../../types";
+import { labelClass } from "./report/utils";
 
 type AccountStatus = "aberto" | "atencao" | "resolvido";
 
-interface AccountRecord {
-  phonePk: string;
-  contactName: string;
-  companyName: string;
-  cnpj: string;
-  gaps: string[];
-  attentions: string[];
-  labels: string[];
-  conversationIds: number[];
-  chatLinks: string[];
-  openedAt: string;
-  closedAt: string;
-  status: AccountStatus;
-  severity: Severity;
-}
-
 interface AccountsViewProps {
-  report: ReportPayload | null;
-  chatwootBaseUrl: string;
+  selectedDate: string;
+  knownRunId?: string | null;
+  refreshHint?: string | null;
 }
 
-function normalizeDigits(value: unknown): string {
-  return String(value || "").replace(/\D+/g, "");
-}
+const STATUS_ORDER: AccountStatus[] = ["aberto", "atencao", "resolvido"];
+const CLIENTS_REVALIDATE_MS = 5 * 60 * 1000;
+const CLIENTS_REVALIDATE_TODAY_MS = 60 * 1000;
+const CLIENTS_CACHE_VERSION = "v3";
 
 function normalizeFilterText(value: unknown): string {
   return String(value || "")
@@ -40,64 +25,26 @@ function normalizeFilterText(value: unknown): string {
     .replace(/[\u0300-\u036f]/g, "");
 }
 
-function extractPhoneFromText(text: string): string {
-  const matches = text.match(/(?:\+?55\s*)?(?:\(?\d{2}\)?\s*)?\d{4,5}-?\d{4}/g);
-  if (!matches?.length) return "";
-  const best = matches
-    .map((item) => normalizeDigits(item))
-    .filter((item) => item.length >= 10)
-    .sort((a, b) => b.length - a.length)[0];
-  return best || "";
-}
-
-function extractCnpj(text: string): string {
-  const match = text.match(/\b\d{2}\.?\d{3}\.?\d{3}\/?\d{4}-?\d{2}\b/);
-  return match?.[0] || "";
-}
-
-function extractCompanyName(text: string): string {
-  const patterns = [
-    /"empresa"\s*:\s*"([^"\n\r]+)"/i,
-    /"nome_empresa"\s*:\s*"([^"\n\r]+)"/i,
-    /"razao_social"\s*:\s*"([^"\n\r]+)"/i,
-  ];
-
-  for (const pattern of patterns) {
-    const match = text.match(pattern);
-    const value = String(match?.[1] || "").trim();
-    if (value) return value;
-  }
-
-  return "";
-}
-
-function extractLogTimestamps(logText: string): string[] {
-  const found = [...String(logText || "").matchAll(/\[(\d{4}-\d{2}-\d{2}T[^\]]+)\]/g)]
-    .map((match) => String(match[1] || "").trim())
-    .filter(Boolean);
-  return found;
-}
-
-function toDateTimeBr(isoText: string): string {
+function toDateTimeBr(isoText: string | null): string {
   if (!isoText) return "-";
   const date = new Date(isoText);
   if (Number.isNaN(date.getTime())) return "-";
-  return date.toLocaleString("pt-BR");
+  return date.toLocaleString("pt-BR", { timeZone: "America/Fortaleza" });
 }
 
-function normalizeSeverity(value: unknown): Severity {
-  const text = normalizeFilterText(value);
-  if (text.includes("crit")) return "critical";
-  if (text.includes("alt")) return "high";
-  if (text.includes("med")) return "medium";
-  if (text.includes("baix")) return "low";
-  return "info";
+function normalizeNarrativeDateTokens(text: string): string {
+  if (!text) return text;
+  return text.replace(/\[(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z)\]/g, (_, isoText: string) => {
+    const date = new Date(isoText);
+    if (Number.isNaN(date.getTime())) return `[${isoText}]`;
+    return `[${date.toLocaleString("pt-BR", { timeZone: "America/Fortaleza" })}]`;
+  });
 }
 
 function statusLabel(status: AccountStatus): string {
-  if (status === "resolvido") return "Resolvido";
+  if (status === "resolvido") return "Fora da IA";
   if (status === "atencao") return "Atenção";
-  return "Aberto";
+  return "Em acompanhamento";
 }
 
 function severityLabel(severity: Severity): string {
@@ -108,31 +55,39 @@ function severityLabel(severity: Severity): string {
   return "Informativo";
 }
 
-function statusClass(status: AccountStatus): string {
-  if (status === "resolvido") return "account-status ok";
-  if (status === "atencao") return "account-status warn";
-  return "account-status";
+function severityClass(severity: Severity): string {
+  if (severity === "critical") return "sev-critical";
+  if (severity === "high") return "sev-high";
+  if (severity === "medium") return "sev-medium";
+  if (severity === "low") return "sev-low";
+  return "sev-info";
 }
 
-function createEmptyRecord(phonePk: string, contactName: string): AccountRecord {
-  return {
-    phonePk,
-    contactName,
-    companyName: "",
-    cnpj: "",
-    gaps: [],
-    attentions: [],
-    labels: [],
-    conversationIds: [],
-    chatLinks: [],
-    openedAt: "",
-    closedAt: "",
-    status: "aberto",
-    severity: "info",
-  };
+function normalizeLabelKey(label: string): string {
+  return String(label || "")
+    .toLowerCase()
+    .trim()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
 }
 
-export function AccountsView({ report, chatwootBaseUrl }: AccountsViewProps) {
+function hasExitFromAiLabel(labels: string[]): boolean {
+  const normalized = (labels || []).map(normalizeLabelKey);
+  return normalized.includes("lead_agendado") || normalized.includes("pausar_ia");
+}
+
+function mapStatus(record: ClientRecordItem): AccountStatus {
+  if (hasExitFromAiLabel(record.labels || [])) return "resolvido";
+  if (record.status === "resolvido") return "resolvido";
+  if (record.status === "atencao") return "atencao";
+  return "aberto";
+}
+
+function dateKeyNowFortaleza(): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Fortaleza" }).format(new Date());
+}
+
+export function AccountsView({ selectedDate, knownRunId = null, refreshHint = null }: AccountsViewProps) {
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | AccountStatus>("all");
   const [labelFilter, setLabelFilter] = useState<string>("all");
@@ -140,8 +95,14 @@ export function AccountsView({ report, chatwootBaseUrl }: AccountsViewProps) {
   const [pinnedOnly, setPinnedOnly] = useState(false);
   const [favoritePhones, setFavoritePhones] = useState<string[]>([]);
   const [pinnedPhones, setPinnedPhones] = useState<string[]>([]);
-  const [page, setPage] = useState(1);
-  const pageSize = 5;
+  const [records, setRecords] = useState<ClientRecordItem[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
+  const [runId, setRunId] = useState<string | null>(null);
+  const [selectedRecord, setSelectedRecord] = useState<ClientRecordItem | null>(null);
+  const handledRefreshHintRef = useRef<string | null>(null);
+  const cacheKey = `hile_clients_cache_${CLIENTS_CACHE_VERSION}_${selectedDate}`;
+  const fetchMetaKey = `hile_clients_fetch_meta_${CLIENTS_CACHE_VERSION}_${selectedDate}`;
 
   useEffect(() => {
     try {
@@ -163,126 +124,137 @@ export function AccountsView({ report, chatwootBaseUrl }: AccountsViewProps) {
     localStorage.setItem("hile_accounts_pinned", JSON.stringify(pinnedPhones));
   }, [pinnedPhones]);
 
-  const accountRecords = useMemo<AccountRecord[]>(() => {
-    const analyses = report?.raw_analysis?.analyses || [];
-    if (analyses.length === 0) return [];
-
-    const baseUrl = toChatwootAppBase(chatwootBaseUrl);
-    const accountId = Number(report?.account?.id || 0);
-    const inboxId = Number(report?.inbox?.id || 0);
-    const map = new Map<string, AccountRecord>();
-
-    for (const analysis of analyses) {
-      const logText = String(analysis.log_text || "");
-      const parsed = parsePossibleJsonObject(String(analysis.analysis?.answer || ""));
-      const gapsRaw = Array.isArray(parsed.gaps_operacionais) ? parsed.gaps_operacionais : [];
-      const improvementsRaw = Array.isArray(parsed.pontos_melhoria) ? parsed.pontos_melhoria : [];
-      const severity = normalizeSeverity(parsed.severidade || parsed.severity || parsed.nivel_risco || parsed.risco);
-
-      const fallbackPhone = normalizeDigits(analysis.contact?.identifier);
-      const phonePk = fallbackPhone || extractPhoneFromText(logText) || `sem-telefone-${analysis.contact_key}`;
-      const contactName =
-        String(analysis.contact?.name || analysis.contact?.identifier || analysis.contact_key || "Contato sem nome").trim();
-
-      if (!map.has(phonePk)) {
-        map.set(phonePk, createEmptyRecord(phonePk, contactName));
+  useEffect(() => {
+    try {
+      const cachedRaw = localStorage.getItem(cacheKey);
+      if (!cachedRaw) return;
+      const cached = JSON.parse(cachedRaw) as {
+        runId: string | null;
+        records: ClientRecordItem[];
+      };
+      if (Array.isArray(cached.records)) {
+        setRecords(cached.records);
+        setRunId(cached.runId || null);
       }
+    } catch {
+      // cache inválido
+    }
+  }, [cacheKey]);
 
-      const record = map.get(phonePk)!;
-      const nextContactName = String(analysis.contact?.name || "").trim();
-      if (nextContactName && !record.contactName.includes(nextContactName)) {
-        record.contactName = nextContactName;
-      }
-
-      const companyName = extractCompanyName(logText);
-      if (companyName && !record.companyName) record.companyName = companyName;
-
-      const cnpj = extractCnpj(logText);
-      if (cnpj && !record.cnpj) record.cnpj = cnpj;
-
-      const labels = (analysis.conversation_operational?.[0]?.state?.labels || []) as string[];
-      const fallbackLabels = parseLabelsFromLogText(logText);
-      for (const label of [...labels, ...fallbackLabels]) {
-        const normalizedLabel = String(label || "").trim();
-        if (normalizedLabel && !record.labels.includes(normalizedLabel)) {
-          record.labels.push(normalizedLabel);
-        }
-      }
-
-      const timestamps = extractLogTimestamps(logText);
-      if (timestamps.length > 0) {
-        const minTs = timestamps.slice().sort()[0];
-        const maxTs = timestamps.slice().sort()[timestamps.length - 1];
-        if (!record.openedAt || minTs < record.openedAt) record.openedAt = minTs;
-        if (!record.closedAt || maxTs > record.closedAt) record.closedAt = maxTs;
-      }
-
-      for (const gapItem of gapsRaw) {
-        if (typeof gapItem === "string") {
-          const text = gapItem.trim();
-          if (text && !record.gaps.includes(text)) record.gaps.push(text);
-          continue;
-        }
-        const gapObj = gapItem && typeof gapItem === "object" ? (gapItem as Record<string, unknown>) : {};
-        const text = String(gapObj.descricao || gapObj.description || gapObj.nome_gap || gapObj.gap || "").trim();
-        if (text && !record.gaps.includes(text)) record.gaps.push(text);
-      }
-
-      for (const item of improvementsRaw) {
-        const text = String(item || "").trim();
-        if (text && !record.attentions.includes(text)) record.attentions.push(text);
-      }
-
-      for (const conversationId of analysis.conversation_ids || []) {
-        const id = Number(conversationId || 0);
-        if (!id) continue;
-        if (!record.conversationIds.includes(id)) record.conversationIds.push(id);
-        const url = buildConversationLink(baseUrl, accountId, inboxId, id);
-        if (url && !record.chatLinks.includes(url)) record.chatLinks.push(url);
-      }
-
-      const state = analysis.conversation_operational?.[0]?.state;
-      const isResolved = state?.finalization_status === "finalizada";
-      if (isResolved) {
-        record.status = "resolvido";
-      } else if (record.gaps.length > 0 || severity === "critical" || severity === "high") {
-        record.status = "atencao";
-      } else {
-        record.status = "aberto";
-      }
-
-      if (["critical", "high", "medium", "low"].indexOf(severity) >= 0) {
-        const order: Record<Severity, number> = { critical: 5, high: 4, medium: 3, low: 2, info: 1 };
-        if (order[severity] > order[record.severity]) {
-          record.severity = severity;
-        }
-      }
+  useEffect(() => {
+    let cancelled = false;
+    const hasNewRefreshHint = Boolean(refreshHint) && refreshHint !== handledRefreshHintRef.current;
+    if (hasNewRefreshHint && refreshHint) {
+      handledRefreshHintRef.current = refreshHint;
     }
 
-    return Array.from(map.values());
-  }, [chatwootBaseUrl, report]);
+    const now = Date.now();
+    const isToday = selectedDate === dateKeyNowFortaleza();
+
+    const cachedRaw = localStorage.getItem(cacheKey);
+    const cachedPayload = cachedRaw
+      ? (JSON.parse(cachedRaw) as { runId: string | null; records: ClientRecordItem[] })
+      : null;
+    const cachedRunId = cachedPayload?.runId || null;
+
+    const fetchMetaRaw = sessionStorage.getItem(fetchMetaKey);
+    const cachedMeta = fetchMetaRaw
+      ? (JSON.parse(fetchMetaRaw) as { fetchedAt?: number; runId?: string | null })
+      : null;
+    const lastFetchedAt = Number(cachedMeta?.fetchedAt || 0);
+
+    const freshnessWindow = isToday ? CLIENTS_REVALIDATE_TODAY_MS : CLIENTS_REVALIDATE_MS;
+    const hasFreshCache = Boolean(cachedRaw) && now - lastFetchedAt < freshnessWindow;
+
+    const runMismatch = Boolean(knownRunId) && knownRunId !== cachedRunId;
+    const shouldBypassCache = hasNewRefreshHint || runMismatch;
+
+    if (!isToday && cachedRaw && hasFreshCache && !shouldBypassCache) {
+      setLoading(false);
+      setErrorMessage("");
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    if (hasFreshCache && !shouldBypassCache) {
+      setLoading(false);
+      setErrorMessage("");
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    setLoading(!cachedRaw);
+    setErrorMessage("");
+
+    apiGet<ClientsByDateResponse>(`/api/clients?date=${encodeURIComponent(selectedDate)}`)
+      .then((payload) => {
+        if (cancelled) return;
+
+        const incomingRecords = Array.isArray(payload.items) ? payload.items : [];
+        const incomingRunId = payload.runId || null;
+
+        const currentSnapshot = JSON.stringify(cachedPayload?.records || []);
+        const nextSnapshot = JSON.stringify(incomingRecords);
+        const hasChanged = incomingRunId !== cachedRunId || currentSnapshot !== nextSnapshot;
+
+        if (hasChanged) {
+          setRecords(incomingRecords);
+          setRunId(incomingRunId);
+          localStorage.setItem(
+            cacheKey,
+            JSON.stringify({
+              runId: incomingRunId,
+              records: incomingRecords,
+              updatedAt: new Date().toISOString(),
+            }),
+          );
+        }
+
+        sessionStorage.setItem(fetchMetaKey, JSON.stringify({ fetchedAt: Date.now(), runId: incomingRunId }));
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        if (records.length === 0) {
+          setRecords([]);
+          setRunId(null);
+        }
+        setErrorMessage(error instanceof Error ? error.message : "Falha ao carregar clientes.");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [cacheKey, fetchMetaKey, knownRunId, records.length, refreshHint, selectedDate]);
 
   const labelsAvailable = useMemo(() => {
     const set = new Set<string>();
-    for (const record of accountRecords) {
-      for (const label of record.labels) {
+    for (const record of records) {
+      for (const label of record.labels || []) {
         set.add(label);
       }
     }
     return Array.from(set).sort((a, b) => a.localeCompare(b, "pt-BR"));
-  }, [accountRecords]);
+  }, [records]);
 
   const filteredRecords = useMemo(() => {
     const q = normalizeFilterText(query);
-    const list = accountRecords.filter((record) => {
+    const list = records.filter((record) => {
       const byText =
         !q ||
         normalizeFilterText(record.contactName).includes(q) ||
         normalizeFilterText(record.phonePk).includes(q) ||
         normalizeFilterText(record.companyName).includes(q) ||
         normalizeFilterText(record.cnpj).includes(q);
-      const byStatus = statusFilter === "all" || record.status === statusFilter;
-      const byLabel = labelFilter === "all" || record.labels.some((label) => normalizeFilterText(label) === normalizeFilterText(labelFilter));
+      const status = mapStatus(record);
+      const byStatus = statusFilter === "all" || status === statusFilter;
+      const byLabel =
+        labelFilter === "all" ||
+        record.labels.some((label) => normalizeFilterText(label) === normalizeFilterText(labelFilter));
       const byFavorite = !favoritesOnly || favoritePhones.includes(record.phonePk);
       const byPinned = !pinnedOnly || pinnedPhones.includes(record.phonePk);
       return byText && byStatus && byLabel && byFavorite && byPinned;
@@ -293,17 +265,34 @@ export function AccountsView({ report, chatwootBaseUrl }: AccountsViewProps) {
       if (pinDiff !== 0) return pinDiff;
       const favDiff = Number(favoritePhones.includes(b.phonePk)) - Number(favoritePhones.includes(a.phonePk));
       if (favDiff !== 0) return favDiff;
-      return a.contactName.localeCompare(b.contactName, "pt-BR");
+      return String(a.contactName || "").localeCompare(String(b.contactName || ""), "pt-BR");
     });
-  }, [accountRecords, favoritePhones, favoritesOnly, labelFilter, pinnedOnly, pinnedPhones, query, statusFilter]);
+  }, [favoritePhones, favoritesOnly, labelFilter, pinnedOnly, pinnedPhones, query, records, statusFilter]);
 
-  useEffect(() => {
-    setPage(1);
-  }, [query, statusFilter, labelFilter, favoritesOnly, pinnedOnly]);
+  const recordsByStatus = useMemo(() => {
+    const grouped: Record<AccountStatus, ClientRecordItem[]> = {
+      aberto: [],
+      atencao: [],
+      resolvido: [],
+    };
 
-  const pages = Math.max(1, Math.ceil(filteredRecords.length / pageSize));
-  const safePage = Math.min(Math.max(1, page), pages);
-  const visible = filteredRecords.slice((safePage - 1) * pageSize, safePage * pageSize);
+    for (const record of filteredRecords) {
+      const status = mapStatus(record);
+      grouped[status].push(record);
+    }
+
+    return grouped;
+  }, [filteredRecords]);
+
+  const hasActiveFilters = useMemo(
+    () => Boolean(query.trim()) || statusFilter !== "all" || labelFilter !== "all" || favoritesOnly || pinnedOnly,
+    [favoritesOnly, labelFilter, pinnedOnly, query, statusFilter],
+  );
+
+  const visibleStatuses = useMemo(() => {
+    if (!hasActiveFilters) return STATUS_ORDER;
+    return STATUS_ORDER.filter((status) => recordsByStatus[status].length > 0);
+  }, [hasActiveFilters, recordsByStatus]);
 
   function toggleFavorite(phonePk: string) {
     setFavoritePhones((current) =>
@@ -322,9 +311,27 @@ export function AccountsView({ report, chatwootBaseUrl }: AccountsViewProps) {
       <header className="accounts-header">
         <h1>Clientes</h1>
         <p>
-          Chave primária operacional: <strong>telefone</strong>. Todos os clientes são agrupados e rastreados por esse dado.
+          Chave primária operacional: <strong>telefone</strong>. Registros carregados do banco para{" "}
+          <strong>{selectedDate}</strong>
+          {runId ? <> (execução: <code>{runId}</code>)</> : null}.
         </p>
       </header>
+
+      <article className="settings-card">
+        <div className="settings-card-head">Como funciona a classificação</div>
+        <div className="settings-card-body">
+          <p>
+            <strong>Em acompanhamento:</strong> conversa ainda dentro do fluxo da IA e sem etiqueta de saída.
+          </p>
+          <p>
+            <strong>Atenção:</strong> conversa ainda no fluxo da IA com sinais operacionais que merecem acompanhamento.
+          </p>
+          <p>
+            <strong>Fora da IA:</strong> conversa com etiqueta de saída do fluxo da IA, como{" "}
+            <code>lead_agendado</code> ou <code>pausar_ia</code>.
+          </p>
+        </div>
+      </article>
 
       <article className="settings-card">
         <div className="settings-card-head">Filtros</div>
@@ -344,9 +351,9 @@ export function AccountsView({ report, chatwootBaseUrl }: AccountsViewProps) {
               Status
               <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as "all" | AccountStatus)}>
                 <option value="all">Todos</option>
-                <option value="aberto">Aberto</option>
+                <option value="aberto">Em acompanhamento</option>
                 <option value="atencao">Atenção</option>
-                <option value="resolvido">Resolvido</option>
+                <option value="resolvido">Fora da IA</option>
               </select>
             </label>
 
@@ -378,124 +385,226 @@ export function AccountsView({ report, chatwootBaseUrl }: AccountsViewProps) {
       </article>
 
       <article className="settings-card">
-        <div className="settings-card-head">Registros ({filteredRecords.length})</div>
+        <div className="settings-card-head">Kanban — {filteredRecords.length} cliente(s)</div>
         <div className="settings-card-body accounts-list-wrap">
-          {visible.length === 0 ? (
-            <p className="empty-state">Nenhuma conta encontrada com os filtros atuais.</p>
-          ) : (
-            <div className="accounts-list">
-              {visible.map((record) => {
-                const isFavorite = favoritePhones.includes(record.phonePk);
-                const isPinned = pinnedPhones.includes(record.phonePk);
+          {loading ? <p className="empty-state">Carregando clientes do banco...</p> : null}
+          {!loading && errorMessage ? <p className="empty-state">{errorMessage}</p> : null}
+          {!loading && !errorMessage && filteredRecords.length === 0 ? (
+            <p className="empty-state">Nenhum cliente encontrado com os filtros atuais.</p>
+          ) : null}
+
+          {!loading && !errorMessage && filteredRecords.length > 0 ? (
+            <div className={`accounts-kanban ${hasActiveFilters ? "is-filtered" : ""}`}>
+              {visibleStatuses.map((status) => {
+                const list = recordsByStatus[status];
                 return (
-                  <article className="account-card" key={record.phonePk}>
-                    <div className="account-card-head">
-                      <div>
-                        <h3>{record.contactName}</h3>
-                        <p>Telefone (PK): {record.phonePk || "não informado"}</p>
-                      </div>
-                      <div className="account-actions">
-                        <button
-                          type="button"
-                          className={`icon-toggle ${isFavorite ? "on" : ""}`}
-                          onClick={() => toggleFavorite(record.phonePk)}
-                          title={isFavorite ? "Remover favorito" : "Favoritar"}
-                          aria-label={isFavorite ? "Remover favorito" : "Favoritar"}
-                        >
-                          <FiStar />
-                        </button>
-                        <button
-                          type="button"
-                          className={`icon-toggle ${isPinned ? "on" : ""}`}
-                          onClick={() => togglePinned(record.phonePk)}
-                          title={isPinned ? "Desafixar" : "Fixar"}
-                          aria-label={isPinned ? "Desafixar" : "Fixar"}
-                        >
-                          <FiMapPin />
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="account-grid">
-                      <p><strong>Empresa:</strong> {record.companyName || "Não informado"}</p>
-                      <p><strong>CNPJ:</strong> {record.cnpj || "Não informado"}</p>
-                      <p><strong>Abertura:</strong> {toDateTimeBr(record.openedAt)}</p>
-                      <p><strong>Fechamento:</strong> {record.status === "resolvido" ? toDateTimeBr(record.closedAt) : "Ainda em andamento"}</p>
-                      <p><strong>Status:</strong> <span className={statusClass(record.status)}>{statusLabel(record.status)}</span></p>
-                      <p><strong>Severidade:</strong> {severityLabel(record.severity)}</p>
-                    </div>
-
-                    <div className="account-tags">
-                      {record.labels.length > 0 ? (
-                        record.labels.map((label) => (
-                          <span className={labelClass(label)} key={`${record.phonePk}-${label}`}>
-                            {label}
-                          </span>
-                        ))
+                  <section className="accounts-kanban-col" key={status}>
+                    <header className="accounts-kanban-col-head">
+                      <span>{statusLabel(status)}</span>
+                      <span className={`accounts-kanban-badge status-${status}`}>{list.length}</span>
+                    </header>
+                    <div className="accounts-kanban-col-body">
+                      {list.length === 0 ? (
+                        <p className="accounts-kanban-empty">Nenhum cliente nesta coluna.</p>
                       ) : (
-                        <span className="tag">sem etiqueta</span>
+                        list.map((record) => {
+                          const isFavorite = favoritePhones.includes(record.phonePk);
+                          const isPinned = pinnedPhones.includes(record.phonePk);
+                          return (
+                            <article
+                              className={`account-card compact ${isFavorite ? "is-favorite" : ""} ${isPinned ? "is-pinned" : ""}`}
+                              key={record.phonePk}
+                            >
+                              <div className="account-card-head">
+                                <div>
+                                  <h3>{record.contactName || "Contato sem nome"}</h3>
+                                  <p className="k-card-phone">{record.phonePk || "não informado"}</p>
+                                  <div className="account-highlight-tags">
+                                    {isPinned ? <span className="account-highlight-tag pinned">Fixado</span> : null}
+                                    {isFavorite ? <span className="account-highlight-tag favorite">Favorito</span> : null}
+                                  </div>
+                                </div>
+                                <span className={`sev-dot ${severityClass(record.severity)}`} title={severityLabel(record.severity)} />
+                              </div>
+
+                              <p className="k-card-meta">
+                                <span>{severityLabel(record.severity)}</span>
+                                <span className="k-card-meta-sep">·</span>
+                                <span>{record.companyName || "Empresa não informada"}</span>
+                              </p>
+
+                              <div className="account-tags">
+                                {record.labels.length > 0 ? (
+                                  record.labels.slice(0, 3).map((label) => (
+                                    <span className={labelClass(label)} key={`${record.phonePk}-${label}`}>
+                                      {label}
+                                    </span>
+                                  ))
+                                ) : (
+                                  <span className="tag">sem etiqueta</span>
+                                )}
+                              </div>
+
+                              <div className="account-compact-actions">
+                                <button
+                                  type="button"
+                                  className={`icon-toggle ${isFavorite ? "on" : ""}`}
+                                  onClick={() => toggleFavorite(record.phonePk)}
+                                  title={isFavorite ? "Remover favorito" : "Favoritar"}
+                                  aria-label={isFavorite ? "Remover favorito" : "Favoritar"}
+                                >
+                                  <FiStar />
+                                </button>
+                                <button
+                                  type="button"
+                                  className={`icon-toggle ${isPinned ? "on" : ""}`}
+                                  onClick={() => togglePinned(record.phonePk)}
+                                  title={isPinned ? "Desafixar" : "Fixar"}
+                                  aria-label={isPinned ? "Desafixar" : "Fixar"}
+                                >
+                                  <FiMapPin />
+                                </button>
+                                <button className="btn btn-sm btn-primary" onClick={() => setSelectedRecord(record)}>
+                                  Detalhes
+                                </button>
+                              </div>
+                            </article>
+                          );
+                        })
                       )}
                     </div>
-
-                    <div className="account-points-grid">
-                      <div>
-                        <h4>Problemas (Gaps)</h4>
-                        {record.gaps.length > 0 ? (
-                          <ul>
-                            {record.gaps.slice(0, 3).map((gap) => (
-                              <li key={gap}>{gap}</li>
-                            ))}
-                          </ul>
-                        ) : (
-                          <p>Sem gaps registrados.</p>
-                        )}
-                      </div>
-
-                      <div>
-                        <h4>Atenções</h4>
-                        {record.attentions.length > 0 ? (
-                          <ul>
-                            {record.attentions.slice(0, 3).map((item) => (
-                              <li key={item}>{item}</li>
-                            ))}
-                          </ul>
-                        ) : (
-                          <p>Sem pontos de atenção registrados.</p>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="account-links">
-                      <strong>Chats relacionados:</strong>
-                      {record.chatLinks.length > 0 ? (
-                        <div className="account-link-list">
-                          {record.chatLinks.map((link) => (
-                            <a href={link} target="_blank" rel="noreferrer" key={link}>
-                              {link}
-                            </a>
-                          ))}
-                        </div>
-                      ) : (
-                        <span>Sem link disponível.</span>
-                      )}
-                    </div>
-                  </article>
+                  </section>
                 );
               })}
             </div>
-          )}
-
-          {filteredRecords.length > pageSize ? (
-            <PaginationControls
-              total={filteredRecords.length}
-              safePage={safePage}
-              pages={pages}
-              onPrev={() => setPage(Math.max(1, safePage - 1))}
-              onNext={() => setPage(Math.min(pages, safePage + 1))}
-            />
           ) : null}
         </div>
       </article>
+
+      {selectedRecord ? (
+        <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="clientDetailModalTitle">
+          <div className="modal-card account-detail-modal">
+            <div className="modal-header">
+              <div>
+                <h3 id="clientDetailModalTitle">{selectedRecord.contactName || "Contato sem nome"}</h3>
+                <p>{selectedRecord.companyName || "Empresa não informada"}</p>
+              </div>
+              <button className="modal-close" aria-label="Fechar modal de detalhes" onClick={() => setSelectedRecord(null)}>
+                ×
+              </button>
+            </div>
+
+            <div className="modal-body">
+              <div className="modal-row">
+                <strong>Telefone</strong>
+                <span>{selectedRecord.phonePk || "não informado"}</span>
+              </div>
+              <div className="modal-row">
+                <strong>CNPJ</strong>
+                <span>{selectedRecord.cnpj || "Não informado"}</span>
+              </div>
+              <div className="modal-row">
+                <strong>Severidade</strong>
+                <span>{severityLabel(selectedRecord.severity)}</span>
+              </div>
+              <div className="modal-row">
+                <strong>Abertura</strong>
+                <span>{toDateTimeBr(selectedRecord.openedAt)}</span>
+              </div>
+              <div className="modal-row">
+                <strong>Fechamento</strong>
+                <span>{toDateTimeBr(selectedRecord.closedAt)}</span>
+              </div>
+              <div className="modal-row">
+                <strong>Primeiro registro</strong>
+                <span>{toDateTimeBr(selectedRecord.lifecycle?.firstSeenAt || null)}</span>
+              </div>
+              <div className="modal-row">
+                <strong>Último registro</strong>
+                <span>{toDateTimeBr(selectedRecord.lifecycle?.lastSeenAt || null)}</span>
+              </div>
+              <div className="modal-row">
+                <strong>Primeiro problema</strong>
+                <span>{toDateTimeBr(selectedRecord.lifecycle?.firstIssueAt || null)}</span>
+              </div>
+              <div className="modal-row">
+                <strong>Último problema</strong>
+                <span>{toDateTimeBr(selectedRecord.lifecycle?.lastIssueAt || null)}</span>
+              </div>
+
+              <div className="modal-section">
+                <h4>Etiquetas</h4>
+                <div className="account-tags">
+                  {(selectedRecord.labels || []).length > 0 ? (
+                    selectedRecord.labels.map((label) => (
+                      <span className={labelClass(label)} key={`modal-${selectedRecord.phonePk}-${label}`}>
+                        {label}
+                      </span>
+                    ))
+                  ) : (
+                    <span className="tag">sem etiqueta</span>
+                  )}
+                </div>
+              </div>
+
+              <div className="modal-section">
+                <h4>Problemas e Atenções</h4>
+                <div className="account-points-grid">
+                  <section className="points-column">
+                    <h4>Problemas (Gaps)</h4>
+                    {selectedRecord.gaps.length > 0 ? (
+                      <ul>
+                        {selectedRecord.gaps.map((gap, index) => (
+                          <li key={`${selectedRecord.phonePk}-gap-${index}`}>{normalizeNarrativeDateTokens(gap)}</li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p>Sem gaps registrados.</p>
+                    )}
+                  </section>
+
+                  <section className="points-column">
+                    <h4>Atenções</h4>
+                    {selectedRecord.attentions.length > 0 ? (
+                      <ul>
+                        {selectedRecord.attentions.map((item, index) => (
+                          <li key={`${selectedRecord.phonePk}-attention-${index}`}>{normalizeNarrativeDateTokens(item)}</li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p>Sem pontos de atenção registrados.</p>
+                    )}
+                  </section>
+                </div>
+              </div>
+
+              <div className="modal-section">
+                <h4>Conversas no Chatwoot</h4>
+                <div className="account-links modal-chats">
+                  {selectedRecord.chatLinks.length > 0 ? (
+                    <div className="account-link-list">
+                      {selectedRecord.chatLinks.map((link) => (
+                        <a href={link} target="_blank" rel="noreferrer" key={link}>
+                          <FiExternalLink aria-hidden="true" />
+                          {link}
+                        </a>
+                      ))}
+                    </div>
+                  ) : (
+                    <span>Sem link disponível.</span>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="modal-actions">
+              <button className="btn btn-primary btn-sm" onClick={() => setSelectedRecord(null)}>
+                Fechar
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }

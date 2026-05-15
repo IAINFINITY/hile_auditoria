@@ -78,6 +78,7 @@
 @media(max-width:900px){
   .insights-top,.movement-pie-wrap{grid-template-columns:1fr}
   .report-filters-grid{grid-template-columns:1fr}
+  .accounts-kanban{grid-template-columns:1fr}
   .accounts-filter-row{grid-template-columns:1fr 1fr}
   .accounts-switch-row{gap:16px}
   .account-grid{grid-template-columns:1fr 1fr}
@@ -91,6 +92,7 @@
   .panorama-grid{grid-template-columns:1fr}
   .accounts-filter-row{grid-template-columns:1fr}
   .accounts-switch-row{display:grid;gap:8px}
+  .accounts-kanban-col-body{min-height:unset}
   .account-grid{grid-template-columns:1fr}
   .orq-row{
     grid-template-columns:1fr;

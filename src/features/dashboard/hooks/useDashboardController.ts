@@ -42,12 +42,14 @@ import { mapRunToDashboardSnapshot } from "./controller/runSnapshotMapper";
 
 export function useDashboardController(options?: { enabled?: boolean }): DashboardController {
   const enabled = options?.enabled ?? true;
+  const SELECTED_DATE_STORAGE_KEY = "hile_selected_date_v1";
   const PROGRESS_STEPS = 6;
   const SECTION_IDS = ["inicio", "gaps", "insights", "movimentacao", "relatorio"] as const;
   const NAVBAR_HEIGHT = 68;
   const minDate = "2024-01-01";
   const maxDate = toDateInputValue();
   const [date, setDateState] = useState<string>(maxDate);
+  const [isDateHydrated, setIsDateHydrated] = useState<boolean>(false);
   const [periodPreset, setPeriodPreset] = useState<PeriodPreset>("today");
   const [loading, setLoading] = useState<ActionKey | null>(null);
   const [status, setStatus] = useState<string>("");
@@ -127,6 +129,32 @@ export function useDashboardController(options?: { enabled?: boolean }): Dashboa
 
     setStatus(`Nenhum relatório salvo no período ${value}. Mantivemos a data selecionada.`);
   }
+
+  useEffect(() => {
+    if (!enabled) return;
+    try {
+      const savedDate = String(localStorage.getItem(SELECTED_DATE_STORAGE_KEY) || "").trim();
+      if (savedDate) {
+        const normalized = normalizeDateInput(savedDate, maxDate);
+        const safe = clampDateInput(normalized, minDate, maxDate);
+        setDateState(safe);
+        setLastValidDate(safe);
+      }
+    } catch {
+      // noop
+    } finally {
+      setIsDateHydrated(true);
+    }
+  }, [enabled, maxDate, minDate]);
+
+  useEffect(() => {
+    if (!enabled || !isDateHydrated) return;
+    try {
+      localStorage.setItem(SELECTED_DATE_STORAGE_KEY, date);
+    } catch {
+      // noop
+    }
+  }, [date, enabled, isDateHydrated]);
 
   useEffect(() => {
     if (!enabled) return;
@@ -227,6 +255,7 @@ export function useDashboardController(options?: { enabled?: boolean }): Dashboa
 
   useEffect(() => {
     if (!enabled) return;
+    if (!isDateHydrated) return;
     if (!date) return;
     if (isRunningOverview) return;
     if (!hasLoadedAvailableDates) return;
@@ -289,7 +318,7 @@ export function useDashboardController(options?: { enabled?: boolean }): Dashboa
     return () => {
       cancelled = true;
     };
-  }, [date, enabled, hasLoadedAvailableDates, isRunningOverview]);
+  }, [date, enabled, hasLoadedAvailableDates, isDateHydrated, isRunningOverview]);
 
   const sortedInsights = useMemo(() => {
     return [...insights].sort((a, b) => severityOrder[b.severity] - severityOrder[a.severity]);

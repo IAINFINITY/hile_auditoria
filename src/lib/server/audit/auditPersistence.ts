@@ -2,6 +2,8 @@
 import { prisma } from "@/lib/db/prisma";
 import type { AppConfig } from "./types";
 import type { ReportPayload } from "@/types";
+import { buildClientRecordsFromAnalyses } from "./clientRecords";
+import { toTitleCaseName } from "./nameFormat";
 import {
   allInsightsFromAnalysis,
   asBool,
@@ -20,6 +22,14 @@ import {
   toJsonValue,
   upsertContactByReference,
 } from "./persistence/helpers";
+
+const insightSeverityRank: Record<string, number> = {
+  critical: 5,
+  high: 4,
+  medium: 3,
+  low: 2,
+  info: 1,
+};
 
 function hasRenderableReportData(reportJson: Record<string, unknown> | null | undefined): boolean {
   if (!reportJson || typeof reportJson !== "object") return false;
@@ -222,7 +232,7 @@ export async function persistCompletedRun(params: {
     for (const analysis of analyses) {
       const parsed = parseJsonSafe(analysis.analysis?.answer);
       const contactIdentifier = String(analysis.contact?.identifier || '').trim();
-      const contactName = String(analysis.contact?.name || '').trim();
+      const contactName = toTitleCaseName(String(analysis.contact?.name || "").trim());
       const contact = await upsertContactByReference({
         db: tx,
         tenantId: tenant.id,
@@ -459,6 +469,114 @@ export async function persistCompletedRun(params: {
       },
     });
 
+    await tx.clientRecord.deleteMany({
+      where: { runId: params.runId },
+    });
+
+    const clientRecords = buildClientRecordsFromAnalyses(compactRawAnalyses as unknown as ReportPayload["raw_analysis"]["analyses"]);
+    if (clientRecords.length > 0) {
+      await tx.clientRecord.createMany({
+        data: clientRecords.map((record) => ({
+          tenantId: tenant.id,
+          channelId: channel.id,
+          runId: params.runId,
+          dateRef: toDateRef(params.date),
+          phonePk: record.phonePk,
+          contactName: record.contactName || null,
+          companyName: record.companyName || null,
+          cnpj: record.cnpj || null,
+          gapsJson: toJsonValue(record.gaps),
+          attentionsJson: toJsonValue(record.attentions),
+          labels: record.labels,
+          conversationIds: record.conversationIds,
+          chatLinks:
+            record.chatLinks.length > 0
+              ? record.chatLinks
+              : record.conversationIds
+                  .map((conversationId) =>
+                    buildConversationLink(chatwootAppBase, accountId, inboxId, Number(conversationId)),
+                  )
+                  .filter((link): link is string => Boolean(link)),
+          openedAt: record.openedAt,
+          closedAt: record.closedAt,
+          status: record.status,
+          severity: record.severity,
+        })),
+      });
+
+      for (const record of clientRecords) {
+        const existing = await tx.clientState.findUnique({
+          where: {
+            tenantId_channelId_phonePk: {
+              tenantId: tenant.id,
+              channelId: channel.id,
+              phonePk: record.phonePk,
+            },
+          },
+        });
+
+        const effectiveOpenedAt = record.openedAt || new Date(params.finishedAtIso);
+        const effectiveClosedAt = record.closedAt || new Date(params.finishedAtIso);
+        const hasIssue = record.status === "atencao";
+        const isResolved = record.status === "resolvido";
+
+        if (!existing) {
+          await tx.clientState.create({
+            data: {
+              tenantId: tenant.id,
+              channelId: channel.id,
+              phonePk: record.phonePk,
+              contactName: record.contactName || null,
+              companyName: record.companyName || null,
+              cnpj: record.cnpj || null,
+              firstSeenAt: effectiveOpenedAt,
+              lastSeenAt: effectiveClosedAt,
+              firstIssueAt: hasIssue ? effectiveOpenedAt : null,
+              lastIssueAt: hasIssue ? effectiveClosedAt : null,
+              resolvedAt: isResolved ? effectiveClosedAt : null,
+              currentStatus: isResolved ? "resolvido" : hasIssue ? "atencao" : "aberto",
+              currentSeverity: record.severity,
+              currentLabels: record.labels,
+              openConversationIds: isResolved ? [] : record.conversationIds,
+              lastRunId: params.runId,
+            },
+          });
+          continue;
+        }
+
+        const selectedSeverity =
+          insightSeverityRank[String(existing.currentSeverity || "info")] >
+          insightSeverityRank[String(record.severity || "info")]
+            ? existing.currentSeverity
+            : record.severity;
+
+        await tx.clientState.update({
+          where: { id: existing.id },
+          data: {
+            contactName: record.contactName || existing.contactName,
+            companyName: record.companyName || existing.companyName,
+            cnpj: record.cnpj || existing.cnpj,
+            firstSeenAt: existing.firstSeenAt < effectiveOpenedAt ? existing.firstSeenAt : effectiveOpenedAt,
+            lastSeenAt: existing.lastSeenAt > effectiveClosedAt ? existing.lastSeenAt : effectiveClosedAt,
+            firstIssueAt: hasIssue
+              ? existing.firstIssueAt
+                ? existing.firstIssueAt < effectiveOpenedAt
+                  ? existing.firstIssueAt
+                  : effectiveOpenedAt
+                : effectiveOpenedAt
+              : existing.firstIssueAt,
+            lastIssueAt: hasIssue ? effectiveClosedAt : existing.lastIssueAt,
+            resolvedAt: isResolved ? effectiveClosedAt : null,
+            currentStatus: isResolved ? "resolvido" : hasIssue ? "atencao" : "aberto",
+            currentSeverity: selectedSeverity,
+            currentLabels: record.labels,
+            openConversationIds: isResolved ? [] : record.conversationIds,
+            lastRunId: params.runId,
+          },
+        });
+      }
+    }
+
     await tx.analysisRun.deleteMany({
       where: {
         id: { not: params.runId },
@@ -651,6 +769,762 @@ export async function getLatestRunByDate(date: string) {
     has_report: Boolean(run.report),
     report_json: (run.report?.reportJson as Record<string, unknown> | null) || null,
     report_markdown: run.report?.reportMarkdown || null,
+  };
+}
+
+export async function listClientsByDate(date: string) {
+  const normalizeMatchKey = (value: string) =>
+    String(value || "")
+      .toLowerCase()
+      .trim()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "");
+
+  const runsForDate = await prisma.analysisRun.findMany({
+    where: {
+      dateRef: toDateRef(date),
+      status: RunStatus.completed,
+      report: {
+        isNot: null,
+      },
+    },
+    orderBy: { startedAt: "desc" },
+    take: 8,
+    select: {
+      id: true,
+      tenantId: true,
+      channelId: true,
+      dateRef: true,
+      startedAt: true,
+      report: {
+        select: {
+          reportJson: true,
+        },
+      },
+      channel: {
+        select: {
+          chatwootAccountId: true,
+          chatwootInboxId: true,
+        },
+      },
+      clientRecords: {
+        orderBy: [{ status: "asc" }, { contactName: "asc" }],
+        select: {
+          phonePk: true,
+          contactName: true,
+          companyName: true,
+          cnpj: true,
+          gapsJson: true,
+          attentionsJson: true,
+          labels: true,
+          conversationIds: true,
+          chatLinks: true,
+          openedAt: true,
+          closedAt: true,
+          status: true,
+          severity: true,
+        },
+      },
+    },
+  });
+
+  const runForDate =
+    runsForDate.find((run) => {
+      const reportJson = (run.report?.reportJson as Record<string, unknown> | null) || null;
+      const hasReportPayload = hasRenderableReportData(reportJson);
+      const hasClientSignals = (run.clientRecords || []).some((item) => {
+        const hasGaps = Array.isArray(item.gapsJson) && item.gapsJson.length > 0;
+        const hasAttentions = Array.isArray(item.attentionsJson) && item.attentionsJson.length > 0;
+        const hasLinks = Array.isArray(item.chatLinks) && item.chatLinks.length > 0;
+        return hasGaps || hasAttentions || hasLinks;
+      });
+      return hasReportPayload || hasClientSignals;
+    }) ||
+    runsForDate[0] ||
+    null;
+
+  const contextRun =
+    runForDate ||
+    (await prisma.analysisRun.findFirst({
+      where: {
+        status: RunStatus.completed,
+        report: {
+          isNot: null,
+        },
+      },
+      orderBy: { startedAt: "desc" },
+      select: {
+        id: true,
+        tenantId: true,
+        channelId: true,
+        dateRef: true,
+        startedAt: true,
+        channel: {
+          select: {
+            chatwootAccountId: true,
+            chatwootInboxId: true,
+          },
+        },
+      },
+    }));
+
+  if (!contextRun) {
+    return {
+      date,
+      runId: null,
+      generatedAt: null,
+      source: "none",
+      items: [],
+    };
+  }
+
+  const states = await prisma.clientState.findMany({
+    where: {
+      tenantId: contextRun.tenantId,
+      channelId: contextRun.channelId,
+      phonePk: {
+        in: (runForDate?.clientRecords || []).map((item) => item.phonePk),
+      },
+    },
+    select: {
+      phonePk: true,
+      firstSeenAt: true,
+      lastSeenAt: true,
+      firstIssueAt: true,
+      lastIssueAt: true,
+      resolvedAt: true,
+      currentStatus: true,
+      currentSeverity: true,
+    },
+  });
+  const stateByPhone = new Map(states.map((item) => [item.phonePk, item]));
+
+  const reportDrafts = (() => {
+    const reportJson = (runForDate?.report?.reportJson as Record<string, unknown> | null) || null;
+    const rawAnalysis = (reportJson?.raw_analysis || {}) as Record<string, unknown>;
+    const analyses = Array.isArray(rawAnalysis.analyses) ? (rawAnalysis.analyses as ReportPayload["raw_analysis"]["analyses"]) : [];
+    if (!analyses?.length) return [] as ReturnType<typeof buildClientRecordsFromAnalyses>;
+    return buildClientRecordsFromAnalyses(analyses);
+  })();
+
+  const reportFallbackByPhone = new Map<
+    string,
+    {
+      gaps: string[];
+      attentions: string[];
+      contactName: string;
+      labels: string[];
+      severity: string;
+      status: string;
+      conversationIds: number[];
+      chatLinks: string[];
+      openedAt: Date | null;
+      closedAt: Date | null;
+    }
+  >();
+  const reportFallbackByName = new Map<
+    string,
+    {
+      gaps: string[];
+      attentions: string[];
+      contactName: string;
+      labels: string[];
+      severity: string;
+      status: string;
+      conversationIds: number[];
+      chatLinks: string[];
+      openedAt: Date | null;
+      closedAt: Date | null;
+    }
+  >();
+
+  const reportLogs = (() => {
+    const reportJson = (runForDate?.report?.reportJson as Record<string, unknown> | null) || null;
+    return Array.isArray(reportJson?.logs) ? (reportJson.logs as Array<Record<string, unknown>>) : [];
+  })();
+
+  const reportLogFallbackByName = new Map<
+    string,
+    {
+      gaps: string[];
+      attentions: string[];
+      labels: string[];
+      severity: string;
+      status: string;
+      conversationIds: number[];
+      chatLinks: string[];
+    }
+  >();
+
+  for (const draft of reportDrafts) {
+    const payload = {
+      gaps: Array.isArray(draft.gaps) ? draft.gaps : [],
+      attentions: Array.isArray(draft.attentions) ? draft.attentions : [],
+      contactName: toTitleCaseName(draft.contactName || ""),
+      labels: Array.isArray(draft.labels) ? draft.labels : [],
+      severity: draft.severity || "info",
+      status: draft.status || "aberto",
+      conversationIds: Array.isArray(draft.conversationIds) ? draft.conversationIds : [],
+      chatLinks: Array.isArray(draft.chatLinks) ? draft.chatLinks : [],
+      openedAt: draft.openedAt || null,
+      closedAt: draft.closedAt || null,
+    };
+
+    const byPhoneKey = String(draft.phonePk || "").trim();
+    if (byPhoneKey) reportFallbackByPhone.set(byPhoneKey, payload);
+    const byNameKey = normalizeMatchKey(payload.contactName);
+    if (byNameKey) reportFallbackByName.set(byNameKey, payload);
+  }
+
+  for (const log of reportLogs) {
+    const name = toTitleCaseName(String(log.contact_name || "").trim());
+    const nameKey = normalizeMatchKey(name);
+    if (!nameKey) continue;
+
+    const riskLevel = String(log.risk_level || "").trim().toLowerCase();
+    const severity = riskLevel === "critical" ? "critical" : "info";
+    const summary = String(log.summary || "").trim();
+    const improvements = Array.isArray(log.improvements)
+      ? log.improvements.map((item) => String(item || "").trim()).filter(Boolean)
+      : [];
+    const conversationIds = Array.isArray(log.conversation_ids)
+      ? log.conversation_ids.map((item) => Number(item || 0)).filter((id) => id > 0)
+      : [];
+    const chatLinks = Array.isArray(log.chatwoot_links)
+      ? log.chatwoot_links.map((item) => String(item || "").trim()).filter(Boolean)
+      : [];
+    const gaps = summary && severity === "critical" ? [summary] : [];
+
+    reportLogFallbackByName.set(nameKey, {
+      gaps,
+      attentions: improvements,
+      labels: [],
+      severity,
+      status: severity === "critical" ? "atencao" : "aberto",
+      conversationIds,
+      chatLinks,
+    });
+  }
+
+  const analysisFallbackByConversationId = new Map<
+    number,
+    {
+      gaps: string[];
+      attentions: string[];
+      labels: string[];
+      severity: string;
+      status: string;
+      chatLinks: string[];
+    }
+  >();
+  const analysisFallbackByName = new Map<
+    string,
+    {
+      gaps: string[];
+      attentions: string[];
+      labels: string[];
+      severity: string;
+      status: string;
+      chatLinks: string[];
+    }
+  >();
+  const analysisFallbackByPhone = new Map<
+    string,
+    {
+      gaps: string[];
+      attentions: string[];
+      labels: string[];
+      severity: string;
+      status: string;
+      chatLinks: string[];
+    }
+  >();
+
+  const severityPriority = (value: string): number => {
+    const key = String(value || "info").toLowerCase();
+    return insightSeverityRank[key] || 0;
+  };
+
+  const mergedSeverity = (current: string, incoming: string): string =>
+    severityPriority(incoming) > severityPriority(current) ? incoming : current;
+
+  const mergeStatus = (current: string, incoming: string): string => {
+    const c = String(current || "").toLowerCase();
+    const i = String(incoming || "").toLowerCase();
+    if (c === "atencao" || i === "atencao") return "atencao";
+    if (c === "aberto" || i === "aberto") return "aberto";
+    if (c === "resolvido" || i === "resolvido") return "resolvido";
+    return current || incoming || "aberto";
+  };
+
+  const mergeAnalysisPayload = (
+    map: Map<
+      string,
+      {
+        gaps: string[];
+        attentions: string[];
+        labels: string[];
+        severity: string;
+        status: string;
+        chatLinks: string[];
+      }
+    >,
+    key: string,
+    payload: {
+      gaps: string[];
+      attentions: string[];
+      labels: string[];
+      severity: string;
+      status: string;
+      chatLinks: string[];
+    },
+  ) => {
+    if (!key) return;
+    const current = map.get(key);
+    if (!current) {
+      map.set(key, payload);
+      return;
+    }
+    map.set(key, {
+      gaps: Array.from(new Set([...current.gaps, ...payload.gaps])),
+      attentions: Array.from(new Set([...current.attentions, ...payload.attentions])),
+      labels: Array.from(new Set([...current.labels, ...payload.labels])),
+      severity: mergedSeverity(current.severity, payload.severity),
+      status: mergeStatus(current.status, payload.status),
+      chatLinks: Array.from(new Set([...current.chatLinks, ...payload.chatLinks])),
+    });
+  };
+
+  if (runForDate?.id) {
+    const analysesFromTables = await prisma.conversationAnalysis.findMany({
+      where: { runId: runForDate.id },
+      select: {
+        riskLevel: true,
+        summary: true,
+        finalizationStatus: true,
+        improvementsJson: true,
+        gaps: {
+          select: {
+            name: true,
+            description: true,
+            severity: true,
+            isCritical: true,
+          },
+        },
+        insights: {
+          select: {
+            title: true,
+            summary: true,
+            severity: true,
+          },
+        },
+        conversation: {
+          select: {
+            chatwootConversationId: true,
+            labels: true,
+            resolvedAt: true,
+            status: true,
+          },
+        },
+        contact: {
+          select: {
+            name: true,
+            identifierHash: true,
+            identifierLast4: true,
+            chatwootContactId: true,
+          },
+        },
+      },
+    });
+
+    for (const analysis of analysesFromTables) {
+      const conversationId = Number(analysis.conversation?.chatwootConversationId || 0);
+      if (!conversationId) continue;
+
+      const gaps = new Set<string>();
+      const attentions = new Set<string>();
+      const labels = new Set<string>(analysis.conversation?.labels || []);
+      let severity = "info";
+      let status = "aberto";
+
+      if (analysis.finalizationStatus === "finalizada" || analysis.conversation?.resolvedAt || analysis.conversation?.status === "resolved") {
+        status = "resolvido";
+      }
+
+      if (String(analysis.riskLevel || "").toLowerCase() === "critical") {
+        severity = "critical";
+      }
+
+      const summary = String(analysis.summary || "").trim();
+      if (summary && severity === "critical") gaps.add(summary);
+
+      const improvements = Array.isArray(analysis.improvementsJson)
+        ? analysis.improvementsJson.map((item) => String(item || "").trim()).filter(Boolean)
+        : [];
+      for (const item of improvements) attentions.add(item);
+
+      for (const gap of analysis.gaps || []) {
+        const text = String(gap.description || gap.name || "").trim();
+        if (text) gaps.add(text);
+        const gapSeverity = String(gap.severity || "").toLowerCase();
+        if (gap.isCritical || gapSeverity === "alta") severity = "critical";
+      }
+
+      for (const insight of analysis.insights || []) {
+        const text = String(insight.summary || insight.title || "").trim();
+        if (text) attentions.add(text);
+        const insightSeverity = String(insight.severity || "").toLowerCase();
+        if (insightSeverity === "critical") severity = "critical";
+        else if (insightSeverity === "high" && severity !== "critical") severity = "high";
+      }
+
+      const link = buildConversationLink(
+        toChatwootAppBase("https://chat.iainfinity.com.br"),
+        Number(contextRun.channel.chatwootAccountId || 0),
+        Number(contextRun.channel.chatwootInboxId || 0),
+        conversationId,
+      );
+
+      const payload = {
+        gaps: Array.from(gaps),
+        attentions: Array.from(attentions),
+        labels: Array.from(labels),
+        severity,
+        status,
+        chatLinks: link ? [link] : [],
+      };
+
+      analysisFallbackByConversationId.set(conversationId, payload);
+
+      const nameKey = normalizeMatchKey(String(analysis.contact?.name || "").trim());
+      mergeAnalysisPayload(analysisFallbackByName, nameKey, payload);
+
+      const identifierRaw = String(analysis.contact?.identifierHash || "").trim();
+      const digits = identifierRaw.replace(/\D+/g, "");
+      const phonePk =
+        digits.length >= 10
+          ? digits
+          : analysis.contact?.identifierLast4
+            ? `contato-${analysis.contact.chatwootContactId || "sem-id"}-${analysis.contact.identifierLast4}`
+            : "";
+      if (phonePk) {
+        mergeAnalysisPayload(analysisFallbackByPhone, phonePk, payload);
+      }
+    }
+  }
+
+  const recordsFromRun = (runForDate?.clientRecords || []).map((item) => {
+    const fallback =
+      reportFallbackByPhone.get(String(item.phonePk || "").trim()) ||
+      reportFallbackByName.get(normalizeMatchKey(item.contactName || ""));
+    const analysisFallbackByPhoneHit = analysisFallbackByPhone.get(String(item.phonePk || "").trim());
+    const analysisFallbackByNameHit = analysisFallbackByName.get(
+      normalizeMatchKey(String(item.contactName || fallback?.contactName || "")),
+    );
+    const logFallback = reportLogFallbackByName.get(
+      normalizeMatchKey(String(item.contactName || fallback?.contactName || "")),
+    );
+    const gapsFromRecord = Array.isArray(item.gapsJson)
+      ? item.gapsJson.map((gap) => String(gap || "").trim()).filter(Boolean)
+      : [];
+    const attentionsFromRecord = Array.isArray(item.attentionsJson)
+      ? item.attentionsJson.map((attention) => String(attention || "").trim()).filter(Boolean)
+      : [];
+    const labelsFromRecord = Array.isArray(item.labels) ? item.labels.filter(Boolean) : [];
+    const conversationIdsFromRecord = Array.isArray(item.conversationIds) ? item.conversationIds.filter(Boolean) : [];
+    const chatLinksFromRecord = Array.isArray(item.chatLinks) ? item.chatLinks.filter(Boolean) : [];
+    const conversationFallbackRows = conversationIdsFromRecord
+      .map((conversationId) => analysisFallbackByConversationId.get(Number(conversationId || 0)))
+      .filter(Boolean) as Array<{
+      gaps: string[];
+      attentions: string[];
+      labels: string[];
+      severity: string;
+      status: string;
+      chatLinks: string[];
+    }>;
+    const conversationFallback = {
+      gaps: Array.from(new Set(conversationFallbackRows.flatMap((row) => row.gaps))),
+      attentions: Array.from(new Set(conversationFallbackRows.flatMap((row) => row.attentions))),
+      labels: Array.from(new Set(conversationFallbackRows.flatMap((row) => row.labels))),
+      severities: conversationFallbackRows.map((row) => row.severity),
+      statuses: conversationFallbackRows.map((row) => row.status),
+      chatLinks: Array.from(new Set(conversationFallbackRows.flatMap((row) => row.chatLinks))),
+    };
+    const unifiedSeverityCandidates = [
+      item.severity,
+      fallback?.severity,
+      analysisFallbackByPhoneHit?.severity,
+      analysisFallbackByNameHit?.severity,
+      logFallback?.severity,
+      ...conversationFallback.severities,
+    ].filter(Boolean) as string[];
+    const unifiedSeverity = unifiedSeverityCandidates.reduce(
+      (best, current) => mergedSeverity(best, current),
+      "info",
+    ) as typeof item.severity;
+    const unifiedStatusCandidates = [
+      item.status,
+      fallback?.status,
+      analysisFallbackByPhoneHit?.status,
+      analysisFallbackByNameHit?.status,
+      logFallback?.status,
+      ...conversationFallback.statuses,
+    ].filter(Boolean) as string[];
+    const unifiedStatus = unifiedStatusCandidates.reduce(
+      (best, current) => mergeStatus(best, current),
+      "aberto",
+    );
+
+    return {
+    lifecycle: (() => {
+      const state = stateByPhone.get(item.phonePk);
+      if (!state) return null;
+      return {
+        firstSeenAt: state.firstSeenAt.toISOString(),
+        lastSeenAt: state.lastSeenAt.toISOString(),
+        firstIssueAt: state.firstIssueAt ? state.firstIssueAt.toISOString() : null,
+        lastIssueAt: state.lastIssueAt ? state.lastIssueAt.toISOString() : null,
+        resolvedAt: state.resolvedAt ? state.resolvedAt.toISOString() : null,
+        currentStatus: state.currentStatus,
+        currentSeverity: state.currentSeverity,
+      };
+    })(),
+    phonePk: item.phonePk,
+    contactName: toTitleCaseName(item.contactName || fallback?.contactName || ""),
+    companyName: item.companyName || "",
+    cnpj: item.cnpj || "",
+    gaps:
+      gapsFromRecord.length > 0
+        ? gapsFromRecord
+        : fallback?.gaps ||
+          analysisFallbackByPhoneHit?.gaps ||
+          analysisFallbackByNameHit?.gaps ||
+          logFallback?.gaps ||
+          conversationFallback.gaps ||
+          [],
+    attentions:
+      attentionsFromRecord.length > 0
+        ? attentionsFromRecord
+        : fallback?.attentions ||
+          analysisFallbackByPhoneHit?.attentions ||
+          analysisFallbackByNameHit?.attentions ||
+          logFallback?.attentions ||
+          conversationFallback.attentions ||
+          [],
+    labels:
+      labelsFromRecord.length > 0
+        ? labelsFromRecord
+        : fallback?.labels ||
+          analysisFallbackByPhoneHit?.labels ||
+          analysisFallbackByNameHit?.labels ||
+          logFallback?.labels ||
+          conversationFallback.labels ||
+          [],
+    conversationIds:
+      conversationIdsFromRecord.length > 0
+        ? conversationIdsFromRecord
+        : fallback?.conversationIds || logFallback?.conversationIds || [],
+    chatLinks:
+      chatLinksFromRecord.length > 0
+        ? chatLinksFromRecord
+        : fallback?.chatLinks ||
+          analysisFallbackByPhoneHit?.chatLinks ||
+          analysisFallbackByNameHit?.chatLinks ||
+          logFallback?.chatLinks ||
+          conversationFallback.chatLinks ||
+          [],
+    openedAt: item.openedAt ? item.openedAt.toISOString() : null,
+    closedAt: item.closedAt ? item.closedAt.toISOString() : null,
+    status: unifiedStatus,
+    severity: unifiedSeverity,
+  };
+  });
+
+  if (recordsFromRun.length > 0) {
+    return {
+      date: runForDate?.dateRef.toISOString().slice(0, 10) || date,
+      runId: runForDate?.id || null,
+      generatedAt: runForDate?.startedAt.toISOString() || null,
+      source: "client_records",
+      items: recordsFromRun,
+    };
+  }
+
+  if (reportDrafts.length > 0) {
+    return {
+      date: runForDate?.dateRef.toISOString().slice(0, 10) || date,
+      runId: runForDate?.id || contextRun.id,
+      generatedAt: runForDate?.startedAt.toISOString() || contextRun.startedAt.toISOString(),
+      source: "report_fallback",
+      items: reportDrafts.map((draft) => {
+        const state = stateByPhone.get(draft.phonePk);
+        return {
+          lifecycle: state
+            ? {
+                firstSeenAt: state.firstSeenAt.toISOString(),
+                lastSeenAt: state.lastSeenAt.toISOString(),
+                firstIssueAt: state.firstIssueAt ? state.firstIssueAt.toISOString() : null,
+                lastIssueAt: state.lastIssueAt ? state.lastIssueAt.toISOString() : null,
+                resolvedAt: state.resolvedAt ? state.resolvedAt.toISOString() : null,
+                currentStatus: state.currentStatus,
+                currentSeverity: state.currentSeverity,
+              }
+            : null,
+          phonePk: draft.phonePk,
+          contactName: toTitleCaseName(draft.contactName || ""),
+          companyName: draft.companyName || "",
+          cnpj: draft.cnpj || "",
+          gaps: draft.gaps || [],
+          attentions: draft.attentions || [],
+          labels: draft.labels || [],
+          conversationIds: draft.conversationIds || [],
+          chatLinks: draft.chatLinks || [],
+          openedAt: draft.openedAt ? draft.openedAt.toISOString() : null,
+          closedAt: draft.closedAt ? draft.closedAt.toISOString() : null,
+          status: draft.status || "aberto",
+          severity: draft.severity || "info",
+        };
+      }),
+    };
+  }
+
+  const statesFallback = await prisma.clientState.findMany({
+    where: {
+      tenantId: contextRun.tenantId,
+      channelId: contextRun.channelId,
+    },
+    orderBy: { updatedAt: "desc" },
+    take: 500,
+  });
+
+  if (statesFallback.length > 0) {
+    return {
+      date: runForDate?.dateRef.toISOString().slice(0, 10) || date,
+      runId: runForDate?.id || contextRun.id,
+      generatedAt: runForDate?.startedAt.toISOString() || contextRun.startedAt.toISOString(),
+      source: "client_states",
+      items: statesFallback.map((state) => ({
+        lifecycle: {
+          firstSeenAt: state.firstSeenAt.toISOString(),
+          lastSeenAt: state.lastSeenAt.toISOString(),
+          firstIssueAt: state.firstIssueAt ? state.firstIssueAt.toISOString() : null,
+          lastIssueAt: state.lastIssueAt ? state.lastIssueAt.toISOString() : null,
+          resolvedAt: state.resolvedAt ? state.resolvedAt.toISOString() : null,
+          currentStatus: state.currentStatus,
+          currentSeverity: state.currentSeverity,
+        },
+        phonePk: state.phonePk,
+        contactName: toTitleCaseName(state.contactName || ""),
+        companyName: state.companyName || "",
+        cnpj: state.cnpj || "",
+        gaps: [],
+        attentions: [],
+        labels: state.currentLabels || [],
+        conversationIds: state.openConversationIds || [],
+        chatLinks: (state.openConversationIds || [])
+          .map((conversationId) =>
+            buildConversationLink(
+              toChatwootAppBase("https://chat.iainfinity.com.br"),
+              Number(contextRun.channel.chatwootAccountId || 0),
+              Number(contextRun.channel.chatwootInboxId || 0),
+              Number(conversationId || 0),
+            ),
+          )
+          .filter((link): link is string => Boolean(link)),
+        openedAt: state.firstSeenAt ? state.firstSeenAt.toISOString() : null,
+        closedAt: state.resolvedAt ? state.resolvedAt.toISOString() : null,
+        status: state.currentStatus,
+        severity: state.currentSeverity,
+      })),
+    };
+  }
+
+  const contacts = await prisma.contact.findMany({
+    where: {
+      tenantId: contextRun.tenantId,
+      conversations: {
+        some: {
+          channelId: contextRun.channelId,
+        },
+      },
+    },
+    select: {
+      name: true,
+      chatwootContactId: true,
+      identifierHash: true,
+      identifierLast4: true,
+      conversations: {
+        where: {
+          channelId: contextRun.channelId,
+        },
+        select: {
+          chatwootConversationId: true,
+          labels: true,
+          createdAt: true,
+          resolvedAt: true,
+          lastActivityAt: true,
+          status: true,
+        },
+      },
+    },
+    take: 500,
+    orderBy: { updatedAt: "desc" },
+  });
+
+  const contactItems = contacts.map((contact) => {
+    const identifierRaw = String(contact.identifierHash || "").trim();
+    const digits = identifierRaw.replace(/\D+/g, "");
+    const phonePk =
+      digits.length >= 10
+        ? digits
+        : contact.identifierLast4
+          ? `contato-${contact.chatwootContactId || "sem-id"}-${contact.identifierLast4}`
+          : `contato-${contact.chatwootContactId || "sem-id"}`;
+
+    const conversationIds = contact.conversations
+      .map((conversation) => Number(conversation.chatwootConversationId || 0))
+      .filter((id) => id > 0);
+    const labels = Array.from(new Set(contact.conversations.flatMap((conversation) => conversation.labels || []).filter(Boolean)));
+    const createdDates = contact.conversations.map((conversation) => conversation.createdAt).filter(Boolean);
+    const resolvedDates = contact.conversations.map((conversation) => conversation.resolvedAt).filter(Boolean);
+    const openedAt = createdDates.length > 0 ? new Date(Math.min(...createdDates.map((item) => item.getTime()))) : null;
+    const closedAt = resolvedDates.length > 0 ? new Date(Math.max(...resolvedDates.map((item) => item.getTime()))) : null;
+    const status = closedAt ? "resolvido" : "aberto";
+
+    return {
+      lifecycle: null,
+      phonePk,
+      contactName: toTitleCaseName(String(contact.name || "").trim()),
+      companyName: "",
+      cnpj: "",
+      gaps: [],
+      attentions: [],
+      labels,
+      conversationIds,
+      chatLinks: conversationIds
+        .map((conversationId) =>
+          buildConversationLink(
+            toChatwootAppBase("https://chat.iainfinity.com.br"),
+            Number(contextRun.channel.chatwootAccountId || 0),
+            Number(contextRun.channel.chatwootInboxId || 0),
+            Number(conversationId || 0),
+          ),
+        )
+        .filter((link): link is string => Boolean(link)),
+      openedAt: openedAt ? openedAt.toISOString() : null,
+      closedAt: closedAt ? closedAt.toISOString() : null,
+      status,
+      severity: "info",
+    };
+  });
+
+  return {
+    date: runForDate?.dateRef.toISOString().slice(0, 10) || date,
+    runId: runForDate?.id || contextRun.id,
+    generatedAt: runForDate?.startedAt.toISOString() || contextRun.startedAt.toISOString(),
+    source: "contacts_fallback",
+    items: contactItems,
   };
 }
 

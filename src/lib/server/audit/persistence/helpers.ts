@@ -3,6 +3,7 @@ import { GapSeverity, InsightSeverity, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import type { AppConfig } from "../types";
 import type { ReportPayload } from "@/types";
+import { toTitleCaseName } from "../nameFormat";
 
 export type DbClient = Prisma.TransactionClient | typeof prisma;
 
@@ -182,6 +183,7 @@ export async function upsertContactByReference(params: {
   contactIdentifier: string;
 }) {
   const { db, tenantId, contactKey, contactName, contactIdentifier } = params;
+  const normalizedName = toTitleCaseName(contactName);
   const chatwootContactId = Number.isFinite(Number(contactKey)) ? Number(contactKey) : null;
   const identifierHash = getIdentifierHash(contactIdentifier);
   const identifierLast4 = contactIdentifier ? contactIdentifier.slice(-4) : null;
@@ -209,7 +211,7 @@ export async function upsertContactByReference(params: {
     return db.contact.update({
       where: { id: existing.id },
       data: {
-        name: contactName || existing.name || null,
+        name: normalizedName || existing.name || null,
         chatwootContactId: existing.chatwootContactId ?? chatwootContactId,
         identifierHash: existing.identifierHash || identifierHash,
         identifierLast4: existing.identifierLast4 || identifierLast4,
@@ -222,7 +224,7 @@ export async function upsertContactByReference(params: {
       data: {
         tenantId,
         chatwootContactId,
-        name: contactName || null,
+        name: normalizedName || null,
         identifierHash,
         identifierLast4,
       },
@@ -248,7 +250,7 @@ export async function upsertContactByReference(params: {
     return db.contact.update({
       where: { id: fallback.id },
       data: {
-        name: contactName || fallback.name || null,
+        name: normalizedName || fallback.name || null,
         chatwootContactId: fallback.chatwootContactId ?? chatwootContactId,
         identifierHash: fallback.identifierHash || identifierHash,
         identifierLast4: fallback.identifierLast4 || identifierLast4,
