@@ -14,6 +14,7 @@ import { cleanupReportJobs, getReportJobsStore, type ReportJobState } from "@/li
 import type { ReportPayload } from "@/types";
 
 export const runtime = "nodejs";
+type OverviewExecutionMode = "reuse" | "force";
 
 type ProgressEvent = {
   type?: "contact_start" | "contact_done";
@@ -37,8 +38,9 @@ export async function POST(request: Request) {
     cleanupReportJobs();
 
     const config = getAppConfig();
-    const body = await readJsonBody<{ date?: string }>(request);
+    const body = await readJsonBody<{ date?: string; mode?: OverviewExecutionMode }>(request);
     const date = parseDateInput(body?.date, config.timezone);
+    const mode: OverviewExecutionMode = body?.mode === "force" ? "force" : "reuse";
     const previousRun = await getLatestRunByDate(date);
     const jobs = getReportJobsStore();
 
@@ -94,6 +96,7 @@ export async function POST(request: Request) {
         const output = await buildDailyReport({
           config,
           date,
+          mode,
           onProgress: (event: ProgressEvent) => {
             const state = jobs.get(jobId);
             if (!state) return;
@@ -197,6 +200,7 @@ export async function POST(request: Request) {
         db_run_id: initialJob.db_run_id || null,
         status: "running",
         date,
+        mode,
         has_previous_report: Boolean(previousRun),
         previous_run_id: previousRun?.id || null,
       },

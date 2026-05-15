@@ -17,6 +17,7 @@ export interface DifyConfig {
   inputLogField: string;
   userPrefix: string;
   requestTimeoutMs: number;
+  timezone?: string;
 }
 
 export interface AppConfig {

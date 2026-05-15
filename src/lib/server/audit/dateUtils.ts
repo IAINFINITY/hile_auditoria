@@ -1,5 +1,13 @@
-﻿export function toYmdInTimezone(unixSeconds: number, timeZone: string): string {
-  const date = new Date(Number(unixSeconds || 0) * 1000);
+function normalizeEpochSeconds(value: number): number {
+  const n = Number(value || 0);
+  if (!n || !Number.isFinite(n)) return 0;
+  // Handles APIs returning milliseconds instead of seconds.
+  return n > 1e12 ? Math.floor(n / 1000) : Math.floor(n);
+}
+
+export function toYmdInTimezone(unixSeconds: number, timeZone: string): string {
+  const safeUnix = normalizeEpochSeconds(unixSeconds);
+  const date = new Date(safeUnix * 1000);
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone,
     year: "numeric",
@@ -25,7 +33,8 @@ export function nowUnixSeconds(): number {
 
 export function formatDateTimeInTimezone(unixSeconds: number | null, timeZone: string): string | null {
   if (!unixSeconds) return null;
-  const date = new Date(Number(unixSeconds) * 1000);
+  const safeUnix = normalizeEpochSeconds(unixSeconds);
+  const date = new Date(safeUnix * 1000);
   return new Intl.DateTimeFormat("pt-BR", {
     timeZone,
     year: "numeric",
@@ -40,7 +49,7 @@ export function formatDateTimeInTimezone(unixSeconds: number | null, timeZone: s
 
 export function assertYmd(value: string): void {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(String(value || ""))) {
-    throw new Error("Data inválida. Use o formato YYYY-MM-DD.");
+    throw new Error("Data invalida. Use o formato YYYY-MM-DD.");
   }
 }
 

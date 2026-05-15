@@ -1,6 +1,6 @@
 ﻿import { Fragment, useMemo } from "react";
 import type { OverviewPayload, Severity, SystemCheckResponse } from "../../../types";
-import type { PeriodPreset } from "../shared/types";
+import type { OverviewExecutionMode, PeriodPreset } from "../shared/types";
 
 interface MetricsSectionProps {
   date: string;
@@ -12,6 +12,8 @@ interface MetricsSectionProps {
   isBusy: boolean;
   isRunningOverview: boolean;
   onRequestOverview: () => void;
+  overviewExecutionMode: OverviewExecutionMode;
+  setOverviewExecutionMode: (value: OverviewExecutionMode) => void;
   lastRunAt: string | null;
   loading: boolean;
   systemCheck: SystemCheckResponse | null;
@@ -62,6 +64,8 @@ export function MetricsSection({
   isBusy,
   isRunningOverview,
   onRequestOverview,
+  overviewExecutionMode,
+  setOverviewExecutionMode,
   lastRunAt,
   loading,
   systemCheck,
@@ -160,38 +164,61 @@ export function MetricsSection({
 
             <div className="orq-row orq-row-exec">
               <label>Execução</label>
-              <div className="filter-box">
-                <input
-                  id="ref-date"
-                  type="date"
-                  value={date}
-                  min={minDate}
-                  max={maxDate}
-                  onChange={(event) => setDate(event.target.value)}
-                />
-                <span
-                  className="status-badge"
-                  style={{
-                    background: selectedDateHasSavedReport ? "rgba(16, 185, 129, 0.12)" : "rgba(245, 158, 11, 0.12)",
-                    color: selectedDateHasSavedReport ? "#0f5132" : "#9a3412",
-                    borderColor: selectedDateHasSavedReport ? "rgba(16, 185, 129, 0.45)" : "rgba(245, 158, 11, 0.45)",
-                  }}
-                >
-                  {selectedDateHasSavedReport ? "Com relatório" : "Sem relatório"}
-                </span>
-                <button className="btn btn-primary" onClick={onRequestOverview} disabled={isBusy}>
-                  {isRunningOverview ? "Processando..." : "Executar Overview"}
-                </button>
+              <div className="orq-exec-stack">
+                <div className="filter-box orq-exec-main">
+                  <input
+                    id="ref-date"
+                    type="date"
+                    value={date}
+                    min={minDate}
+                    max={maxDate}
+                    onChange={(event) => setDate(event.target.value)}
+                  />
+                  <span className={`status-badge ${selectedDateHasSavedReport ? "ok" : "orq-warning"}`}>
+                    {selectedDateHasSavedReport ? "Com relatório" : "Sem relatório"}
+                  </span>
+                </div>
+                <div className="filter-box orq-exec-actions">
+                  <div className="filter-group orq-exec-mode-group">
+                    <button
+                      type="button"
+                      className={`filter-pill ${overviewExecutionMode === "reuse" ? "active" : ""}`}
+                      onClick={() => setOverviewExecutionMode("reuse")}
+                      disabled={isBusy}
+                    >
+                      Reaproveitar
+                    </button>
+                    <button
+                      type="button"
+                      className={`filter-pill ${overviewExecutionMode === "force" ? "active" : ""}`}
+                      onClick={() => setOverviewExecutionMode("force")}
+                      disabled={isBusy}
+                    >
+                      Reprocessar
+                    </button>
+                    <span className="orq-action-sep" aria-hidden="true" />
+                    <button className="btn btn-primary orq-run-btn" onClick={onRequestOverview} disabled={isBusy}>
+                      {isRunningOverview ? "Processando..." : "Executar Overview"}
+                    </button>
+                    <span className="orq-inline-note">{statusLabel || selectedDateInfo}</span>
+                  </div>
+                </div>
               </div>
-              <span className="status-label">{statusLabel || selectedDateInfo}</span>
             </div>
 
-            {isRunningOverview && runTimeline.length > 0 ? (
-              <ul className="orq-timeline">
-                {runTimeline.map((entry, index) => <li key={`${entry}-${index}`}>{entry}</li>)}
-              </ul>
+            {isRunningOverview && (runTimeline.length > 0 || runCurrentContact) ? (
+              <div className="orq-row orq-row-logs">
+                <label>Logs</label>
+                <div className="filter-box orq-log-box">
+                  {runCurrentContact ? <div className="status-label">Contato em análise: {runCurrentContact}</div> : null}
+                  {runTimeline.length > 0 ? (
+                    <ul className="orq-timeline">
+                      {runTimeline.map((entry, index) => <li key={`${entry}-${index}`}>{entry}</li>)}
+                    </ul>
+                  ) : null}
+                </div>
+              </div>
             ) : null}
-            {isRunningOverview && runCurrentContact ? <div className="status-label">Contato em análise: {runCurrentContact}</div> : null}
           </div>
         </div>
 

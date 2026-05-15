@@ -11,6 +11,7 @@ import type {
 export type ActionKey = "overview";
 export type InsightFilter = "all" | Severity;
 export type PeriodPreset = "today" | "yesterday" | "before_yesterday" | "week" | "month" | "year";
+export type OverviewExecutionMode = "reuse" | "force";
 
 export interface ApiConfigPayload {
   timezone: string;
@@ -59,7 +60,9 @@ export interface DashboardController {
   activeNav: string;
   navClass: (section: string) => string;
   navigateToSection: (section: string) => void;
-  executeOverview: () => Promise<void>;
+  executeOverview: (mode?: OverviewExecutionMode) => Promise<void>;
+  overviewExecutionMode: OverviewExecutionMode;
+  setOverviewExecutionMode: (mode: OverviewExecutionMode) => void;
   apiConfig: ApiConfigPayload | null;
   systemCheck: SystemCheckResponse | null;
   overview: OverviewPayload | null;

@@ -1,260 +1,34 @@
-﻿import { createHash } from "node:crypto";
-import { GapSeverity, InsightSeverity, Prisma, RunStatus } from "@prisma/client";
+﻿import { GapSeverity, Prisma, RunStatus } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import type { AppConfig } from "./types";
 import type { ReportPayload } from "@/types";
+import {
+  allInsightsFromAnalysis,
+  asBool,
+  asNumOrNull,
+  asRecord,
+  asStringList,
+  buildConversationLink,
+  parseGapEntries,
+  parseGapSeverity,
+  parseInsightSeverity,
+  parseJsonSafe,
+  pickFirstText,
+  resolveTenantAndChannel,
+  toChatwootAppBase,
+  toDateRef,
+  toJsonValue,
+  upsertContactByReference,
+} from "./persistence/helpers";
 
-type DbClient = Prisma.TransactionClient | typeof prisma;
-
-function normalizeSlug(text: string): string {
-  return String(text || "")
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 60);
-}
-
-function toDateRef(date: string): Date {
-  return new Date(`${date}T00:00:00.000Z`);
-}
-
-function toChatwootAppBase(baseUrl: string): string {
-  const raw = String(baseUrl || "").trim();
-  if (!raw) return "";
-
-  try {
-    const parsed = new URL(raw);
-    const cleanedPath = parsed.pathname
-      .replace(/\/+$/, "")
-      .replace(/\/api\/v1(?:\/.*)?$/i, "")
-      .replace(/\/api(?:\/.*)?$/i, "");
-    return `${parsed.origin}${cleanedPath}`.replace(/\/+$/, "");
-  } catch {
-    return raw
-      .replace(/\/+$/, "")
-      .replace(/\/api\/v1(?:\/.*)?$/i, "")
-      .replace(/\/api(?:\/.*)?$/i, "");
-  }
-}
-
-function buildConversationLink(baseUrl: string, accountId: number, inboxId: number, conversationId: number): string | null {
-  if (!baseUrl || !accountId || !inboxId || !conversationId) return null;
-  return `${baseUrl}/app/accounts/${accountId}/inbox/${inboxId}/conversations/${conversationId}`;
-}
-
-function parseGapSeverity(value: unknown): GapSeverity {
-  const raw = String(value || "").trim().toLowerCase();
-  if (raw.startsWith("alt")) return GapSeverity.alta;
-  if (raw.startsWith("med")) return GapSeverity.media;
-  if (raw.startsWith("baix")) return GapSeverity.baixa;
-  return GapSeverity.nao_informado;
-}
-
-function parseInsightSeverity(value: unknown): InsightSeverity {
-  const raw = String(value || "").trim().toLowerCase();
-  if (raw === "critical") return InsightSeverity.critical;
-  if (raw === "high") return InsightSeverity.high;
-  if (raw === "medium") return InsightSeverity.medium;
-  if (raw === "low") return InsightSeverity.low;
-  return InsightSeverity.info;
-}
-
-function parseJsonSafe(text: unknown): Record<string, unknown> {
-  const raw = String(text || "").trim();
-  if (!raw) return {};
-
-  try {
-    return JSON.parse(raw);
-  } catch {
-    const fencedMatch = raw.match(/```json\s*([\s\S]*?)\s*```/i);
-    if (!fencedMatch) return {};
-    try {
-      return JSON.parse(fencedMatch[1]);
-    } catch {
-      return {};
-    }
-  }
-}
-
-function asStringList(value: unknown): string[] {
-  if (!Array.isArray(value)) return [];
-  return value.map((item) => String(item || "").trim()).filter(Boolean);
-}
-
-function parseGapEntries(parsed: Record<string, unknown>): Array<Record<string, unknown>> {
-  const items = parsed.gaps_operacionais;
-  if (!Array.isArray(items)) return [];
-  return items.filter((item) => item && typeof item === "object") as Array<Record<string, unknown>>;
-}
-
-function pickFirstText(obj: Record<string, unknown>, keys: string[]): string {
-  for (const key of keys) {
-    const value = obj[key];
-    if (value === null || value === undefined) continue;
-    const text = String(value).trim();
-    if (text) return text;
-  }
-  return "";
-}
-
-function toJsonValue(value: unknown): Prisma.InputJsonValue {
-  return JSON.parse(JSON.stringify(value ?? null)) as Prisma.InputJsonValue;
-}
-
-function asRecord(value: unknown): Record<string, unknown> {
-  if (!value || typeof value !== "object") return {};
-  return value as Record<string, unknown>;
-}
-
-function asBool(value: unknown): boolean | null {
-  if (value === null || value === undefined) return null;
-  if (typeof value === "boolean") return value;
-  const text = String(value).trim().toLowerCase();
-  if (text === "true" || text === "1" || text === "sim") return true;
-  if (text === "false" || text === "0" || text === "nao" || text === "não") return false;
-  return null;
-}
-
-function asNumOrNull(value: unknown): number | null {
-  if (value === null || value === undefined || value === "") return null;
-  const n = Number(value);
-  return Number.isFinite(n) ? n : null;
-}
-
-function normalizeIdentifier(value: string): string {
-  const raw = String(value || "").trim();
-  if (!raw) return "";
-  const digits = raw.replace(/\D+/g, "");
-  return digits || raw.toLowerCase();
-}
-
-function getIdentifierHash(identifier: string): string | null {
-  const normalized = normalizeIdentifier(identifier);
-  if (!normalized) return null;
-  const salt = process.env.PII_HASH_SALT || process.env.DATABASE_URL || "hile-default-salt";
-  return createHash("sha256").update(`${salt}:${normalized}`).digest("hex");
-}
-
-async function resolveTenantAndChannel(db: DbClient, config: AppConfig, report: ReportPayload) {
-  const accountId = Number(report.account?.id || config.chatwoot.accountId || 0);
-  const inboxId = Number(report.inbox?.id || config.chatwoot.inboxId || 0);
-  const groupName = String(report.account?.name || config.chatwoot.groupName || "Tenant");
-  const inboxName = String(report.inbox?.name || config.chatwoot.inboxName || "Inbox");
-  const slugBase = normalizeSlug(`${groupName}-${accountId || "na"}`) || "tenant";
-
-  const tenant = await db.tenant.upsert({
-    where: { slug: slugBase },
-    update: { name: groupName },
-    create: { slug: slugBase, name: groupName },
-  });
-
-  const channel = await db.channel.upsert({
-    where: {
-      tenantId_chatwootAccountId_chatwootInboxId: {
-        tenantId: tenant.id,
-        chatwootAccountId: accountId,
-        chatwootInboxId: inboxId,
-      },
-    },
-    update: {
-      name: inboxName,
-      provider: report.inbox?.provider || config.chatwoot.inboxProvider || null,
-    },
-    create: {
-      tenantId: tenant.id,
-      chatwootAccountId: accountId,
-      chatwootInboxId: inboxId,
-      name: inboxName,
-      provider: report.inbox?.provider || config.chatwoot.inboxProvider || null,
-    },
-  });
-
-  return { tenant, channel };
-}
-
-async function upsertContactByReference(params: {
-  db: DbClient;
-  tenantId: string;
-  contactKey: string;
-  contactName: string;
-  contactIdentifier: string;
-}) {
-  const { db, tenantId, contactKey, contactName, contactIdentifier } = params;
-  const chatwootContactId = Number.isFinite(Number(contactKey)) ? Number(contactKey) : null;
-  const identifierHash = getIdentifierHash(contactIdentifier);
-  const identifierLast4 = contactIdentifier ? contactIdentifier.slice(-4) : null;
-
-  let existing =
-    chatwootContactId !== null
-      ? await db.contact.findFirst({
-          where: {
-            tenantId,
-            chatwootContactId,
-          },
-        })
-      : null;
-
-  if (!existing && identifierHash) {
-    existing = await db.contact.findFirst({
-      where: {
-        tenantId,
-        identifierHash,
-      },
-    });
-  }
-
-  if (existing) {
-    return db.contact.update({
-      where: { id: existing.id },
-      data: {
-        name: contactName || existing.name || null,
-        chatwootContactId: existing.chatwootContactId ?? chatwootContactId,
-        identifierHash: existing.identifierHash || identifierHash,
-        identifierLast4: existing.identifierLast4 || identifierLast4,
-      },
-    });
-  }
-
-  try {
-    return await db.contact.create({
-      data: {
-        tenantId,
-        chatwootContactId,
-        name: contactName || null,
-        identifierHash,
-        identifierLast4,
-      },
-    });
-  } catch (error: unknown) {
-    const code = (error as { code?: string } | null)?.code;
-    if (code !== "P2002") throw error;
-
-    const fallback =
-      (chatwootContactId !== null
-        ? await db.contact.findFirst({
-            where: { tenantId, chatwootContactId },
-          })
-        : null) ||
-      (identifierHash
-        ? await db.contact.findFirst({
-            where: { tenantId, identifierHash },
-          })
-        : null);
-
-    if (!fallback) throw error;
-
-    return db.contact.update({
-      where: { id: fallback.id },
-      data: {
-        name: contactName || fallback.name || null,
-        chatwootContactId: fallback.chatwootContactId ?? chatwootContactId,
-        identifierHash: fallback.identifierHash || identifierHash,
-        identifierLast4: fallback.identifierLast4 || identifierLast4,
-      },
-    });
-  }
+function hasRenderableReportData(reportJson: Record<string, unknown> | null | undefined): boolean {
+  if (!reportJson || typeof reportJson !== "object") return false;
+  const rawAnalysis = (reportJson.raw_analysis || {}) as Record<string, unknown>;
+  const analyses = Array.isArray(rawAnalysis.analyses) ? rawAnalysis.analyses : [];
+  const failures = Array.isArray(rawAnalysis.failures) ? rawAnalysis.failures : [];
+  const logs = Array.isArray(reportJson.logs) ? reportJson.logs : [];
+  const logsCount = Number(reportJson.logs_count || 0);
+  return analyses.length > 0 || failures.length > 0 || logs.length > 0 || logsCount > 0;
 }
 
 export async function createRunRecord(params: {
@@ -278,7 +52,7 @@ export async function createRunRecord(params: {
     const dateRef = toDateRef(params.date);
     const lockKey = `analysis-run:${tenant.id}:${channel.id}:${params.date}`;
 
-    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`;
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`;
 
     const staleBefore = new Date(Date.now() - 3 * 60 * 60 * 1000);
     const now = new Date(params.startedAtIso);
@@ -326,7 +100,7 @@ export async function createRunRecord(params: {
     });
 
     return run.id;
-  });
+  }, { maxWait: 20_000, timeout: 120_000 });
 }
 
 export async function getCachedAnalysisByFingerprint(params: {
@@ -421,6 +195,13 @@ export async function persistCompletedRun(params: {
   const compactLogItems: Array<Record<string, unknown>> = [];
   const compactRawAnalyses: Array<Record<string, unknown>> = [];
 
+  const pendingCacheWrites: Array<{
+    tenantId: string;
+    sourceFingerprint: string;
+    analysisId: string;
+    conversationDbIds: string[];
+  }> = [];
+
   await prisma.$transaction(async (tx) => {
     const { tenant, channel } = await resolveTenantAndChannel(tx, params.config, params.output);
 
@@ -450,117 +231,118 @@ export async function persistCompletedRun(params: {
         contactIdentifier,
       });
 
+      let entryIdForCache: string | null = null;
       const firstConversationId = Number(analysis.conversation_ids?.[0] || 0);
-      if (!firstConversationId) {
-        continue;
-      }
-
-      const conversation = await tx.conversation.upsert({
-        where: {
-          tenantId_chatwootConversationId: {
-            tenantId: tenant.id,
-            chatwootConversationId: firstConversationId,
+      if (firstConversationId > 0) {
+        const conversation = await tx.conversation.upsert({
+          where: {
+            tenantId_chatwootConversationId: {
+              tenantId: tenant.id,
+              chatwootConversationId: firstConversationId,
+            },
           },
-        },
-        update: {
-          channelId: channel.id,
-          contactId: contact.id,
-        },
-        create: {
-          tenantId: tenant.id,
-          channelId: channel.id,
-          contactId: contact.id,
-          chatwootConversationId: firstConversationId,
-          labels: [],
-        },
-      });
+          update: {
+            channelId: channel.id,
+            contactId: contact.id,
+          },
+          create: {
+            tenantId: tenant.id,
+            channelId: channel.id,
+            contactId: contact.id,
+            chatwootConversationId: firstConversationId,
+            labels: [],
+          },
+        });
 
-      const existingAnalysis = await tx.conversationAnalysis.findFirst({
-        where: {
+        const existingAnalysis = await tx.conversationAnalysis.findFirst({
+          where: {
+            runId: params.runId,
+            conversationId: conversation.id,
+          },
+          orderBy: { createdAt: "desc" },
+          select: { id: true },
+        });
+
+        const baseAnalysisUpdateData: Prisma.ConversationAnalysisUncheckedUpdateInput = {
+          contactId: contact.id,
+          riskLevel: Boolean(parsed.risco_critico) ? "critical" : "non_critical",
+          summary: String(parsed.resumo || "").trim() || null,
+          improvementsJson: asStringList(parsed.pontos_melhoria),
+          nextStepsJson: asStringList(parsed.proximos_passos),
+          aiRawJson: toJsonValue(parsed),
+          finalizationStatus:
+            analysis.conversation_operational?.[0]?.state?.finalization_status === "finalizada" ? "finalizada" : "continuada",
+        };
+
+        const baseAnalysisCreateData: Prisma.ConversationAnalysisUncheckedCreateInput = {
           runId: params.runId,
           conversationId: conversation.id,
-        },
-        orderBy: { createdAt: "desc" },
-        select: { id: true },
-      });
-
-      const baseAnalysisUpdateData: Prisma.ConversationAnalysisUncheckedUpdateInput = {
-        contactId: contact.id,
-        riskLevel: Boolean(parsed.risco_critico) ? "critical" : "non_critical",
-        summary: String(parsed.resumo || "").trim() || null,
-        improvementsJson: asStringList(parsed.pontos_melhoria),
-        nextStepsJson: asStringList(parsed.proximos_passos),
-        aiRawJson: toJsonValue(parsed),
-        finalizationStatus:
-          analysis.conversation_operational?.[0]?.state?.finalization_status === "finalizada" ? "finalizada" : "continuada",
-      };
-
-      const baseAnalysisCreateData: Prisma.ConversationAnalysisUncheckedCreateInput = {
-        runId: params.runId,
-        conversationId: conversation.id,
-        contactId: contact.id,
-        riskLevel: Boolean(parsed.risco_critico) ? "critical" : "non_critical",
-        summary: String(parsed.resumo || "").trim() || null,
-        improvementsJson: asStringList(parsed.pontos_melhoria),
-        nextStepsJson: asStringList(parsed.proximos_passos),
-        aiRawJson: toJsonValue(parsed),
-        finalizationStatus:
-          analysis.conversation_operational?.[0]?.state?.finalization_status === "finalizada" ? "finalizada" : "continuada",
-      };
-
-      const entry = existingAnalysis
-        ? await tx.conversationAnalysis.update({
-            where: { id: existingAnalysis.id },
-            data: baseAnalysisUpdateData,
-          })
-        : await tx.conversationAnalysis.create({
-            data: baseAnalysisCreateData,
-          });
-
-      if (existingAnalysis) {
-        await tx.gap.deleteMany({ where: { analysisId: entry.id } });
-        await tx.insight.deleteMany({ where: { analysisId: entry.id } });
-      }
-
-      const gaps = parseGapEntries(parsed);
-      const gapRows = gaps.map((gap) => {
-        const severityLabel = pickFirstText(gap, ["severidade", "severity", "nivel", "prioridade"]);
-        const severity = parseGapSeverity(severityLabel);
-        const isCritical = String(severityLabel).toLowerCase().startsWith("cr") || severity === GapSeverity.alta;
-        return {
-          analysisId: entry.id,
-          name: pickFirstText(gap, ["nome_gap", "nome", "titulo", "title", "gap", "categoria"]) || "Gap operacional",
-          severity,
-          description: pickFirstText(gap, ["descricao", "description", "detalhe", "detalhes", "contexto"]) || null,
-          messageReference:
-            pickFirstText(gap, ["mensagem_referencia", "message_reference", "referencia_mensagem", "trecho"]) || null,
-          userReportedData:
-            pickFirstText(gap, ["dado_informado_pelo_usuario", "dado_informado", "valor_informado"]) || null,
-          confirmedData:
-            pickFirstText(gap, ["dado_confirmado_pelo_acesso_infinity", "dado_confirmado", "valor_confirmado"]) || null,
-          category: pickFirstText(gap, ["categoria", "category"]) || null,
-          isCritical,
+          contactId: contact.id,
+          riskLevel: Boolean(parsed.risco_critico) ? "critical" : "non_critical",
+          summary: String(parsed.resumo || "").trim() || null,
+          improvementsJson: asStringList(parsed.pontos_melhoria),
+          nextStepsJson: asStringList(parsed.proximos_passos),
+          aiRawJson: toJsonValue(parsed),
+          finalizationStatus:
+            analysis.conversation_operational?.[0]?.state?.finalization_status === "finalizada" ? "finalizada" : "continuada",
         };
-      });
-      if (gapRows.length > 0) {
-        await tx.gap.createMany({
-          data: gapRows,
-        });
-      }
 
-      const operationalInsights = allInsightsFromAnalysis(analysis);
-      const insightRows = operationalInsights.map((insight) => ({
-        analysisId: entry.id,
-        type: insight.type || null,
-        severity: parseInsightSeverity(insight.severity),
-        title: String(insight.title || "Insight operacional"),
-        summary: String(insight.summary || "").trim(),
-        operationalStateJson: toJsonValue(insight),
-      }));
-      if (insightRows.length > 0) {
-        await tx.insight.createMany({
-          data: insightRows,
+        const entry = existingAnalysis
+          ? await tx.conversationAnalysis.update({
+              where: { id: existingAnalysis.id },
+              data: baseAnalysisUpdateData,
+            })
+          : await tx.conversationAnalysis.create({
+              data: baseAnalysisCreateData,
+            });
+
+        entryIdForCache = entry.id;
+
+        if (existingAnalysis) {
+          await tx.gap.deleteMany({ where: { analysisId: entry.id } });
+          await tx.insight.deleteMany({ where: { analysisId: entry.id } });
+        }
+
+        const gaps = parseGapEntries(parsed);
+        const gapRows = gaps.map((gap) => {
+          const severityLabel = pickFirstText(gap, ["severidade", "severity", "nivel", "prioridade"]);
+          const severity = parseGapSeverity(severityLabel);
+          const isCritical = String(severityLabel).toLowerCase().startsWith("cr") || severity === GapSeverity.alta;
+          return {
+            analysisId: entry.id,
+            name: pickFirstText(gap, ["nome_gap", "nome", "titulo", "title", "gap", "categoria"]) || "Gap operacional",
+            severity,
+            description: pickFirstText(gap, ["descricao", "description", "detalhe", "detalhes", "contexto"]) || null,
+            messageReference:
+              pickFirstText(gap, ["mensagem_referencia", "message_reference", "referencia_mensagem", "trecho"]) || null,
+            userReportedData:
+              pickFirstText(gap, ["dado_informado_pelo_usuario", "dado_informado", "valor_informado"]) || null,
+            confirmedData:
+              pickFirstText(gap, ["dado_confirmado_pelo_acesso_infinity", "dado_confirmado", "valor_confirmado"]) || null,
+            category: pickFirstText(gap, ["categoria", "category"]) || null,
+            isCritical,
+          };
         });
+        if (gapRows.length > 0) {
+          await tx.gap.createMany({
+            data: gapRows,
+          });
+        }
+
+        const operationalInsights = allInsightsFromAnalysis(analysis);
+        const insightRows = operationalInsights.map((insight) => ({
+          analysisId: entry.id,
+          type: insight.type || null,
+          severity: parseInsightSeverity(insight.severity),
+          title: String(insight.title || "Insight operacional"),
+          summary: String(insight.summary || "").trim(),
+          operationalStateJson: toJsonValue(insight),
+        }));
+        if (insightRows.length > 0) {
+          await tx.insight.createMany({
+            data: insightRows,
+          });
+        }
       }
 
       const links = (analysis.conversation_ids || [])
@@ -616,7 +398,7 @@ export async function persistCompletedRun(params: {
 
       const sourceFingerprint = String(analysis.source_fingerprint || "").trim();
       const cacheConversationIds = (analysis.conversation_ids || []).map((id) => Number(id || 0)).filter((id) => id > 0);
-      if (sourceFingerprint && cacheConversationIds.length > 0) {
+      if (sourceFingerprint && cacheConversationIds.length > 0 && entryIdForCache) {
         const cacheConversations = await tx.conversation.findMany({
           where: {
             tenantId: tenant.id,
@@ -626,20 +408,11 @@ export async function persistCompletedRun(params: {
         });
 
         if (cacheConversations.length > 0) {
-          await tx.analysisCache.deleteMany({
-            where: {
-              tenantId: tenant.id,
-              sourceFingerprint,
-              conversationId: { in: cacheConversations.map((item) => item.id) },
-            },
-          });
-          await tx.analysisCache.createMany({
-            data: cacheConversations.map((conversation) => ({
-              tenantId: tenant.id,
-              conversationId: conversation.id,
-              sourceFingerprint,
-              analysisId: entry.id,
-            })),
+          pendingCacheWrites.push({
+            tenantId: tenant.id,
+            sourceFingerprint,
+            analysisId: entryIdForCache,
+            conversationDbIds: cacheConversations.map((item) => item.id),
           });
         }
       }
@@ -698,43 +471,32 @@ export async function persistCompletedRun(params: {
         },
       },
     });
-  });
-}
+  }, { maxWait: 20_000, timeout: 180_000 });
 
-function allInsightsFromAnalysis(analysis: ReportPayload["raw_analysis"]["analyses"][number]) {
-  const items = analysis.conversation_operational || [];
-  return items
-    .map((item) => item.state)
-    .filter(Boolean)
-    .map((state) => {
-      if (state?.finalization_status === "finalizada") {
-        return {
-          type: "finalization",
-          severity: "low",
-          title: "Conversa finalizada",
-          summary: state.finalization_actor
-            ? `Finalizada por ${state.finalization_actor}.`
-            : "Conversa encerrada com status de finalização.",
-          state,
-        };
-      }
-      if (state?.waiting_on_agent) {
-        return {
-          type: "pending_agent",
-          severity: "medium",
-          title: "Aguardando resposta do atendimento",
-          summary: "Cliente aguardando resposta.",
-          state,
-        };
-      }
-      return {
-        type: "pending_customer",
-        severity: "info",
-        title: "Aguardando retorno do cliente",
-        summary: "Última interação foi enviada pela IA/atendente.",
-        state,
-      };
-    });
+  for (const cacheWrite of pendingCacheWrites) {
+    try {
+      await prisma.analysisCache.deleteMany({
+        where: {
+          tenantId: cacheWrite.tenantId,
+          sourceFingerprint: cacheWrite.sourceFingerprint,
+          conversationId: { in: cacheWrite.conversationDbIds },
+        },
+      });
+      await prisma.analysisCache.createMany({
+        data: cacheWrite.conversationDbIds.map((conversationId) => ({
+          tenantId: cacheWrite.tenantId,
+          conversationId,
+          sourceFingerprint: cacheWrite.sourceFingerprint,
+          analysisId: cacheWrite.analysisId,
+        })),
+      });
+    } catch (error) {
+      console.warn(
+        `[audit-persistence] falha ao atualizar cache de análise (${cacheWrite.sourceFingerprint}):`,
+        error,
+      );
+    }
+  }
 }
 
 export async function markRunFailed(runId: string, finishedAtIso: string, message: string) {
@@ -766,21 +528,26 @@ export async function listRecentRuns(limit: number) {
     },
   });
 
-  return rows.map((row) => ({
-    report_json: row.report?.reportJson || null,
-    id: row.id,
-    status: row.status,
-    date_ref: row.dateRef.toISOString().slice(0, 10),
-    started_at: row.startedAt.toISOString(),
-    finished_at: row.finishedAt ? row.finishedAt.toISOString() : null,
-    total_conversations: row.totalConversations,
-    processed: row.processed,
-    success_count: row.successCount,
-    failure_count: row.failureCount,
-    tenant: row.tenant.name,
-    channel: row.channel.name,
-    has_report: Boolean(row.report),
-  }));
+  return rows
+    .map((row) => {
+      const reportJson = (row.report?.reportJson as Record<string, unknown> | null) || null;
+      return {
+        report_json: reportJson,
+        id: row.id,
+        status: row.status,
+        date_ref: row.dateRef.toISOString().slice(0, 10),
+        started_at: row.startedAt.toISOString(),
+        finished_at: row.finishedAt ? row.finishedAt.toISOString() : null,
+        total_conversations: row.totalConversations,
+        processed: row.processed,
+        success_count: row.successCount,
+        failure_count: row.failureCount,
+        tenant: row.tenant.name,
+        channel: row.channel.name,
+        has_report: hasRenderableReportData(reportJson),
+      };
+    })
+    .filter((row) => row.has_report);
 }
 
 export async function getRunSnapshot(runId: string) {
@@ -818,19 +585,34 @@ export async function listAvailableReportDates(limit = 365) {
         isNot: null,
       },
     },
-    orderBy: { dateRef: "desc" },
-    distinct: ["dateRef"],
+    orderBy: [{ dateRef: "desc" }, { startedAt: "desc" }],
     take: Math.max(1, Math.min(2000, Number(limit || 365))),
     select: {
       dateRef: true,
+      report: {
+        select: {
+          reportJson: true,
+        },
+      },
     },
   });
 
-  return rows.map((row) => row.dateRef.toISOString().slice(0, 10));
+  const validDates = new Set<string>();
+
+  for (const row of rows) {
+    const dateRef = row.dateRef.toISOString().slice(0, 10);
+    if (validDates.has(dateRef)) continue;
+    const reportJson = (row.report?.reportJson as Record<string, unknown> | null) || null;
+    if (hasRenderableReportData(reportJson)) {
+      validDates.add(dateRef);
+    }
+  }
+
+  return Array.from(validDates);
 }
 
 export async function getLatestRunByDate(date: string) {
-  const run = await prisma.analysisRun.findFirst({
+  const runs = await prisma.analysisRun.findMany({
     where: {
       dateRef: toDateRef(date),
       status: RunStatus.completed,
@@ -839,11 +621,17 @@ export async function getLatestRunByDate(date: string) {
       },
     },
     orderBy: { startedAt: "desc" },
+    take: 10,
     include: {
       report: true,
       channel: true,
       tenant: true,
     },
+  });
+
+  const run = runs.find((item) => {
+    const reportJson = (item.report?.reportJson as Record<string, unknown> | null) || null;
+    return hasRenderableReportData(reportJson);
   });
 
   if (!run) return null;
@@ -865,5 +653,6 @@ export async function getLatestRunByDate(date: string) {
     report_markdown: run.report?.reportMarkdown || null,
   };
 }
+
 
 

@@ -117,7 +117,7 @@ export default function Page() {
 
   async function handleConfirmRun() {
     setShowConfirmModal(false);
-    await controller.executeOverview();
+    await controller.executeOverview(controller.overviewExecutionMode);
   }
 
   function handleNavigate(section: string) {
@@ -361,17 +361,19 @@ export default function Page() {
       <main className="main-content-shell">
         {activeView === "dashboard" ? (
           <div className="dashboard-animated" key={`dashboard-${viewAnimationKey}`}>
-            <MetricsSection
-              date={controller.date}
-              setDate={controller.setDate}
+              <MetricsSection
+                date={controller.date}
+                setDate={controller.setDate}
               minDate={controller.minDate}
               maxDate={controller.maxDate}
               periodPreset={controller.periodPreset}
               applyPeriodPreset={controller.applyPeriodPreset}
-              isBusy={controller.isBusy}
-              isRunningOverview={controller.isRunningOverview}
-              onRequestOverview={() => setShowConfirmModal(true)}
-              lastRunAt={controller.lastRunAt}
+                isBusy={controller.isBusy}
+                isRunningOverview={controller.isRunningOverview}
+                onRequestOverview={() => setShowConfirmModal(true)}
+                overviewExecutionMode={controller.overviewExecutionMode}
+                setOverviewExecutionMode={controller.setOverviewExecutionMode}
+                lastRunAt={controller.lastRunAt}
               loading={Boolean(controller.loading)}
               systemCheck={controller.systemCheck}
               overview={controller.overview}
@@ -449,14 +451,23 @@ export default function Page() {
         </footer>
       </main>
 
-      {showConfirmModal && activeView === "dashboard" ? (
-        <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="confirmOverviewTitle">
-          <div className="modal-card">
-            <h3 id="confirmOverviewTitle">Executar overview agora?</h3>
-            <p>Vamos checar conexões, buscar conversas do dia, rodar análise e atualizar o relatório.</p>
-            {controller.selectedDateHasSavedReport ? (
-              <p style={{ color: "var(--critical)" }}>
-                Já existe relatório salvo para essa data. Se continuar, o novo relatório vai substituir o anterior.
+        {showConfirmModal && activeView === "dashboard" ? (
+          <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="confirmOverviewTitle">
+            <div className="modal-card">
+              <h3 id="confirmOverviewTitle">Executar overview agora?</h3>
+              <p>
+                Vamos checar conexões, buscar conversas do dia, rodar análise e atualizar o relatório.
+              </p>
+              <p>
+                Modo atual:{" "}
+                <strong>{controller.overviewExecutionMode === "force" ? "Reprocessar" : "Reaproveitar"}</strong>{" "}
+                {controller.overviewExecutionMode === "force"
+                  ? "(consome mais tokens)."
+                  : "(reaproveita dados já existentes quando possível)."}
+              </p>
+              {controller.selectedDateHasSavedReport ? (
+                <p style={{ color: "var(--critical)" }}>
+                  Já existe relatório salvo para essa data. Se continuar, o novo relatório vai substituir o anterior.
               </p>
             ) : null}
             <div className="modal-actions">

@@ -28,642 +28,17 @@ import type {
   ReportLinkItem,
   RiskRow,
   SeveritySnapshot,
+  OverviewExecutionMode,
 } from "../shared/types";
-
-type ReportSeverityFilter = "all" | "critical" | "high" | "medium" | "low" | "info";
-
-function normalizeTextForMatch(value: unknown): string {
-  return String(value || "")
-    .trim()
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "");
-}
-
-function inferSeverityFromValue(value: unknown, fallback: Severity = "info"): Severity {
-  const text = normalizeTextForMatch(value);
-  if (!text) return fallback;
-  if (text.includes("crit")) return "critical";
-  if (text.includes("alt")) return "high";
-  if (text.includes("med")) return "medium";
-  if (text.includes("baix")) return "low";
-  if (text.includes("info")) return "info";
-  return fallback;
-}
-
-function toStringList(value: unknown): string[] {
-  if (!Array.isArray(value)) return [];
-  return value.map((item) => String(item || "").trim()).filter(Boolean);
-}
-
-function buildStructuredReportMarkdown(
-  report: ReportPayload | null,
-  selectedContact: string | null,
-  severityFilter: ReportSeverityFilter,
-): string {
-  if (!report?.raw_analysis?.analyses?.length) return "";
-  const analyses = report.raw_analysis.analyses;
-  const filteredSections: string[] = [];
-  const contactNeedle = normalizeTextForMatch(selectedContact);
-
-  analyses.forEach((analysis, index) => {
-    const parsed = parseJsonObject(analysis.analysis?.answer);
-    const contactName = String(analysis.contact?.name || analysis.contact?.identifier || analysis.contact_key || `Contato ${index + 1}`);
-    const conversationIds = Array.isArray(analysis.conversation_ids) ? analysis.conversation_ids.map((id) => Number(id)).filter((id) => id > 0) : [];
-    const resumo = String(parsed.resumo || "Sem resumo estruturado.");
-    const melhorias = toStringList(parsed.pontos_melhoria);
-    const proximosPassos = toStringList(parsed.proximos_passos);
-    const isCriticalRisk = Boolean(parsed.risco_critico);
-    const analysisSeverity = inferSeverityFromValue(
-      parsed.severidade || parsed.severity || parsed.nivel_risco || parsed.risco,
-      isCriticalRisk ? "critical" : "info",
-    );
-
-    const gaps = Array.isArray(parsed.gaps_operacionais) ? parsed.gaps_operacionais : [];
-    const gapSeverities = gaps
-      .map((gap) => asRecord(gap))
-      .map((gap) => inferSeverityFromValue(gap.severidade || gap.severity || gap.nivel || gap.prioridade, analysisSeverity));
-
-    const shouldIncludeBySeverity =
-      severityFilter === "all" ||
-      analysisSeverity === severityFilter ||
-      gapSeverities.includes(severityFilter as Severity);
-
-    const shouldIncludeByContact =
-      !contactNeedle || normalizeTextForMatch(contactName).includes(contactNeedle);
-
-    if (!shouldIncludeBySeverity || !shouldIncludeByContact) return;
-
-    const gapLines = gaps
-      .map((gap) => asRecord(gap))
-      .map((gap, gapIndex) => {
-        const nome = String(gap.nome_gap || gap.nome || gap.titulo || gap.title || "Gap operacional");
-        const severidade = inferSeverityFromValue(
-          gap.severidade || gap.severity || gap.nivel || gap.prioridade,
-          analysisSeverity,
-        );
-        const descricao = String(gap.descricao || gap.description || gap.detalhe || gap.contexto || "").trim();
-        const reference = String(gap.mensagem_referencia || gap.message_reference || gap.referencia_mensagem || "").trim();
-        const ptSeverity =
-          severidade === "critical"
-            ? "Crítico"
-            : severidade === "high"
-              ? "Alto"
-              : severidade === "medium"
-                ? "Médio"
-                : severidade === "low"
-                  ? "Baixo"
-                  : "Informativo";
-        return `- Gap ${gapIndex + 1}: ${nome} (${ptSeverity})${descricao ? ` - ${descricao}` : ""}${reference ? ` | Ref: ${reference}` : ""}`;
-      });
-
-    const lines: string[] = [
-      `### ${index + 1}. ${contactName}`,
-      `- Contact key: \`${analysis.contact_key}\``,
-      `- Conversas: ${conversationIds.length > 0 ? conversationIds.join(", ") : "não informado"}`,
-      `- Severidade principal: ${
-        analysisSeverity === "critical"
-          ? "Crítico"
-          : analysisSeverity === "high"
-            ? "Alto"
-            : analysisSeverity === "medium"
-              ? "Médio"
-              : analysisSeverity === "low"
-                ? "Baixo"
-                : "Informativo"
-      }`,
-      `- Risco crítico: ${isCriticalRisk ? "Sim" : "Não"}`,
-      `- Resumo: ${resumo}`,
-      `- Pontos de melhoria: ${melhorias.length > 0 ? melhorias.join(" | ") : "Nenhum ponto informado."}`,
-      `- Próximos passos: ${proximosPassos.length > 0 ? proximosPassos.join(" | ") : "Nenhum próximo passo informado."}`,
-      `- Gaps operacionais identificados: ${gapLines.length}`,
-      ...gapLines,
-    ];
-
-    filteredSections.push(lines.join("\n"));
-  });
-
-  if (filteredSections.length === 0) {
-    const contactPart = selectedContact ? `contato "${selectedContact}"` : "contato";
-    const severityPart = severityFilter !== "all" ? ` e severidade "${severityFilter}"` : "";
-    return `Nenhum trecho estruturado foi encontrado para ${contactPart}${severityPart}.`;
-  }
-
-  const header = [
-    "# Relatório Diário - Auditoria de Atendimento",
-    "",
-    `- Data: ${report.date}`,
-    `- Conta: ${report.account?.name || "N/A"} (id ${report.account?.id || "N/A"})`,
-    `- Canal: ${report.inbox?.name || "N/A"} (id ${report.inbox?.id || "N/A"})`,
-    "",
-    "## Detalhamento por Contato",
-    "",
-  ];
-
-  return [...header, filteredSections.join("\n\n")].join("\n");
-}
-
-function toChatwootAppBase(baseUrl: string): string {
-  const raw = String(baseUrl || "").trim();
-  if (!raw) return "";
-  return raw.replace(/\/+$/, "").replace(/\/api\/v1(?:\/.*)?$/i, "").replace(/\/api(?:\/.*)?$/i, "");
-}
-
-function buildConversationLink(baseUrl: string, accountId: number, inboxId: number, conversationId: number): string | null {
-  if (!baseUrl || !accountId || !inboxId || !conversationId) return null;
-  return `${baseUrl}/app/accounts/${accountId}/inbox/${inboxId}/conversations/${conversationId}`;
-}
-
-function addDays(baseDate: Date, days: number): Date {
-  const next = new Date(baseDate);
-  next.setDate(next.getDate() + days);
-  return next;
-}
-
-function asRecord(value: unknown): Record<string, unknown> {
-  if (!value || typeof value !== "object") return {};
-  return value as Record<string, unknown>;
-}
-
-function asNumber(value: unknown, fallback = 0): number {
-  const n = Number(value);
-  return Number.isFinite(n) ? n : fallback;
-}
-
-function asString(value: unknown, fallback = ""): string {
-  const text = String(value ?? "").trim();
-  return text || fallback;
-}
-
-function asBoolean(value: unknown): boolean {
-  if (typeof value === "boolean") return value;
-  const text = String(value ?? "").trim().toLowerCase();
-  return text === "true" || text === "1" || text === "sim";
-}
-
-function parseJsonObject(text: unknown): Record<string, unknown> {
-  const raw = String(text || "").trim();
-  if (!raw) return {};
-  try {
-    return asRecord(JSON.parse(raw));
-  } catch {
-    return {};
-  }
-}
-
-function parseHourlyRolesFromLogText(logText: unknown): Array<{ hour: number; role: "USER" | "AGENT" }> {
-  const lines = String(logText || "")
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean);
-  const parsed: Array<{ hour: number; role: "USER" | "AGENT" }> = [];
-
-  for (const line of lines) {
-    const roleMatch = line.match(/\b(USER|AGENT)\b/i);
-    if (!roleMatch) continue;
-    const role = roleMatch[1].toUpperCase() === "AGENT" ? "AGENT" : "USER";
-
-    const tsMatch = line.match(/\[(\d{4}-\d{2}-\d{2}T[^\]]+)\]/);
-    if (!tsMatch?.[1]) continue;
-    const date = new Date(tsMatch[1]);
-    if (Number.isNaN(date.getTime())) continue;
-
-    parsed.push({ hour: date.getHours(), role });
-  }
-
-  return parsed;
-}
-
-function mapRunToDashboardSnapshot(run: ReportByDateResponse["run"]): {
-  overview: OverviewPayload;
-  insights: InsightItem[];
-  report: ReportPayload;
-  rawOutput: string;
-} {
-  const reportJson = asRecord(run.report_json);
-  const summary = asRecord(reportJson.summary);
-  const account = asRecord(reportJson.account);
-  const inbox = asRecord(reportJson.inbox);
-  const rawAnalysis = asRecord(reportJson.raw_analysis);
-  const rawAnalyses = Array.isArray(rawAnalysis.analyses) ? rawAnalysis.analyses.map(asRecord) : [];
-
-  const operationalByConversation = new Map<number, Record<string, unknown>>();
-  const operationalRows: OverviewPayload["conversation_operational"] = [];
-
-  for (const item of rawAnalyses) {
-    const contact = asRecord(item.contact);
-    const contactName = asString(contact.name || contact.identifier || item.contact_key);
-    const contactIdentifier = asString(contact.identifier || "");
-    const contactKey = asString(item.contact_key || contactIdentifier || contactName || "contato");
-    const messageCountDay = asNumber(item.message_count_day, 0);
-    const ops = Array.isArray(item.conversation_operational) ? item.conversation_operational.map(asRecord) : [];
-    for (const op of ops) {
-      const state = asRecord(op.state);
-      const conversationId = asNumber(op.conversation_id, 0);
-      if (!conversationId) continue;
-
-      operationalByConversation.set(conversationId, state);
-      operationalRows.push({
-        conversation_id: conversationId,
-        contact_key: contactKey,
-        finalization_status: asString(state.finalization_status, "continuada") === "finalizada" ? "finalizada" : "continuada",
-        finalization_reason: asString(state.finalization_reason, "sem_finalizacao"),
-        finalization_actor: asString(state.finalization_actor || "") || null,
-        waiting_on_agent: asBoolean(state.waiting_on_agent),
-        waiting_on_customer: asBoolean(state.waiting_on_customer),
-        pending_since_at: state.pending_since_at === null || state.pending_since_at === undefined ? null : asNumber(state.pending_since_at, 0),
-        pending_since_at_local: asString(state.pending_since_at_local || "") || null,
-        last_interaction_at_local: asString(state.last_interaction_at_local || "") || null,
-        trigger_after_1h_at_local: asString(state.trigger_after_1h_at_local || "") || null,
-        trigger_ready: asBoolean(state.trigger_ready),
-        minutes_overdue: asNumber(state.minutes_overdue, 0),
-        message_count_day: messageCountDay,
-        unread_count: asNumber(state.unread_count, 0),
-        status: asString(state.status || "") || null,
-        labels: Array.isArray(state.labels) ? state.labels.map((v) => String(v)) : [],
-        contact: { name: contactName || null, identifier: contactIdentifier || null },
-      });
-    }
-  }
-
-  const compactLogs = Array.isArray(reportJson.logs) ? reportJson.logs.map(asRecord) : [];
-  const logs: Array<Record<string, unknown>> = compactLogs.length > 0
-    ? compactLogs
-    : rawAnalyses.map((item, index) => {
-        const contact = asRecord(item.contact);
-        const ops = Array.isArray(item.conversation_operational) ? item.conversation_operational.map(asRecord) : [];
-        const firstOpState = asRecord(asRecord(ops[0]).state);
-        const parsedAnswer = parseJsonObject(asRecord(item.analysis).answer);
-        return {
-          contact_key: String(item.contact_key || `contact-${index + 1}`),
-          contact_name: String(contact.name || contact.identifier || item.contact_key || `Contato ${index + 1}`),
-          conversation_ids: Array.isArray(item.conversation_ids) ? item.conversation_ids : [],
-          risk_level: parsedAnswer.risco_critico ? "critical" : "non_critical",
-          summary: String(parsedAnswer.resumo || ""),
-          improvements: Array.isArray(parsedAnswer.pontos_melhoria) ? parsedAnswer.pontos_melhoria : [],
-          next_steps: Array.isArray(parsedAnswer.proximos_passos) ? parsedAnswer.proximos_passos : [],
-          finalization_status: firstOpState.finalization_status || "continuada",
-          finalization_actor: firstOpState.finalization_actor || null,
-          labels: Array.isArray(firstOpState.labels) ? firstOpState.labels : [],
-        };
-      });
-
-  if (operationalRows.length === 0 && compactLogs.length > 0) {
-    for (const log of compactLogs) {
-      const conversationIds = Array.isArray(log.conversation_ids)
-        ? log.conversation_ids.map((id) => asNumber(id, 0)).filter((id) => id > 0)
-        : [];
-      for (const conversationId of conversationIds) {
-        const fallbackState = {
-          finalization_status: log.finalization_status,
-          finalization_reason: log.finalization_reason || log.finalization_status || "continuada",
-          finalization_actor: log.finalization_actor,
-          waiting_on_agent: log.waiting_on_agent,
-          waiting_on_customer: log.waiting_on_customer,
-          pending_since_at: log.pending_since_at,
-          pending_since_at_local: log.pending_since_at_local,
-          last_interaction_at_local: log.last_interaction_at_local,
-          trigger_after_1h_at_local: log.trigger_after_1h_at_local,
-          trigger_ready: log.trigger_ready,
-          minutes_overdue: log.minutes_overdue,
-          labels: log.labels,
-        };
-        operationalByConversation.set(conversationId, fallbackState);
-        operationalRows.push({
-          conversation_id: conversationId,
-          contact_key: asString(log.contact_key || "contato"),
-          finalization_status: asString(log.finalization_status, "continuada") === "finalizada" ? "finalizada" : "continuada",
-          finalization_reason: asString(log.finalization_reason || log.finalization_status, "continuada"),
-          finalization_actor: asString(log.finalization_actor || "") || null,
-          waiting_on_agent: asBoolean(log.waiting_on_agent),
-          waiting_on_customer: asBoolean(log.waiting_on_customer),
-          pending_since_at: log.pending_since_at === null || log.pending_since_at === undefined ? null : asNumber(log.pending_since_at, 0),
-          pending_since_at_local: asString(log.pending_since_at_local || "") || null,
-          last_interaction_at_local: asString(log.last_interaction_at_local || "") || null,
-          trigger_after_1h_at_local: asString(log.trigger_after_1h_at_local || "") || null,
-          trigger_ready: asBoolean(log.trigger_ready),
-          minutes_overdue: asNumber(log.minutes_overdue, 0),
-          message_count_day: asNumber(log.message_count_day, 0),
-          unread_count: 0,
-          status: null,
-          labels: Array.isArray(log.labels) ? log.labels.map((v) => String(v)) : [],
-          contact: {
-            name: asString(log.contact_name || log.contact_key || "") || null,
-            identifier: null,
-          },
-        });
-      }
-    }
-  }
-
-  const uniqueContacts = new Set(logs.map((log) => String(log.contact_key || "")).filter(Boolean));
-  const finalizedCount = logs.filter((log) => String(log.finalization_status || "").toLowerCase() === "finalizada").length;
-  const criticalCount = logs.filter((log) => String(log.risk_level || "").toLowerCase() === "critical").length;
-  const messageCountFromRaw = rawAnalyses.reduce((acc, item) => acc + asNumber(item.message_count_day, 0), 0);
-  const messageCountFromLogs = logs.reduce((acc, item) => acc + asNumber(item.message_count_day, 0), 0);
-  const messageCountFromOperations = operationalRows.reduce((acc, item) => acc + asNumber(item.message_count_day, 0), 0);
-  const totalMessagesDay =
-    messageCountFromOperations > 0
-      ? messageCountFromOperations
-      : messageCountFromRaw > 0
-        ? messageCountFromRaw
-        : messageCountFromLogs > 0
-          ? messageCountFromLogs
-          : Math.max(0, asNumber(summary.total_messages_day, 0), run.processed);
-  let improvementFallbackCount = 0;
-  for (const item of logs) {
-    const list = Array.isArray(item.improvements) ? item.improvements : [];
-    improvementFallbackCount += list.length;
-  }
-
-  const insights: InsightItem[] = logs.flatMap((log, index) => {
-    const conversationIds = Array.isArray(log.conversation_ids)
-      ? log.conversation_ids.map((id) => asNumber(id, 0)).filter((id) => id > 0)
-      : [];
-
-    const severity: Severity = String(log.risk_level || "").toLowerCase() === "critical" ? "critical" : "info";
-    return (conversationIds.length ? conversationIds : [index + 1]).map((conversationId, subIndex) => ({
-      ...(operationalByConversation.get(conversationId) || {}),
-      id: `${run.id}-${index + 1}-${subIndex + 1}`,
-      severity,
-      title: severity === "critical" ? "Gap crítico registrado" : "Registro operacional",
-      summary: String(log.summary || "Sem resumo disponível."),
-      conversation_id: conversationId,
-      contact_key: String(log.contact_key || `contact-${index + 1}`),
-      contact_name: String(log.contact_name || log.contact_key || "Contato"),
-      finalization_status:
-        asString(
-          (operationalByConversation.get(conversationId) || {}).finalization_status || log.finalization_status,
-          "continuada",
-        ).toLowerCase() === "finalizada"
-          ? "finalizada"
-          : "continuada",
-      finalization_reason: log.finalization_actor
-        ? `finalizada por ${String(log.finalization_actor)}`
-        : asString((operationalByConversation.get(conversationId) || {}).finalization_reason || log.finalization_status, "continuada"),
-      finalization_actor: asString((operationalByConversation.get(conversationId) || {}).finalization_actor || log.finalization_actor) || null,
-      labels: Array.isArray((operationalByConversation.get(conversationId) || {}).labels)
-        ? ((operationalByConversation.get(conversationId) || {}).labels as unknown[]).map((v) => String(v))
-        : Array.isArray(log.labels)
-          ? log.labels.map((v) => String(v))
-          : [],
-      status: null,
-      unread_count: 0,
-      last_interaction_at_local: asString((operationalByConversation.get(conversationId) || {}).last_interaction_at_local) || null,
-      trigger_after_1h_at_local: asString((operationalByConversation.get(conversationId) || {}).trigger_after_1h_at_local) || null,
-    }));
-  });
-
-  const conversationOperational = operationalRows.length > 0
-    ? operationalRows
-    : insights.map((insight) => ({
-        conversation_id: insight.conversation_id,
-        contact_key: insight.contact_key,
-        finalization_status: insight.finalization_status,
-        finalization_reason: insight.finalization_reason,
-        finalization_actor: insight.finalization_actor,
-        waiting_on_agent: insight.finalization_status !== "finalizada",
-        waiting_on_customer: insight.finalization_status === "finalizada",
-        pending_since_at: null,
-        pending_since_at_local: null,
-        last_interaction_at_local: insight.last_interaction_at_local || null,
-        trigger_after_1h_at_local: insight.trigger_after_1h_at_local || null,
-        trigger_ready: false,
-        minutes_overdue: 0,
-        message_count_day: 0,
-        unread_count: 0,
-        status: null,
-        labels: [],
-        contact: { name: insight.contact_name, identifier: null },
-      }));
-
-  const findMatchingLog = (rawItem: Record<string, unknown>, fallbackIndex: number): Record<string, unknown> | null => {
-    const rawContactKey = asString(rawItem.contact_key || "");
-    const rawConversationIds = Array.isArray(rawItem.conversation_ids)
-      ? rawItem.conversation_ids.map((v) => asNumber(v, 0)).filter((id) => id > 0)
-      : [];
-
-    const byConversation = logs.find((log) => {
-      const ids = Array.isArray(log.conversation_ids) ? log.conversation_ids.map((v) => asNumber(v, 0)) : [];
-      return ids.some((id) => rawConversationIds.includes(id));
-    });
-    if (byConversation) return byConversation;
-
-    if (rawContactKey) {
-      const byContact = logs.find((log) => asString(log.contact_key || "") === rawContactKey);
-      if (byContact) return byContact;
-    }
-
-    return logs[fallbackIndex] || null;
-  };
-
-  const analysisRows: AnalysisItem[] =
-    rawAnalyses.length > 0
-      ? rawAnalyses.map((rawItem, index) => {
-          const matchedLog = findMatchingLog(rawItem, index);
-          const conversationIds = Array.isArray(rawItem.conversation_ids)
-            ? rawItem.conversation_ids.map((v) => asNumber(v, 0)).filter((id) => id > 0)
-            : Array.isArray(matchedLog?.conversation_ids)
-              ? matchedLog.conversation_ids.map((v) => asNumber(v, 0)).filter((id) => id > 0)
-              : [];
-
-          const contactRecord = asRecord(rawItem.contact);
-          const contactName = asString(
-            contactRecord.name ||
-              contactRecord.identifier ||
-              rawItem.contact_key ||
-              matchedLog?.contact_name ||
-              matchedLog?.contact_key ||
-              `Contato ${index + 1}`,
-          );
-
-          const answerRaw = asString(asRecord(rawItem.analysis).answer || "");
-          const answerParsed = parseJsonObject(answerRaw);
-          const answerObject =
-            Object.keys(answerParsed).length > 0
-              ? answerParsed
-              : {
-                  resumo: asString(matchedLog?.summary || "Sem resumo estruturado."),
-                  pontos_melhoria: Array.isArray(matchedLog?.improvements)
-                    ? matchedLog.improvements.map((v) => String(v))
-                    : [],
-                  proximos_passos: Array.isArray(matchedLog?.next_steps)
-                    ? matchedLog.next_steps.map((v) => String(v))
-                    : [],
-                  risco_critico: asString(matchedLog?.risk_level || "").toLowerCase() === "critical",
-                };
-
-          const rawOperational = Array.isArray(rawItem.conversation_operational)
-            ? rawItem.conversation_operational.map(asRecord)
-            : [];
-
-          const operationalItems: NonNullable<AnalysisItem["conversation_operational"]> =
-            rawOperational.length > 0
-              ? rawOperational.map((entry) => {
-                  const stateRaw = asRecord(entry.state);
-                  return {
-                    conversation_id: asNumber(entry.conversation_id, 0),
-                    state: {
-                      finalization_status:
-                        asString(stateRaw.finalization_status, "continuada") === "finalizada" ? "finalizada" : "continuada",
-                      finalization_reason: asString(stateRaw.finalization_reason || ""),
-                      finalization_actor: asString(stateRaw.finalization_actor || "") || null,
-                      waiting_on_agent: asBoolean(stateRaw.waiting_on_agent),
-                      waiting_on_customer: asBoolean(stateRaw.waiting_on_customer),
-                      labels: Array.isArray(stateRaw.labels) ? stateRaw.labels.map((item) => String(item)) : [],
-                    },
-                  };
-                })
-              : conversationIds.map((conversationId) => {
-                  const stateRaw = asRecord(operationalByConversation.get(conversationId));
-                  return {
-                    conversation_id: conversationId,
-                    state: {
-                      finalization_status:
-                        asString(stateRaw.finalization_status, "continuada") === "finalizada" ? "finalizada" : "continuada",
-                      finalization_reason: asString(stateRaw.finalization_reason || ""),
-                      finalization_actor: asString(stateRaw.finalization_actor || "") || null,
-                      waiting_on_agent: asBoolean(stateRaw.waiting_on_agent),
-                      waiting_on_customer: asBoolean(stateRaw.waiting_on_customer),
-                      labels: Array.isArray(stateRaw.labels) ? stateRaw.labels.map((item) => String(item)) : [],
-                    },
-                  };
-                });
-
-          return {
-            analysis_index: asNumber(rawItem.analysis_index, index + 1),
-            source_fingerprint: asString(rawItem.source_fingerprint || ""),
-            contact_key: asString(rawItem.contact_key || `contact-${index + 1}`),
-            contact: {
-              name: contactName,
-              identifier: asString(contactRecord.identifier || "") || null,
-            },
-            conversation_ids: conversationIds,
-            message_count_day: asNumber(rawItem.message_count_day, asNumber(matchedLog?.message_count_day, 0)),
-            log_text: asString(rawItem.log_text || ""),
-            conversation_operational: operationalItems,
-            analysis: {
-              answer: JSON.stringify(answerObject, null, 2),
-            },
-          };
-        })
-      : logs.map((log, index) => {
-          const contactName = String(log.contact_name || log.contact_key || `Contato ${index + 1}`);
-          const improvements = Array.isArray(log.improvements) ? log.improvements.map((v) => String(v)) : [];
-          const nextSteps = Array.isArray(log.next_steps) ? log.next_steps.map((v) => String(v)) : [];
-          const riskCritical = String(log.risk_level || "").toLowerCase() === "critical";
-          const conversationIds = Array.isArray(log.conversation_ids) ? log.conversation_ids.map((v) => asNumber(v, 0)) : [];
-          const operationalItems: NonNullable<AnalysisItem["conversation_operational"]> = conversationIds.map((conversationId) => {
-            const stateRaw = asRecord(operationalByConversation.get(conversationId));
-            return {
-              conversation_id: conversationId,
-              state: {
-                finalization_status: asString(stateRaw.finalization_status, "continuada") === "finalizada" ? "finalizada" : "continuada",
-                finalization_reason: asString(stateRaw.finalization_reason || ""),
-                finalization_actor: asString(stateRaw.finalization_actor || "") || null,
-                waiting_on_agent: asBoolean(stateRaw.waiting_on_agent),
-                waiting_on_customer: asBoolean(stateRaw.waiting_on_customer),
-                labels: Array.isArray(stateRaw.labels) ? stateRaw.labels.map((item) => String(item)) : [],
-              },
-            };
-          });
-          return {
-            analysis_index: index + 1,
-            contact_key: String(log.contact_key || `contact-${index + 1}`),
-            contact: { name: contactName, identifier: null },
-            conversation_ids: conversationIds,
-            message_count_day: asNumber(log.message_count_day, 0),
-            conversation_operational: operationalItems,
-            analysis: {
-              answer: JSON.stringify(
-                {
-                  resumo: String(log.summary || ""),
-                  pontos_melhoria: improvements,
-                  proximos_passos: nextSteps,
-                  risco_critico: riskCritical,
-                },
-                null,
-                2,
-              ),
-            },
-          };
-        });
-
-  const report: ReportPayload = {
-    date: run.date_ref,
-    account: {
-      id: asNumber(account.id, 0),
-      name: account.name ? String(account.name) : null,
-      role: null,
-    },
-    inbox: {
-      id: asNumber(inbox.id, 0),
-      name: inbox.name ? String(inbox.name) : null,
-      provider: inbox.provider ? String(inbox.provider) : null,
-      channel_type: null,
-      phone_number: null,
-    },
-    report_markdown: run.report_markdown || "",
-    summary: {
-      conversations_entered_today: asNumber(summary.conversations_entered_today, run.total_conversations),
-      unique_contacts_today: asNumber(summary.unique_contacts_today, uniqueContacts.size),
-      total_to_process: asNumber(summary.total_to_process, run.total_conversations),
-      processed: asNumber(summary.processed, run.processed),
-      analyses_count: asNumber(summary.analyses_count, analysisRows.length),
-      failures_count: asNumber(summary.failures_count, run.failure_count),
-      critical_count: asNumber(summary.critical_count, criticalCount),
-      improvements_count: asNumber(summary.improvements_count, improvementFallbackCount),
-      gaps_count: asNumber(summary.gaps_count, criticalCount),
-    },
-    execution_order: [],
-    raw_analysis: {
-      analyses: analysisRows,
-      failures: [],
-      run_stats: {
-        total_to_process: run.total_conversations,
-        processed: run.processed,
-        success_count: run.success_count,
-        failure_count: run.failure_count,
-        success_rate: run.total_conversations > 0 ? Number(((run.success_count / run.total_conversations) * 100).toFixed(2)) : 0,
-      },
-    },
-  };
-
-  return {
-    overview: {
-      date: run.date_ref,
-      timezone: "America/Fortaleza",
-      generated_at: run.finished_at || run.started_at,
-      account: report.account,
-      inbox: report.inbox,
-      overview: {
-        conversations_scanned: run.total_conversations,
-        conversations_entered_today: report.summary.conversations_entered_today,
-        unique_contacts_today: report.summary.unique_contacts_today,
-        conversations_total_analyzed_day: Math.max(
-          0,
-          run.processed,
-          report.summary.processed,
-          report.summary.analyses_count,
-        ),
-        total_analysis_count: report.summary.analyses_count,
-        total_messages_day: totalMessagesDay,
-        repeated_identifier_count: 0,
-        finalized_count: finalizedCount,
-        continued_count: Math.max(0, run.processed - finalizedCount),
-        trigger_ready_count: conversationOperational.filter((item) => item.trigger_ready).length,
-        critical_insights_count: criticalCount,
-        non_critical_insights_count: Math.max(0, insights.length - criticalCount),
-        insights_total: insights.length,
-      },
-      insights,
-      conversation_operational: conversationOperational,
-    },
-    insights,
-    report,
-    rawOutput: run.report_markdown || "",
-  };
-}
+import {
+  addDays,
+  buildConversationLink,
+  parseHourlyRolesFromLogText,
+  toChatwootAppBase,
+  type ReportSeverityFilter,
+} from "./controller/common";
+import { buildStructuredReportMarkdown } from "./controller/reportMarkdown";
+import { mapRunToDashboardSnapshot } from "./controller/runSnapshotMapper";
 
 export function useDashboardController(options?: { enabled?: boolean }): DashboardController {
   const enabled = options?.enabled ?? true;
@@ -699,12 +74,14 @@ export function useDashboardController(options?: { enabled?: boolean }): Dashboa
   ]);
   const [runProgress, setRunProgress] = useState<number>(0);
   const [runCurrentContact, setRunCurrentContact] = useState<string | null>(null);
+  const [overviewExecutionMode, setOverviewExecutionMode] = useState<OverviewExecutionMode>("reuse");
   const [reportHistory, setReportHistory] = useState<ReportHistoryResponse["items"]>([]);
   const [availableReportDates, setAvailableReportDates] = useState<string[]>([]);
   const [hasLoadedAvailableDates, setHasLoadedAvailableDates] = useState<boolean>(false);
   const [isLoadingDateReport, setIsLoadingDateReport] = useState<boolean>(false);
   const [lastValidDate, setLastValidDate] = useState<string>(maxDate);
   const lastLoadedDateRef = useRef<string | null>(null);
+  const missingReportDatesRef = useRef<Set<string>>(new Set());
   const isBusy = loading !== null;
   const isRunningOverview = loading === "overview";
   const insightsPageSize = INSIGHTS_COLLAPSED_LIMIT;
@@ -776,6 +153,9 @@ export function useDashboardController(options?: { enabled?: boolean }): Dashboa
       .then((data) => {
         const dates = Array.isArray(data?.dates) ? data.dates : [];
         setAvailableReportDates(dates);
+        missingReportDatesRef.current = new Set(
+          [...missingReportDatesRef.current].filter((item) => !dates.includes(item)),
+        );
         setHasLoadedAvailableDates(true);
         if (dates.includes(date)) {
           setLastValidDate(date);
@@ -850,10 +230,33 @@ export function useDashboardController(options?: { enabled?: boolean }): Dashboa
     if (isRunningOverview) return;
     if (!hasLoadedAvailableDates) return;
 
+    const clearLoadedReportView = (message: string) => {
+      setOverview(null);
+      setInsights([]);
+      setReport(null);
+      setFailures([]);
+      setRawOutput("Sem relatório salvo para essa data. Você pode gerar um novo overview.");
+      setInsightsReady(false);
+      setShowTrend(false);
+      setStatus(message);
+    };
+
+    if (missingReportDatesRef.current.has(date)) {
+      clearLoadedReportView(`Não encontramos relatório salvo para ${date}.`);
+      return;
+    }
+
     if (lastLoadedDateRef.current === date) return;
 
     let cancelled = false;
     lastLoadedDateRef.current = date;
+    setOverview(null);
+    setInsights([]);
+    setReport(null);
+    setFailures([]);
+    setRawOutput("Carregando relatório salvo da data selecionada...");
+    setInsightsReady(false);
+    setShowTrend(false);
     setIsLoadingDateReport(true);
     setStatus(`Carregando relatório salvo de ${date}...`);
     apiGet<ReportByDateResponse>(`/api/report-day/by-date?date=${encodeURIComponent(date)}`)
@@ -873,16 +276,9 @@ export function useDashboardController(options?: { enabled?: boolean }): Dashboa
       })
       .catch(() => {
         if (cancelled) return;
-        lastLoadedDateRef.current = null;
-        setStatus(`Não encontramos relatório salvo para ${date}.`);
-        setOverview(null);
-        setInsights([]);
-        setReport(null);
-        setFailures([]);
-        setRawOutput("Sem relatório salvo para essa data. Você pode gerar um novo overview.");
-        setInsightsReady(false);
-        setShowTrend(false);
-        setAvailableReportDates((current) => current.filter((item) => item !== date));
+        missingReportDatesRef.current.add(date);
+        clearLoadedReportView(`Não encontramos relatório salvo para ${date}.`);
+        setAvailableReportDates((current) => (current.includes(date) ? current.filter((item) => item !== date) : current));
       })
       .finally(() => {
         if (cancelled) return;
@@ -892,7 +288,7 @@ export function useDashboardController(options?: { enabled?: boolean }): Dashboa
     return () => {
       cancelled = true;
     };
-  }, [availableReportDates, date, enabled, hasLoadedAvailableDates, isRunningOverview, lastValidDate]);
+  }, [date, enabled, hasLoadedAvailableDates, isRunningOverview]);
 
   const sortedInsights = useMemo(() => {
     return [...insights].sort((a, b) => severityOrder[b.severity] - severityOrder[a.severity]);
@@ -1132,7 +528,7 @@ export function useDashboardController(options?: { enabled?: boolean }): Dashboa
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
-  async function executeOverview() {
+  async function executeOverview(mode: OverviewExecutionMode = overviewExecutionMode) {
     if (!enabled) return;
     const safeDate = clampDateInput(normalizeDateInput(date, maxDate), minDate, maxDate);
     if (safeDate !== date) {
@@ -1176,7 +572,10 @@ export function useDashboardController(options?: { enabled?: boolean }): Dashboa
       let reportFailedMessage: string | null = null;
       try {
         updateRunProgress(5);
-        const reportJob = await apiPost<ReportJobStartResponse>("/api/report-day/start", { date: safeDate });
+        const reportJob = await apiPost<ReportJobStartResponse>("/api/report-day/start", {
+          date: safeDate,
+          mode,
+        });
         const maxWaitMs = 15 * 60 * 1000;
         const pollStartedAt = Date.now();
         let finalStatus: ReportJobStatusResponse | null = null;
@@ -1279,7 +678,8 @@ export function useDashboardController(options?: { enabled?: boolean }): Dashboa
         setOverviewRunCount((value) => value + 1);
         setSelectedReportContact(null);
         setReportSeverityFilter("all");
-        setStatus(`Overview concluído em ${elapsed}s. Conexões ${check.ok ? "OK" : "com alerta"}.`);
+      const modeLabel = mode === "force" ? "Reprocessar" : "Reaproveitar";
+      setStatus(`Overview concluído em ${elapsed}s (${modeLabel}). Conexões ${check.ok ? "OK" : "com alerta"}.`);
       }
       pushRunStep(`Overview finalizado em ${elapsed}s.`);
       updateRunProgress(6);
@@ -1290,7 +690,11 @@ export function useDashboardController(options?: { enabled?: boolean }): Dashboa
       apiGet<AvailableDatesResponse>("/api/report-day/available-dates?limit=1000")
         .then((data) => {
           lastLoadedDateRef.current = null;
-          setAvailableReportDates(Array.isArray(data?.dates) ? data.dates : []);
+          const dates = Array.isArray(data?.dates) ? data.dates : [];
+          setAvailableReportDates(dates);
+          missingReportDatesRef.current = new Set(
+            [...missingReportDatesRef.current].filter((item) => !dates.includes(item)),
+          );
         })
         .catch(() => undefined);
     } catch (error) {
@@ -1347,6 +751,8 @@ export function useDashboardController(options?: { enabled?: boolean }): Dashboa
     navClass,
     navigateToSection,
     executeOverview,
+    overviewExecutionMode,
+    setOverviewExecutionMode,
     apiConfig,
     systemCheck,
     overview,
