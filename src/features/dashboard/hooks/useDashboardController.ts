@@ -38,6 +38,11 @@ import { buildStructuredReportMarkdown } from "./controller/reportMarkdown";
 import { aggregateSnapshots } from "./controller/periodAggregation";
 import type { DashboardRunSnapshot } from "./controller/runSnapshotMapper";
 import { mapRunToDashboardSnapshot } from "./controller/runSnapshotMapper";
+import {
+  buildClientResponseStats,
+  extractOperationalAlerts,
+  extractProductDemand,
+} from "./controller/operationalSignals";
 
 export function useDashboardController(options?: { enabled?: boolean }): DashboardController {
   const enabled = options?.enabled ?? true;
@@ -544,6 +549,21 @@ export function useDashboardController(options?: { enabled?: boolean }): Dashboa
     return { rows, total };
   }, [severitySnapshot]);
 
+  const operationalAlerts = useMemo(() => {
+    const analyses = report?.raw_analysis?.analyses || [];
+    return extractOperationalAlerts(analyses);
+  }, [report?.raw_analysis?.analyses]);
+
+  const productDemand = useMemo(() => {
+    const analyses = report?.raw_analysis?.analyses || [];
+    return extractProductDemand(analyses);
+  }, [report?.raw_analysis?.analyses]);
+
+  const clientResponseStats = useMemo(() => {
+    const analyses = report?.raw_analysis?.analyses || [];
+    return buildClientResponseStats(analyses);
+  }, [report?.raw_analysis?.analyses]);
+
   const selectedDateHasSavedReport = useMemo(() => {
     const loadedReportDate = String(report?.date || "").trim();
     return availableReportDates.includes(date) || loadedReportDate === date;
@@ -760,21 +780,42 @@ export function useDashboardController(options?: { enabled?: boolean }): Dashboa
         }
 
         let reportData: ReportPayload | null = finalStatus.result as ReportPayload | null;
-        const persistedByDate = await apiGet<ReportByDateResponse>(
-          `/api/report-day/by-date?date=${encodeURIComponent(safeDate)}`,
-        );
-        if (!persistedByDate?.run) {
+        let persistedByDate: ReportByDateResponse | null = null;
+        for (let attempt = 0; attempt < 8; attempt += 1) {
+          try {
+            const payload = await apiGet<ReportByDateResponse>(
+              `/api/report-day/by-date?date=${encodeURIComponent(safeDate)}`,
+            );
+            if (payload?.run) {
+              persistedByDate = payload;
+              break;
+            }
+          } catch {
+            // tenta novamente
+          }
+          await sleep(700);
+        }
+
+        if (persistedByDate?.run) {
+          const mappedSnapshot = mapRunToDashboardSnapshot(persistedByDate.run);
+          finalOverviewData = mappedSnapshot.overview;
+          finalInsights = mappedSnapshot.insights || [];
+          finalReportData = mappedSnapshot.report;
+          finalFailures = mappedSnapshot.report.raw_analysis?.failures || [];
+          if (!reportData) {
+            reportData = mappedSnapshot.report;
+          }
+          finalRawOutput = mappedSnapshot.rawOutput || reportData.report_markdown || JSON.stringify(reportData, null, 2);
+        } else if (reportData) {
+          finalOverviewData = overview;
+          finalInsights = insights;
+          finalReportData = reportData;
+          finalFailures = [];
+          finalRawOutput = reportData.report_markdown || JSON.stringify(reportData, null, 2);
+          pushRunStep("Relatório concluído e exibido a partir do retorno imediato; persistência finalizando em background.");
+        } else {
           throw new Error("Relatório concluído, mas o payload final não foi localizado.");
         }
-        const mappedSnapshot = mapRunToDashboardSnapshot(persistedByDate.run);
-        finalOverviewData = mappedSnapshot.overview;
-        finalInsights = mappedSnapshot.insights || [];
-        finalReportData = mappedSnapshot.report;
-        finalFailures = mappedSnapshot.report.raw_analysis?.failures || [];
-        if (!reportData) {
-          reportData = mappedSnapshot.report;
-        }
-        finalRawOutput = mappedSnapshot.rawOutput || reportData.report_markdown || JSON.stringify(reportData, null, 2);
         pushRunStep("Relatório final gerado com sucesso.");
         setRunCurrentContact(null);
       } catch (reportError) {
@@ -905,6 +946,10 @@ export function useDashboardController(options?: { enabled?: boolean }): Dashboa
     showTrend,
     trendSeries,
     riskRows,
+    productDemand,
+    operationalAlerts,
+    clientAvgResponseMinutes: clientResponseStats.averageMinutesLabel,
+    clientPeakHourLabel: clientResponseStats.peakHourLabel,
     reportContacts,
     selectedReportContact,
     setSelectedReportContact,

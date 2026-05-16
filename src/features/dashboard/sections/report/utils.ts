@@ -6,6 +6,7 @@ export interface ReportItem {
   key: string;
   title: string;
   desc: string;
+  phase?: string;
   severity: Severity;
   contactName: string;
   labels: string[];

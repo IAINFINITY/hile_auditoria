@@ -1,16 +1,17 @@
 ﻿import { useCallback, useEffect, useRef, useState } from "react";
 import type { MouseEvent } from "react";
 import { BsDiamond } from "react-icons/bs";
-import { FiAlertTriangle, FiBarChart2, FiBell, FiFileText, FiLayers, FiSettings, FiTrendingUp, FiUsers, FiZap } from "react-icons/fi";
+import { FiAlertTriangle, FiBarChart2, FiBell, FiBox, FiFileText, FiLayers, FiSettings, FiTrendingUp, FiUsers, FiZap } from "react-icons/fi";
 import type { NotificationState } from "../hooks/useNotifications";
 
 interface ShellNavigationProps {
-  activeView: "dashboard" | "clients" | "logs" | "settings";
+  activeView: "dashboard" | "clients" | "products" | "logs" | "settings";
   navClass: (section: string) => string;
   onNavigate: (section: string) => void;
   onOpenSettings: () => void;
   onOpenDashboard: () => void;
   onOpenClients: () => void;
+  onOpenProducts: () => void;
   onOpenLogs: () => void;
   currentUser: {
     name: string;
@@ -34,6 +35,7 @@ export function ShellNavigation({
   onOpenSettings,
   onOpenDashboard,
   onOpenClients,
+  onOpenProducts,
   onOpenLogs,
   currentUser,
   onLogout,
@@ -83,6 +85,8 @@ export function ShellNavigation({
       ? sectionLabels[activeSection]
       : activeView === "clients"
         ? "Clientes"
+        : activeView === "products"
+          ? "Produtos Procurados"
         : activeView === "logs"
           ? "Logs Operacionais"
           : "Configurações";
@@ -151,6 +155,13 @@ export function ShellNavigation({
               <FiUsers />
             </span>
             <span>Clientes</span>
+          </button>
+
+          <button type="button" className={sideItemClass(activeView === "products")} onClick={onOpenProducts}>
+            <span className="side-item-icon" aria-hidden="true">
+              <FiBox />
+            </span>
+            <span>Produtos</span>
           </button>
 
           <button type="button" className={sideItemClass(activeView === "logs")} onClick={onOpenLogs}>

@@ -16,6 +16,7 @@ import {
   type ReportItem,
   type SeverityFilter,
 } from "./report/utils";
+import { classifyGapPhase } from "../hooks/controller/operationalSignals";
 
 interface ReportSectionProps {
   criticalGapInsights: Array<{
@@ -170,6 +171,7 @@ export function ReportSection({
       key: `gap-${item.id}`,
       title: item.severity === "critical" ? "Gap Crítico" : "Gap Alto",
       desc: `${item.contact_name}: ${item.summary}`,
+      phase: classifyGapPhase(item.summary),
       severity: item.severity,
       contactName: item.contact_name,
       labels: Array.isArray(item.labels) ? item.labels : [],
@@ -454,6 +456,11 @@ export function ReportSection({
                         <span className="report-card-dot" style={{ background: toneColor(item.severity) }} />
                         <div className="report-card-content">
                           <h4>{item.title}</h4>
+                          {item.phase ? (
+                            <p>
+                              <strong>Fase:</strong> {item.phase}
+                            </p>
+                          ) : null}
                           <p>{item.desc}</p>
                           <div className="gap-label-row">
                             {item.labels.length > 0 ? (

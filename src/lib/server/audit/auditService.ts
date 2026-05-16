@@ -47,6 +47,20 @@ function looksLikeWhatsapp(inbox) {
   return provider.includes("whatsapp") || channelType.includes("whatsapp");
 }
 
+function extractDifyAnswer(raw: any): string | null {
+  if (!raw) return null;
+  const outputs = raw?.data?.outputs || null;
+  const candidate =
+    raw?.answer ??
+    outputs?.text ??
+    outputs?.output ??
+    outputs?.analysis_output ??
+    outputs?.response ??
+    null;
+  const text = String(candidate || "").trim();
+  return text || null;
+}
+
 function pickAccount(accounts, configuredAccountId, groupName) {
   if (configuredAccountId) {
     const byId = accounts.find((item) => Number(item?.id) === Number(configuredAccountId));
@@ -502,9 +516,7 @@ export async function runDailyAnalysis({
               conversation_id: recoveredFromHistory.conversation_id || null,
               message_id: recoveredFromHistory.message_id || null,
             }
-          : mode === "reuse"
-            ? null
-            : await difyClient.analyzeLog({
+          : await difyClient.analyzeLog({
                 contactKey,
                 date,
                 logText,
@@ -522,7 +534,8 @@ export async function runDailyAnalysis({
         });
       }
 
-      if (!difyRaw) {
+      const difyAnswer = extractDifyAnswer(difyRaw);
+      if (!difyRaw || !difyAnswer) {
         const missingError = new Error(
           "Não encontramos análise disponível para este contato nesta execução.",
         );
@@ -530,7 +543,8 @@ export async function runDailyAnalysis({
         throw missingError;
       }
 
-      const parsed = tryParseJson(difyRaw?.answer);
+      difyRaw.answer = difyAnswer;
+      const parsed = tryParseJson(difyAnswer);
       const summaryText =
         String(parsed?.resumo || "").trim() ||
         String(operationalState?.finalization_reason || "").trim() ||

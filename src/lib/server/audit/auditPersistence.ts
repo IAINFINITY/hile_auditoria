@@ -1210,6 +1210,18 @@ export async function listClientsByDate(date: string) {
     source: string;
     createdAt: string;
   }>>();
+
+  const normalizeSeverityText = (value: unknown): string => {
+    const raw = String(value || "").trim().toLowerCase();
+    if (!raw) return "info";
+    if (raw.includes("crit")) return "critical";
+    if (raw.includes("high") || raw.includes("alt")) return "high";
+    if (raw.includes("medium") || raw.includes("med")) return "medium";
+    if (raw.includes("low") || raw.includes("baix")) return "low";
+    if (raw === "non_critical") return "info";
+    if (raw.includes("info")) return "info";
+    return "info";
+  };
   for (const event of timelineEvents) {
     const key = String(event.phonePk || "").trim();
     if (!key) continue;
@@ -1307,8 +1319,7 @@ export async function listClientsByDate(date: string) {
     const nameKey = normalizeMatchKey(name);
     if (!nameKey) continue;
 
-    const riskLevel = String(log.risk_level || "").trim().toLowerCase();
-    const severity = riskLevel === "critical" ? "critical" : "info";
+    const severity = normalizeSeverityText(log.risk_level);
     const summary = String(log.summary || "").trim();
     const improvements = Array.isArray(log.improvements)
       ? log.improvements.map((item) => String(item || "").trim()).filter(Boolean)
@@ -1326,7 +1337,7 @@ export async function listClientsByDate(date: string) {
       attentions: improvements,
       labels: [],
       severity,
-      status: severity === "critical" ? "atencao" : "aberto",
+      status: severity === "critical" || severity === "high" ? "atencao" : "aberto",
       conversationIds,
       chatLinks,
     });
@@ -1477,9 +1488,7 @@ export async function listClientsByDate(date: string) {
         status = "resolvido";
       }
 
-      if (String(analysis.riskLevel || "").toLowerCase() === "critical") {
-        severity = "critical";
-      }
+      severity = normalizeSeverityText(analysis.riskLevel);
 
       const summary = String(analysis.summary || "").trim();
       if (summary && severity === "critical") gaps.add(summary);
@@ -1493,15 +1502,34 @@ export async function listClientsByDate(date: string) {
         const text = String(gap.description || gap.name || "").trim();
         if (text) gaps.add(text);
         const gapSeverity = String(gap.severity || "").toLowerCase();
-        if (gap.isCritical || gapSeverity === "alta") severity = "critical";
+        if (gap.isCritical) {
+          severity = "critical";
+        } else if (gapSeverity === "alta" && severity !== "critical") {
+          severity = "high";
+        } else if (gapSeverity === "media" && severity !== "critical" && severity !== "high") {
+          severity = "medium";
+        } else if (gapSeverity === "baixa" && severity === "info") {
+          severity = "low";
+        }
       }
 
       for (const insight of analysis.insights || []) {
         const text = String(insight.summary || insight.title || "").trim();
         if (text) attentions.add(text);
-        const insightSeverity = String(insight.severity || "").toLowerCase();
-        if (insightSeverity === "critical") severity = "critical";
-        else if (insightSeverity === "high" && severity !== "critical") severity = "high";
+        const insightSeverity = normalizeSeverityText(insight.severity);
+        if (insightSeverity === "critical") {
+          severity = "critical";
+        } else if (insightSeverity === "high" && severity !== "critical") {
+          severity = "high";
+        } else if (
+          insightSeverity === "medium" &&
+          severity !== "critical" &&
+          severity !== "high"
+        ) {
+          severity = "medium";
+        } else if (insightSeverity === "low" && severity === "info") {
+          severity = "low";
+        }
       }
 
       const link = buildConversationLink(

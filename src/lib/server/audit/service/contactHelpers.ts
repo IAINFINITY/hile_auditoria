@@ -18,12 +18,21 @@ function extractEnteredToday(conversations, date, toYmd) {
 }
 
 function compactAnalysis(raw) {
+  const workflowOutputs = raw?.data?.outputs || null;
+  const outputText =
+    raw?.answer ||
+    workflowOutputs?.text ||
+    workflowOutputs?.output ||
+    workflowOutputs?.analysis_output ||
+    workflowOutputs?.response ||
+    null;
+
   return {
-    answer: raw?.answer || null,
+    answer: outputText || null,
     event: raw?.event || null,
     mode: raw?.mode || null,
     workflow_status: raw?.data?.status || null,
-    workflow_outputs: raw?.data?.outputs || null,
+    workflow_outputs: workflowOutputs,
     tokens: raw?.metadata?.usage?.total_tokens || raw?.data?.total_tokens || null,
     elapsed_time: raw?.metadata?.usage?.latency || raw?.data?.elapsed_time || null,
     raw,

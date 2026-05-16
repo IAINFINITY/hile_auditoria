@@ -404,10 +404,10 @@ model ConversationTimelineEvent {
   dateRef               DateTime
   chatwootConversationId Int
   phonePk               String
-  eventType             TimelineEventType
+  eventType             String
   severity              InsightSeverity   @default(info)
   reason                String
-  source                AnalysisSource
+  source                String
   createdAt             DateTime          @default(now())
 
   tenant                Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)

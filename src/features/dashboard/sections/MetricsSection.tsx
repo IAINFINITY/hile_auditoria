@@ -20,6 +20,8 @@ interface MetricsSectionProps {
   runTimeline: string[];
   selectedDateInfo: string;
   selectedDateHasSavedReport: boolean;
+  clientAvgResponseMinutes: string;
+  clientPeakHourLabel: string;
 }
 
 const PRESETS: Array<{ key: PeriodPreset; label: string }> = [
@@ -31,7 +33,36 @@ const PRESETS: Array<{ key: PeriodPreset; label: string }> = [
   { key: "year", label: "Ano" },
 ];
 
-function formatPeriodLabel(preset: PeriodPreset): string {
+function getRelativePreset(date: string): PeriodPreset | null {
+  const now = new Date();
+  const toYmd = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  const today = toYmd(now);
+  const y = new Date(now);
+  y.setDate(now.getDate() - 1);
+  const yy = new Date(now);
+  yy.setDate(now.getDate() - 2);
+  if (date === today) return "today";
+  if (date === toYmd(y)) return "yesterday";
+  if (date === toYmd(yy)) return "before_yesterday";
+  return null;
+}
+
+function formatPeriodLabel(preset: PeriodPreset, date?: string): string {
+  if (date && (preset === "today" || preset === "yesterday" || preset === "before_yesterday")) {
+    const now = new Date();
+    const toYmd = (d: Date) =>
+      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    const today = toYmd(now);
+    const y = new Date(now);
+    y.setDate(now.getDate() - 1);
+    const yy = new Date(now);
+    yy.setDate(now.getDate() - 2);
+    if (date === today) return "Hoje";
+    if (date === toYmd(y)) return "Ontem";
+    if (date === toYmd(yy)) return "Anteontem";
+    return "Dia personalizado";
+  }
   const map: Record<PeriodPreset, string> = {
     today: "Hoje",
     yesterday: "Ontem",
@@ -68,6 +99,8 @@ export function MetricsSection({
   runTimeline,
   selectedDateInfo,
   selectedDateHasSavedReport,
+  clientAvgResponseMinutes,
+  clientPeakHourLabel,
 }: MetricsSectionProps) {
   const summary = overview?.overview;
   const hasOverviewData = Boolean(summary);
@@ -76,7 +109,6 @@ export function MetricsSection({
     const criticalAndHigh = (severitySnapshot.critical || 0) + (severitySnapshot.high || 0);
     return {
       mensagensHoje: summary?.total_messages_day ?? 0,
-      totalConversas: summary?.conversations_total_analyzed_day ?? 0,
       gapsCriticosAltos: criticalAndHigh,
       finalizadas: summary?.finalized_count ?? 0,
       numerosRepetidos: summary?.repeated_identifier_count ?? 0,
@@ -100,6 +132,8 @@ export function MetricsSection({
     };
   }, [kpis.finalizadas, kpis.gapsCriticosAltos, kpis.gatilhos, summary?.conversations_total_analyzed_day, summary?.total_messages_day]);
 
+  const relativePreset = useMemo(() => getRelativePreset(date), [date]);
+
   return (
     <div className="section reveal" id="inicio">
       <div className="section-inner">
@@ -107,7 +141,7 @@ export function MetricsSection({
           <span className="section-num">01</span>
           <div className="section-title">
             <h2>Métricas do Dia</h2>
-            <p>Período: {formatPeriodLabel(periodPreset)} — {formatDateBr(date)}</p>
+            <p>Período: {formatPeriodLabel(periodPreset, date)} — {formatDateBr(date)}</p>
           </div>
         </div>
 
@@ -125,7 +159,15 @@ export function MetricsSection({
                       {index === 3 ? <div className="filter-sep" /> : null}
                       <button
                         type="button"
-                        className={`filter-pill ${periodPreset === preset.key ? "active" : ""}`}
+                        className={`filter-pill ${
+                          periodPreset === preset.key &&
+                          (preset.key === "week" ||
+                            preset.key === "month" ||
+                            preset.key === "year" ||
+                            relativePreset === preset.key)
+                            ? "active"
+                            : ""
+                        }`}
                         onClick={() => applyPeriodPreset(preset.key)}
                       >
                         {preset.label}
@@ -198,7 +240,6 @@ export function MetricsSection({
           <div className="metrics-block-body" style={{ padding: 0 }}>
             <div className="kpi-grid">
               <div className="kpi-card"><div className="kpi-label">Mensagens</div><div className="kpi-value">{kpis.mensagensHoje}</div><div className="kpi-sub">IA + usuário</div></div>
-              <div className="kpi-card"><div className="kpi-label">Conversas</div><div className="kpi-value">{kpis.totalConversas}</div><div className="kpi-sub">total</div></div>
               <div className="kpi-card"><div className="kpi-label">Gaps</div><div className="kpi-value gap-val">{kpis.gapsCriticosAltos}</div><div className="kpi-sub">críticos + altos</div></div>
               <div className="kpi-card"><div className="kpi-label">Finalizadas</div><div className="kpi-value pos-val">{kpis.finalizadas}</div><div className="kpi-sub">com etiqueta</div></div>
               <div className="kpi-card"><div className="kpi-label">Repetidos</div><div className="kpi-value alert-val">{kpis.numerosRepetidos}</div><div className="kpi-sub">números</div></div>
@@ -229,6 +270,14 @@ export function MetricsSection({
               <div className="pano-card">
                 <div className="pano-label">Conversas aguardando IA (+1h)</div>
                 <div className="pano-value">{panorama.aguardandoIa}</div>
+              </div>
+              <div className="pano-card">
+                <div className="pano-label">Tempo médio de resposta do cliente</div>
+                <div className="pano-value">{clientAvgResponseMinutes}</div>
+              </div>
+              <div className="pano-card">
+                <div className="pano-label">Hora de pico de resposta do cliente</div>
+                <div className="pano-value">{clientPeakHourLabel}</div>
               </div>
             </div>
           </div>

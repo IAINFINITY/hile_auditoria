@@ -12,12 +12,13 @@ import { AccountsView } from "@/features/dashboard/sections/AccountsView";
 import { LogsView } from "@/features/dashboard/sections/LogsView";
 import { MetricsSection } from "@/features/dashboard/sections/MetricsSection";
 import { MovementSection } from "@/features/dashboard/sections/MovementSection";
+import { ProductsView } from "@/features/dashboard/sections/ProductsView";
 import { ReportSection } from "@/features/dashboard/sections/ReportSection";
 import { SettingsView } from "@/features/dashboard/sections/SettingsView";
 import { ShellNavigation } from "@/features/dashboard/sections/ShellNavigation";
 import { supabaseBrowser } from "@/lib/supabase/browser";
 
-type AppView = "dashboard" | "clients" | "logs" | "settings";
+type AppView = "dashboard" | "clients" | "products" | "logs" | "settings";
 
 interface AuthStatusPayload {
   authenticated: boolean;
@@ -33,7 +34,7 @@ export default function Page() {
   const [activeView, setActiveView] = useState<AppView>(() => {
     if (typeof window !== "undefined") {
       const saved = sessionStorage.getItem("hile_active_view") as AppView | null;
-      if (saved === "dashboard" || saved === "clients" || saved === "logs" || saved === "settings") return saved;
+      if (saved === "dashboard" || saved === "clients" || saved === "products" || saved === "logs" || saved === "settings") return saved;
     }
     return "dashboard";
   });
@@ -339,6 +340,13 @@ export default function Page() {
     });
   }
 
+  function handleOpenProducts() {
+    setActiveView("products");
+    requestAnimationFrame(() => {
+      window.scrollTo({ top: 0, behavior: "auto" });
+    });
+  }
+
   function handleUpdateProfile(updates: { name?: string; role?: string }) {
     setCurrentUser((prev) =>
       prev ? { ...prev, ...updates } : prev
@@ -499,6 +507,7 @@ export default function Page() {
         onOpenSettings={handleOpenSettings}
         onOpenDashboard={() => setActiveView("dashboard")}
         onOpenClients={handleOpenClients}
+        onOpenProducts={handleOpenProducts}
         onOpenLogs={handleOpenLogs}
         currentUser={currentUser || { name: "Usuário", email: "usuario@hile.com.br", role: "Operador" }}
         onLogout={() => setShowLogoutConfirmModal(true)}
@@ -529,6 +538,8 @@ export default function Page() {
               runTimeline={controller.runTimeline}
               selectedDateInfo={controller.selectedDateInfo}
               selectedDateHasSavedReport={controller.selectedDateHasSavedReport}
+              clientAvgResponseMinutes={controller.clientAvgResponseMinutes}
+              clientPeakHourLabel={controller.clientPeakHourLabel}
             />
 
             <GapsSection
@@ -537,6 +548,7 @@ export default function Page() {
               overview={controller.overview}
               chatwootBaseUrl={controller.apiConfig?.chatwoot_base_url || ""}
               onOpenReportByContact={controller.focusReportByContact}
+              operationalAlerts={controller.operationalAlerts}
             />
 
             <InsightsSection
@@ -592,6 +604,13 @@ export default function Page() {
                 runProgress={controller.runProgress}
                 runCurrentContact={controller.runCurrentContact}
                 runTimeline={controller.runTimeline}
+              />
+            </div>
+          ) : activeView === "products" ? (
+            <div className="settings-animated" key={`products-${viewAnimationKey}`}>
+              <ProductsView
+                items={controller.productDemand}
+                selectedDate={controller.date}
               />
             </div>
           ) : (

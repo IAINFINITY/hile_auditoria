@@ -1,5 +1,6 @@
 ﻿import { useEffect, useMemo, useState } from "react";
 import type { InsightItem, OverviewPayload } from "../../../types";
+import type { OperationalAlertItem } from "../shared/types";
 
 interface GapsSectionProps {
   insightsReady: boolean;
@@ -7,6 +8,7 @@ interface GapsSectionProps {
   overview: OverviewPayload | null;
   chatwootBaseUrl: string;
   onOpenReportByContact: (contactName: string) => void;
+  operationalAlerts: OperationalAlertItem[];
 }
 
 type GapFilter = "todos" | "critical" | "high";
@@ -49,6 +51,7 @@ export function GapsSection({
   overview,
   chatwootBaseUrl,
   onOpenReportByContact,
+  operationalAlerts,
 }: GapsSectionProps) {
   const [filter, setFilter] = useState<GapFilter>("todos");
   const [page, setPage] = useState(1);
@@ -196,6 +199,33 @@ export function GapsSection({
                 >
                   {">"}
                 </button>
+              </div>
+            ) : null}
+
+            {insightsReady ? (
+              <div className="report-section-sep" style={{ marginTop: 18 }}>
+                <h3 className="report-section-title">Pontos de atenção operacional</h3>
+                {operationalAlerts.length === 0 ? (
+                  <p className="empty-state">Sem alertas de consultor ou insatisfação no período.</p>
+                ) : (
+                  <div className="report-list-animated">
+                    {operationalAlerts.slice(0, 10).map((alert) => (
+                      <article className="report-card" key={alert.id}>
+                        <span
+                          className="report-card-dot"
+                          style={{ background: alert.type === "desengajamento" ? "var(--critical)" : "var(--high)" }}
+                        />
+                        <div className="report-card-content">
+                          <h4>{alert.type === "desengajamento" ? "Risco de desengajamento" : "Pedido de consultor"}</h4>
+                          <p>
+                            <strong>{alert.contactName}</strong> • conversa #{alert.conversationId || "-"}
+                          </p>
+                          <p>{alert.excerpt}</p>
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                )}
               </div>
             ) : null}
           </div>

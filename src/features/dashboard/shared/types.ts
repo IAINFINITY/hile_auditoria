@@ -44,6 +44,20 @@ export interface ReportLinkItem {
   url: string;
 }
 
+export interface ProductDemandItem {
+  name: string;
+  count: number;
+  contacts: number;
+}
+
+export interface OperationalAlertItem {
+  id: string;
+  type: "consultor" | "desengajamento";
+  contactName: string;
+  conversationId: number;
+  excerpt: string;
+}
+
 export interface DashboardController {
   date: string;
   setDate: (value: string) => void;
@@ -85,6 +99,10 @@ export interface DashboardController {
   showTrend: boolean;
   trendSeries: Array<{ label: string; conversas: number; ia: number; usuario: number }>;
   riskRows: { rows: RiskRow[]; total: number };
+  productDemand: ProductDemandItem[];
+  operationalAlerts: OperationalAlertItem[];
+  clientAvgResponseMinutes: string;
+  clientPeakHourLabel: string;
   reportContacts: string[];
   selectedReportContact: string | null;
   setSelectedReportContact: (value: string | null) => void;

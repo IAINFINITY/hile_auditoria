@@ -480,7 +480,8 @@
 .filter-pill:active{transform:scale(.96)}
 
 .kpi-grid{
-  display:grid;grid-template-columns:repeat(8,1fr);
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(170px,1fr));
   border:1px solid var(--line);background:var(--branco);
   border-radius:14px;
   overflow:hidden;
