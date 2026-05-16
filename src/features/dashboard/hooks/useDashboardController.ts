@@ -6,13 +6,11 @@ import type {
   FailureItem,
   InsightItem,
   OverviewPayload,
-  PreviewPayload,
   ReportByDateResponse,
   ReportHistoryResponse,
   ReportJobStartResponse,
   ReportJobStatusResponse,
   ReportPayload,
-  ReportRunResponse,
   Severity,
   SystemCheckResponse,
 } from "../../../types";
@@ -28,7 +26,6 @@ import type {
   ReportLinkItem,
   RiskRow,
   SeveritySnapshot,
-  OverviewExecutionMode,
 } from "../shared/types";
 import {
   addDays,
@@ -79,7 +76,7 @@ export function useDashboardController(options?: { enabled?: boolean }): Dashboa
   const [runProgress, setRunProgress] = useState<number>(0);
   const [runCurrentContact, setRunCurrentContact] = useState<string | null>(null);
   const [runStartedAt, setRunStartedAt] = useState<number | null>(null);
-  const [overviewExecutionMode, setOverviewExecutionMode] = useState<OverviewExecutionMode>("reuse");
+  const [currentRunId, setCurrentRunId] = useState<string | null>(null);
   const [reportHistory, setReportHistory] = useState<ReportHistoryResponse["items"]>([]);
   const [availableReportDates, setAvailableReportDates] = useState<string[]>([]);
   const [hasLoadedAvailableDates, setHasLoadedAvailableDates] = useState<boolean>(false);
@@ -90,13 +87,6 @@ export function useDashboardController(options?: { enabled?: boolean }): Dashboa
   const isBusy = loading !== null;
   const isRunningOverview = loading === "overview";
   const insightsPageSize = INSIGHTS_COLLAPSED_LIMIT;
-  const [etaTick, setEtaTick] = useState<number>(0);
-
-  useEffect(() => {
-    if (!isRunningOverview) return;
-    const id = setInterval(() => setEtaTick((t) => t + 1), 1000);
-    return () => clearInterval(id);
-  }, [isRunningOverview]);
 
   function setDate(value: string) {
     const normalized = normalizeDateInput(value, maxDate);
@@ -652,20 +642,8 @@ export function useDashboardController(options?: { enabled?: boolean }): Dashboa
     return links;
   }, [apiConfig?.chatwoot_base_url, report, selectedReportContact]);
 
-  const runEtaLabel = useMemo(() => {
-    if (!isRunningOverview || !runStartedAt || runProgress <= 0) return "--";
-    const elapsedSeconds = Math.max(1, Math.round((Date.now() - runStartedAt) / 1000));
-    if (runProgress >= 100) return "0s";
-    const estimatedTotal = Math.round((elapsedSeconds / Math.max(1, runProgress)) * 100);
-    const remaining = Math.max(0, estimatedTotal - elapsedSeconds);
-    if (remaining < 60) return `${remaining}s`;
-    const minutes = Math.floor(remaining / 60);
-    const seconds = remaining % 60;
-    return `${minutes}m ${String(seconds).padStart(2, "0")}s`;
-  }, [isRunningOverview, runProgress, runStartedAt, etaTick]);
-
   function pushRunStep(step: string) {
-    setRunTimeline((current) => [...current, step]);
+    setRunTimeline((current) => [...current.slice(-49), step]);
   }
 
   function updateRunProgress(step: number) {
@@ -677,7 +655,7 @@ export function useDashboardController(options?: { enabled?: boolean }): Dashboa
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
-  async function executeOverview(mode: OverviewExecutionMode = overviewExecutionMode) {
+  async function executeOverview() {
     if (!enabled) return;
     const safeDate = clampDateInput(normalizeDateInput(date, maxDate), minDate, maxDate);
     if (safeDate !== date) {
@@ -689,6 +667,7 @@ export function useDashboardController(options?: { enabled?: boolean }): Dashboa
     updateRunProgress(1);
     setRunCurrentContact(null);
     setRunStartedAt(Date.now());
+    setCurrentRunId(null);
     setInsightsReady(false);
     setShowTrend(false);
     setOverview(null);
@@ -705,14 +684,8 @@ export function useDashboardController(options?: { enabled?: boolean }): Dashboa
       setSystemCheck(check);
       pushRunStep(`Conexões ${check.ok ? "OK" : "com alerta"}.`);
 
-      pushRunStep("Buscando conversas do dia na caixa selecionada...");
+      pushRunStep("Iniciando execução do relatório do dia...");
       updateRunProgress(3);
-      const preview = await apiPost<PreviewPayload>("/api/preview-day", { date: safeDate });
-      pushRunStep(`Encontramos ${preview.conversations_entered_today} conversas novas hoje.`);
-
-      pushRunStep("Montando insights e criticidade...");
-      updateRunProgress(4);
-      const overviewData = await apiPost<OverviewPayload>("/api/overview-day", { date: safeDate });
       let finalOverviewData: OverviewPayload | null = null;
       let finalInsights: InsightItem[] = [];
       let finalReportData: ReportPayload | null = null;
@@ -721,14 +694,21 @@ export function useDashboardController(options?: { enabled?: boolean }): Dashboa
 
       let reportFailedMessage: string | null = null;
       try {
-        updateRunProgress(5);
+        updateRunProgress(4);
         const reportJob = await apiPost<ReportJobStartResponse>("/api/report-day/start", {
           date: safeDate,
-          mode,
         });
+        setCurrentRunId(reportJob.db_run_id || null);
+        pushRunStep(
+          `${reportJob.already_running ? "Execução já em andamento" : "Execução iniciada"} (job ${reportJob.job_id.slice(0, 8)}${
+            reportJob.db_run_id ? ` • run ${reportJob.db_run_id.slice(0, 8)}` : ""
+          }).`,
+        );
         const maxWaitMs = 15 * 60 * 1000;
         const pollStartedAt = Date.now();
         let finalStatus: ReportJobStatusResponse | null = null;
+        let lastProcessed = -1;
+        let lastCurrentContactKey = "";
 
         while (Date.now() - pollStartedAt < maxWaitMs) {
           await sleep(1200);
@@ -745,15 +725,25 @@ export function useDashboardController(options?: { enabled?: boolean }): Dashboa
           if (statusData.current_contact) {
             const current = statusData.current_contact;
             const safeTotal = current.total || total || 0;
+            const signature = `${current.contact_key}-${current.sequence}-${safeTotal}`;
             setRunCurrentContact(
               `${current.contact_name} (${current.sequence}/${safeTotal > 0 ? safeTotal : "?"})`,
             );
+            if (signature !== lastCurrentContactKey) {
+              lastCurrentContactKey = signature;
+              pushRunStep(
+                `Analisando contato ${current.sequence}/${safeTotal > 0 ? safeTotal : "?"}: ${current.contact_name} (${current.contact_key}).`,
+              );
+            }
           }
 
           if (total > 0) {
             const ratio = Math.min(1, processed / total);
-            const mapped = 67 + Math.round(ratio * 29);
-            setRunProgress((current) => Math.max(current, Math.min(mapped, 96)));
+            setRunProgress(Math.round(ratio * 100));
+          }
+          if (processed !== lastProcessed) {
+            lastProcessed = processed;
+            pushRunStep(`Progresso: ${processed}/${total || "?"} contato(s) processado(s).`);
           }
 
           if (statusData.status === "completed") {
@@ -770,33 +760,21 @@ export function useDashboardController(options?: { enabled?: boolean }): Dashboa
         }
 
         let reportData: ReportPayload | null = finalStatus.result as ReportPayload | null;
+        const persistedByDate = await apiGet<ReportByDateResponse>(
+          `/api/report-day/by-date?date=${encodeURIComponent(safeDate)}`,
+        );
+        if (!persistedByDate?.run) {
+          throw new Error("Relatório concluído, mas o payload final não foi localizado.");
+        }
+        const mappedSnapshot = mapRunToDashboardSnapshot(persistedByDate.run);
+        finalOverviewData = mappedSnapshot.overview;
+        finalInsights = mappedSnapshot.insights || [];
+        finalReportData = mappedSnapshot.report;
+        finalFailures = mappedSnapshot.report.raw_analysis?.failures || [];
         if (!reportData) {
-          const persistedByDate = await apiGet<ReportByDateResponse>(
-            `/api/report-day/by-date?date=${encodeURIComponent(safeDate)}`,
-          );
-          if (!persistedByDate?.run) {
-            throw new Error("Relatório concluído, mas o payload final não foi localizado.");
-          }
-          reportData = mapRunToDashboardSnapshot(persistedByDate.run).report;
+          reportData = mappedSnapshot.report;
         }
-        if (!reportData) {
-          throw new Error("Relatório concluído, mas sem dados válidos para carregar.");
-        }
-        finalReportData = reportData;
-        finalFailures = reportData.raw_analysis?.failures || [];
-        finalOverviewData = overviewData;
-        finalInsights = overviewData.insights || [];
-        let persistedMarkdown = reportData.report_markdown || "";
-        const runId = String(finalStatus.db_run_id || "").trim();
-        if (runId) {
-          try {
-            const runSnapshot = await apiGet<ReportRunResponse>(`/api/report-day/run?run_id=${encodeURIComponent(runId)}`);
-            persistedMarkdown = runSnapshot.report_markdown || persistedMarkdown;
-          } catch {
-            // fallback para resultado local em memória
-          }
-        }
-        finalRawOutput = persistedMarkdown || JSON.stringify(reportData, null, 2);
+        finalRawOutput = mappedSnapshot.rawOutput || reportData.report_markdown || JSON.stringify(reportData, null, 2);
         pushRunStep("Relatório final gerado com sucesso.");
         setRunCurrentContact(null);
       } catch (reportError) {
@@ -806,7 +784,7 @@ export function useDashboardController(options?: { enabled?: boolean }): Dashboa
         finalInsights = [];
         finalReportData = null;
         finalFailures = [];
-        finalRawOutput = JSON.stringify({ system_check: check, overview: overviewData, report_error: reportMessage }, null, 2);
+        finalRawOutput = JSON.stringify({ system_check: check, report_error: reportMessage }, null, 2);
         pushRunStep(`Não conseguimos gerar o relatório: ${reportMessage}`);
         setRunCurrentContact(null);
       }
@@ -828,13 +806,12 @@ export function useDashboardController(options?: { enabled?: boolean }): Dashboa
         setOverviewRunCount((value) => value + 1);
         setSelectedReportContact(null);
         setReportSeverityFilter("all");
-      const modeLabel = mode === "force" ? "Reprocessar" : "Reaproveitar";
-      setStatus(`Overview concluído em ${elapsed}s (${modeLabel}). Conexões ${check.ok ? "OK" : "com alerta"}.`);
+      setStatus(`Overview concluído em ${elapsed}s. Conexões ${check.ok ? "OK" : "com alerta"}.`);
       }
       pushRunStep(`Overview finalizado em ${elapsed}s.`);
-      updateRunProgress(6);
-      setRunTimeline([]);
+      setRunProgress(100);
       setRunStartedAt(null);
+      setCurrentRunId(null);
       apiGet<ReportHistoryResponse>("/api/report-day/history?limit=8")
         .then((data) => setReportHistory(Array.isArray(data?.items) ? data.items : []))
         .catch(() => undefined);
@@ -854,7 +831,7 @@ export function useDashboardController(options?: { enabled?: boolean }): Dashboa
       setRawOutput(`Erro: ${message}`);
       pushRunStep(`Parou com erro: ${message}`);
       setRunCurrentContact(null);
-      setRunTimeline([]);
+      setCurrentRunId(null);
       setRunStartedAt(null);
     } finally {
       setLoading(null);
@@ -899,12 +876,11 @@ export function useDashboardController(options?: { enabled?: boolean }): Dashboa
     isBusy,
     isRunningOverview,
     lastRunAt,
+    currentRunId,
     activeNav,
     navClass,
     navigateToSection,
     executeOverview,
-    overviewExecutionMode,
-    setOverviewExecutionMode,
     apiConfig,
     systemCheck,
     overview,
@@ -940,7 +916,6 @@ export function useDashboardController(options?: { enabled?: boolean }): Dashboa
     runTimeline,
     runProgress,
     runCurrentContact,
-    runEtaLabel,
     reportLinks,
     reportHistory,
     selectedDateInfo,

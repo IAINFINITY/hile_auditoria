@@ -78,7 +78,10 @@ export function GapsSection({
     const y = typeof window !== "undefined" ? window.scrollY : 0;
     update();
     if (typeof window !== "undefined") {
-      requestAnimationFrame(() => window.scrollTo({ top: y }));
+      requestAnimationFrame(() => {
+        window.scrollTo({ top: y, behavior: "auto" });
+        requestAnimationFrame(() => window.scrollTo({ top: y, behavior: "auto" }));
+      });
     }
   }
 

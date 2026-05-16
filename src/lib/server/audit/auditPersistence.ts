@@ -1027,6 +1027,33 @@ export async function getLatestRunByDate(date: string) {
   };
 }
 
+export async function getRunningRunByDate(date: string) {
+  const run = await prisma.analysisRun.findFirst({
+    where: {
+      dateRef: toDateRef(date),
+      status: RunStatus.running,
+    },
+    orderBy: { startedAt: "desc" },
+    select: {
+      id: true,
+      dateRef: true,
+      startedAt: true,
+      totalConversations: true,
+      processed: true,
+    },
+  });
+
+  if (!run) return null;
+
+  return {
+    id: run.id,
+    date_ref: run.dateRef.toISOString().slice(0, 10),
+    started_at: run.startedAt.toISOString(),
+    total_conversations: run.totalConversations,
+    processed: run.processed,
+  };
+}
+
 export async function listClientsByDate(date: string) {
   const normalizeMatchKey = (value: string) =>
     String(value || "")

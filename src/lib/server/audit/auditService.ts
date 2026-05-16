@@ -524,7 +524,7 @@ export async function runDailyAnalysis({
 
       if (!difyRaw) {
         const missingError = new Error(
-          "Não encontramos análise existente para este contato no modo Reaproveitar. Use Reprocessar para gerar uma nova.",
+          "Não encontramos análise disponível para este contato nesta execução.",
         );
         (missingError as Error & { code?: string }).code = "analysis_not_found_in_reuse_mode";
         throw missingError;

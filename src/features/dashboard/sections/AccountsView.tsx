@@ -503,6 +503,12 @@ export function AccountsView({ selectedDate, knownRunId = null, refreshHint = nu
             </div>
 
             <div className="modal-body">
+              {(() => {
+                const openedAt = selectedRecord.openedAt || null;
+                const closedAt = selectedRecord.closedAt || null;
+
+                return (
+                  <>
               <div className="modal-row">
                 <strong>Telefone</strong>
                 <span>{selectedRecord.phonePk || "não informado"}</span>
@@ -517,28 +523,15 @@ export function AccountsView({ selectedDate, knownRunId = null, refreshHint = nu
               </div>
               <div className="modal-row">
                 <strong>Abertura</strong>
-                <span>{toDateTimeBr(selectedRecord.openedAt)}</span>
+                <span>{toDateTimeBr(openedAt)}</span>
               </div>
               <div className="modal-row">
                 <strong>Fechamento</strong>
-                <span>{toDateTimeBr(selectedRecord.closedAt)}</span>
+                <span>{closedAt ? toDateTimeBr(closedAt) : "-"}</span>
               </div>
-              <div className="modal-row">
-                <strong>Primeiro registro</strong>
-                <span>{toDateTimeBr(selectedRecord.lifecycle?.firstSeenAt || null)}</span>
-              </div>
-              <div className="modal-row">
-                <strong>Último registro</strong>
-                <span>{toDateTimeBr(selectedRecord.lifecycle?.lastSeenAt || null)}</span>
-              </div>
-              <div className="modal-row">
-                <strong>Primeiro problema</strong>
-                <span>{toDateTimeBr(selectedRecord.lifecycle?.firstIssueAt || null)}</span>
-              </div>
-              <div className="modal-row">
-                <strong>Último problema</strong>
-                <span>{toDateTimeBr(selectedRecord.lifecycle?.lastIssueAt || null)}</span>
-              </div>
+                  </>
+                );
+              })()}
 
               <div className="modal-section">
                 <h4>Linha do tempo operacional</h4>

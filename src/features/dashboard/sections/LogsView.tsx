@@ -7,6 +7,11 @@ interface LogsViewProps {
   reportHistory: ReportHistoryItem[];
   currentStatus: string;
   selectedDate: string;
+  isRunningOverview: boolean;
+  currentRunId: string | null;
+  runProgress: number;
+  runCurrentContact: string | null;
+  runTimeline: string[];
 }
 
 function fmtBr(iso: string | null): string {
@@ -28,7 +33,17 @@ function durationSec(start: string, end: string | null): string {
   return `${min}m ${seg}s`;
 }
 
-export function LogsView({ systemCheck, reportHistory, currentStatus, selectedDate }: LogsViewProps) {
+export function LogsView({
+  systemCheck,
+  reportHistory,
+  currentStatus,
+  selectedDate,
+  isRunningOverview,
+  currentRunId,
+  runProgress,
+  runCurrentContact,
+  runTimeline,
+}: LogsViewProps) {
   const runsByDate = useMemo(() => {
     const map = new Map<string, ReportHistoryItem[]>();
     for (const run of reportHistory) {
@@ -64,6 +79,31 @@ export function LogsView({ systemCheck, reportHistory, currentStatus, selectedDa
           <p>
             <strong>Status geral:</strong> {currentStatus || "Sem execução no momento"}
           </p>
+        </div>
+      </article>
+
+      <article className="settings-card">
+        <div className="settings-card-head">Execução em andamento</div>
+        <div className="settings-card-body">
+          {!isRunningOverview ? (
+            <p className="empty-state">Nenhuma execução em andamento no momento.</p>
+          ) : (
+            <>
+              <p><strong>Run:</strong> {currentRunId ? currentRunId : "em criação..."}</p>
+              <p><strong>Contato atual:</strong> {runCurrentContact || "preparando execução..."}</p>
+              <p><strong>Progresso:</strong> {runProgress}%</p>
+              <div className="orq-progress-track" role="progressbar" aria-valuenow={runProgress} aria-valuemin={0} aria-valuemax={100}>
+                <div className="orq-progress-fill" style={{ width: `${runProgress}%` }} />
+              </div>
+              <div className="logs-list" style={{ marginTop: 10 }}>
+                {runTimeline.slice(-30).map((line, idx) => (
+                  <article className="log-item" key={`line-${idx}`}>
+                    <p>{line}</p>
+                  </article>
+                ))}
+              </div>
+            </>
+          )}
         </div>
       </article>
 

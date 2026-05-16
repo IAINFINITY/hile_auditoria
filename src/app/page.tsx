@@ -183,9 +183,19 @@ export default function Page() {
     window.scrollTo({ top: 0, behavior: "auto" });
   }, [activeView, stage]);
 
+  useEffect(() => {
+    if (stage !== "app" || !controller.isRunningOverview) return;
+    const handler = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [controller.isRunningOverview, stage]);
+
   async function handleConfirmRun() {
     setShowConfirmModal(false);
-    await controller.executeOverview(controller.overviewExecutionMode);
+    await controller.executeOverview();
   }
 
   function handleNavigate(section: string) {
@@ -512,13 +522,11 @@ export default function Page() {
                 isRunningOverview={controller.isRunningOverview}
                 onRequestOverview={() => setShowConfirmModal(true)}
                 onOpenLogs={handleOpenLogs}
-                overviewExecutionMode={controller.overviewExecutionMode}
-                setOverviewExecutionMode={controller.setOverviewExecutionMode}
               overview={controller.overview}
               severitySnapshot={controller.severitySnapshot}
               runProgress={controller.runProgress}
               runCurrentContact={controller.runCurrentContact}
-              runEtaLabel={controller.runEtaLabel}
+              runTimeline={controller.runTimeline}
               selectedDateInfo={controller.selectedDateInfo}
               selectedDateHasSavedReport={controller.selectedDateHasSavedReport}
             />
@@ -579,6 +587,11 @@ export default function Page() {
                 reportHistory={controller.reportHistory}
                 currentStatus={controller.status}
                 selectedDate={controller.date}
+                isRunningOverview={controller.isRunningOverview}
+                currentRunId={controller.currentRunId}
+                runProgress={controller.runProgress}
+                runCurrentContact={controller.runCurrentContact}
+                runTimeline={controller.runTimeline}
               />
             </div>
           ) : (
@@ -602,11 +615,7 @@ export default function Page() {
                 Vamos checar conexões, buscar conversas do dia, rodar análise e atualizar o relatório.
               </p>
               <p>
-                Modo atual:{" "}
-                <strong>{controller.overviewExecutionMode === "force" ? "Reprocessar" : "Reaproveitar"}</strong>{" "}
-                {controller.overviewExecutionMode === "force"
-                  ? "(consome mais tokens)."
-                  : "(reaproveita dados já existentes quando possível)."}
+                Esta execução vai consolidar os dados do dia e atualizar o relatório salvo para a data selecionada.
               </p>
               {controller.selectedDateHasSavedReport ? (
                 <p style={{ color: "var(--critical)" }}>

@@ -14,33 +14,41 @@ export function PieChart({ data }: { data: Array<{ label: string; value: number 
   const cx = 70;
   const cy = 70;
   const circ = 2 * Math.PI * radius;
-  let offset = 0;
   const palette = ["#0c63a8", "#39a0ed", "#8ecae6", "#2a9d8f", "#457b9d", "#264653"];
+
+  const arcs = filtered.map((item, idx) => {
+    const len = (item.value / total) * circ;
+    const priorLen = filtered
+      .slice(0, idx)
+      .reduce((acc, prev) => acc + (prev.value / total) * circ, 0);
+    return {
+      key: `${item.label}-${item.value}-${idx}`,
+      len,
+      offset: -priorLen,
+      stroke: palette[idx % palette.length],
+      label: item.label,
+      value: item.value,
+    };
+  });
 
   return (
     <div style={{ display: "grid", gap: "0.75rem", alignItems: "center" }}>
       <svg viewBox="0 0 140 140" width="210" height="210" style={{ display: "block", margin: "0 auto" }}>
         <circle cx={cx} cy={cy} r={radius} fill="none" stroke="#dfe6ef" strokeWidth="18" />
-        {filtered.map((item, idx) => {
-          const len = (item.value / total) * circ;
-          const stroke = palette[idx % palette.length];
-          const node = (
-            <circle
-              key={`${item.label}-${item.value}-${idx}`}
-              cx={cx}
-              cy={cy}
-              r={radius}
-              fill="none"
-              stroke={stroke}
-              strokeWidth="18"
-              strokeDasharray={`${len} ${circ}`}
-              strokeDashoffset={-offset}
-              transform={`rotate(-90 ${cx} ${cy})`}
-            />
-          );
-          offset += len;
-          return node;
-        })}
+        {arcs.map((arc) => (
+          <circle
+            key={arc.key}
+            cx={cx}
+            cy={cy}
+            r={radius}
+            fill="none"
+            stroke={arc.stroke}
+            strokeWidth="18"
+            strokeDasharray={`${arc.len} ${circ}`}
+            strokeDashoffset={arc.offset}
+            transform={`rotate(-90 ${cx} ${cy})`}
+          />
+        ))}
         <text x={cx} y={cy - 4} textAnchor="middle" fontSize="22" fontWeight="700" fill="#0b2740" fontFamily="'JetBrains Mono',monospace">
           {total}
         </text>
@@ -50,16 +58,13 @@ export function PieChart({ data }: { data: Array<{ label: string; value: number 
       </svg>
 
       <div className="severity-legend">
-        {filtered.map((item, idx) => {
-          const stroke = palette[idx % palette.length];
-          return (
-            <div className="severity-legend-item" key={`${item.label}-${idx}`}>
-              <span className="severity-legend-dot" style={{ background: stroke }} />
-              {item.label}
-              <span className="severity-legend-count">{item.value}</span>
-            </div>
-          );
-        })}
+        {arcs.map((arc) => (
+          <div className="severity-legend-item" key={`legend-${arc.key}`}>
+            <span className="severity-legend-dot" style={{ background: arc.stroke }} />
+            {arc.label}
+            <span className="severity-legend-count">{arc.value}</span>
+          </div>
+        ))}
       </div>
     </div>
   );

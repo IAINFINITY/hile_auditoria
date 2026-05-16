@@ -5,6 +5,7 @@ import {
   appendRunEvent,
   createRunRecord,
   getLatestRunByDate,
+  getRunningRunByDate,
   markRunFailed,
   persistCompletedRun,
   updateRunProgress,
@@ -14,7 +15,6 @@ import { cleanupReportJobs, getReportJobsStore, type ReportJobState } from "@/li
 import type { ReportPayload } from "@/types";
 
 export const runtime = "nodejs";
-type OverviewExecutionMode = "reuse" | "force";
 
 type ProgressEvent = {
   type?: "contact_start" | "contact_done";
@@ -38,9 +38,8 @@ export async function POST(request: Request) {
     cleanupReportJobs();
 
     const config = getAppConfig();
-    const body = await readJsonBody<{ date?: string; mode?: OverviewExecutionMode }>(request);
+    const body = await readJsonBody<{ date?: string }>(request);
     const date = parseDateInput(body?.date, config.timezone);
-    const mode: OverviewExecutionMode = body?.mode === "force" ? "force" : "reuse";
     const previousRun = await getLatestRunByDate(date);
     const jobs = getReportJobsStore();
 
@@ -86,7 +85,19 @@ export async function POST(request: Request) {
         error instanceof Error ? error.message : "Não foi possível iniciar o overview para esta data.";
       const code = (error as { code?: string } | null)?.code;
       if (code === "RUN_ALREADY_IN_PROGRESS") {
-        return NextResponse.json({ error: "report_already_running", message, date }, { status: 409 });
+        const runningDbRun = await getRunningRunByDate(date);
+        return NextResponse.json(
+          {
+            ok: true,
+            already_running: true,
+            job_id: runningDbRun?.id ? `db:${runningDbRun.id}` : jobId,
+            db_run_id: runningDbRun?.id || null,
+            status: "running",
+            date,
+            message,
+          },
+          { status: 202 },
+        );
       }
       throw error;
     }
@@ -96,7 +107,6 @@ export async function POST(request: Request) {
         const output = await buildDailyReport({
           config,
           date,
-          mode,
           onProgress: (event: ProgressEvent) => {
             const state = jobs.get(jobId);
             if (!state) return;
@@ -200,7 +210,6 @@ export async function POST(request: Request) {
         db_run_id: initialJob.db_run_id || null,
         status: "running",
         date,
-        mode,
         has_previous_report: Boolean(previousRun),
         previous_run_id: previousRun?.id || null,
       },

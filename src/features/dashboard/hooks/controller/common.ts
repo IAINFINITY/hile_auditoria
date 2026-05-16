@@ -90,9 +90,9 @@ export function parseHourlyRolesFromLogText(logText: unknown): Array<{ hour: num
     const upper = line.toUpperCase();
     let role: "USER" | "AGENT" | null = null;
 
-    if (/\b(AGENT|ASSISTANT|ATENDENTE|BOT|AI|IA)\b/.test(upper)) {
+    if (/\b(AGENT|ASSISTANT|ATENDENTE|BOT|AI|IA|ACESSO_INFINITY|ACESSO INFINITY)\b/.test(upper)) {
       role = "AGENT";
-    } else if (/\b(USER|USUARIO|CLIENTE|CONTACT)\b/.test(upper)) {
+    } else if (/\b(USER|USUARIO|USUÁRIO|CLIENTE|CONTACT)\b/.test(upper)) {
       role = "USER";
     }
     if (!role || upper.includes("SYSTEM_PRIVATE")) continue;
@@ -109,6 +109,13 @@ export function parseHourlyRolesFromLogText(logText: unknown): Array<{ hour: num
         const [hour, minute, second] = normalizedTime.split(":").map((part) => Number(part || 0));
         fallback.setHours(hour || 0, minute || 0, second || 0, 0);
         date = fallback;
+      }
+      if (!date) {
+        const brDateTimeMatch = line.match(/\b(\d{2})\/(\d{2})\/(\d{4}),\s*([01]?\d|2[0-3]):([0-5]\d)(?::([0-5]\d))?\b/);
+        if (brDateTimeMatch) {
+          const [, d, m, y, hh, mm, ss] = brDateTimeMatch;
+          date = new Date(Number(y), Number(m) - 1, Number(d), Number(hh), Number(mm), Number(ss || 0));
+        }
       }
     }
     if (!date || Number.isNaN(date.getTime())) continue;
