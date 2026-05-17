@@ -96,17 +96,19 @@ export function parseLogMessages(logText: string): ParsedMessage[] {
 
   const out: ParsedMessage[] = [];
   for (const line of lines) {
-    const match = line.match(/^\[(.*?)\]\s*([A-Z_À-ÿ ]+)\s*[:\-]\s*(.*)$/i);
-    if (match) {
+    const withConversation = line.match(
+      /^\[(.*?)\]\s*(?:\[[^\]]+\]\s*)?([A-Z_À-ÿ ]+?)(?:\s*\([^)]+\))?\s*[:\-]\s*(.*)$/i,
+    );
+    if (withConversation) {
       out.push({
-        role: inferRole(match[2]),
-        content: String(match[3] || "").trim(),
+        role: inferRole(withConversation[2]),
+        content: String(withConversation[3] || "").trim(),
         timestamp: parseTimestamp(line),
       });
       continue;
     }
 
-    const altMatch = line.match(/^([A-Z_À-ÿ ]+)\s*[:\-]\s*(.*)$/i);
+    const altMatch = line.match(/^([A-Z_À-ÿ ]+?)(?:\s*\([^)]+\))?\s*[:\-]\s*(.*)$/i);
     if (altMatch) {
       out.push({
         role: inferRole(altMatch[1]),
@@ -304,3 +306,4 @@ export function classifyGapPhase(text: string): string {
   if (normalized.includes("agendamento") || normalized.includes("reuniao") || normalized.includes("marcar")) return "Realização de agendamento";
   return "Operacional";
 }
+

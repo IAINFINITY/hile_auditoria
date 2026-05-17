@@ -699,7 +699,24 @@ export async function buildDailyReport({
     parsed: tryParseJson(item?.analysis?.answer),
   }));
 
-  const criticalCount = parsedItems.filter((entry) => Boolean(entry.parsed?.risco_critico)).length;
+  const criticalCount = parsedItems.filter((entry) => {
+    const topLevel = String(
+      entry.parsed?.severidade || entry.parsed?.severity || entry.parsed?.nivel_risco || entry.parsed?.risco || "",
+    )
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "");
+    if (topLevel.startsWith("crit") || topLevel === "critical") return true;
+
+    const gaps = extractGapEntriesFromAnalysis(entry.item);
+    return gaps.some((gap) => {
+      const raw = String(gap?.severidade || gap?.severity || gap?.nivel || gap?.prioridade || "")
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "");
+      return raw.startsWith("crit") || raw === "critical";
+    });
+  }).length;
   const improvementsCount = parsedItems.reduce(
     (acc, entry) => acc + toArray(entry.parsed?.pontos_melhoria).length,
     0,

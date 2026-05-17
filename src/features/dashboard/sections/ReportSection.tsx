@@ -115,11 +115,29 @@ export function ReportSection({
         const melhorias = toList(parsed.pontos_melhoria);
         const proximos = toList(parsed.proximos_passos);
         const riscoCritico = Boolean(parsed.risco_critico);
-        const fallbackSeverity: Severity = riscoCritico ? "critical" : "info";
-        const severity = toSeverity(
+        const gapsRaw = Array.isArray(parsed.gaps_operacionais)
+          ? parsed.gaps_operacionais
+          : [];
+        const gapSeverity = gapsRaw
+          .map((gap) => (gap && typeof gap === "object" ? (gap as Record<string, unknown>) : {}))
+          .map((gap) => toSeverity(gap.severidade || gap.severity || gap.nivel || gap.prioridade, "info"))
+          .reduce<Severity>((max, current) => {
+            const score = (value: Severity) =>
+              value === "critical" ? 5 : value === "high" ? 4 : value === "medium" ? 3 : value === "low" ? 2 : 1;
+            return score(current) > score(max) ? current : max;
+          }, "info");
+        const topSeverity = toSeverity(
           parsed.severidade || parsed.severity || parsed.nivel_risco || parsed.risco,
-          fallbackSeverity,
+          "info",
         );
+        const severity: Severity =
+          gapSeverity !== "info"
+            ? gapSeverity
+            : topSeverity !== "info"
+              ? topSeverity
+              : riscoCritico
+                ? "critical"
+                : "info";
 
         const state = analysis.conversation_operational?.[0]?.state;
         const situacao =
@@ -146,12 +164,13 @@ export function ReportSection({
           situacao,
           contexto: resumo,
           evidencia,
-          risco: riscoCritico ? "Crítico" : "Não crítico",
+          risco: severity === "critical" ? "Crítico" : "Não crítico",
           acao: proximos[0] || melhorias[0] || "Sem ação recomendada no retorno da IA.",
           labels,
           severity,
         };
-      });
+      })
+      .filter((item) => item.severity !== "info");
   }, [report]);
 
   const availableContacts = useMemo(() => {
@@ -241,7 +260,7 @@ export function ReportSection({
     <div className="section reveal" id="relatorio">
       <div className="section-inner">
         <div className="section-header">
-          <span className="section-num">05</span>
+          <span className="section-num">04</span>
           <div className="section-title">
             <h2>Relatório de Auditoria</h2>
             <p>Resumo executivo no padrão de leitura rápida</p>

@@ -60,13 +60,6 @@ export function InsightsSection({
         color: "var(--low)",
         items: improvements.filter((item) => item.severity === "low"),
       },
-      {
-        key: "info",
-        title: "Informação",
-        desc: "Dados relevantes",
-        color: "var(--info)",
-        items: improvements.filter((item) => item.severity === "info"),
-      },
     ];
   }, [improvements]);
 
@@ -100,7 +93,7 @@ export function InsightsSection({
           <span className="section-num">03</span>
           <div className="section-title">
             <h2>Insights de Melhoria</h2>
-            <p>Médio, baixo e informação organizados por prioridade</p>
+            <p>Médio e baixo organizados por prioridade</p>
           </div>
         </div>
 
@@ -203,10 +196,11 @@ export function InsightsSection({
                 </button>
                 <button
                   type="button"
-                  className={`gap-chip ${insightFilter === "info" ? "active" : ""}`}
-                  onClick={() => handleFilterChange("info")}
+                  className="gap-chip"
+                  disabled
+                  title="Insights informativos foram movidos para Análise Geral."
                 >
-                  Informação
+                  Informativo na Análise Geral
                 </button>
               </div>
             </div>

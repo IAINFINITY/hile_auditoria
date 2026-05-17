@@ -1,6 +1,6 @@
 import type { Severity } from "../../../../types";
 
-export type SeverityFilter = "all" | Severity;
+export type SeverityFilter = "all" | Exclude<Severity, "info">;
 
 export interface ReportItem {
   key: string;
@@ -30,7 +30,6 @@ export const REPORT_SEVERITY_OPTIONS: Array<{ value: SeverityFilter; label: stri
   { value: "high", label: "Alto" },
   { value: "medium", label: "Médio" },
   { value: "low", label: "Baixo" },
-  { value: "info", label: "Informativo" },
 ];
 
 export const KNOWN_LABELS = [

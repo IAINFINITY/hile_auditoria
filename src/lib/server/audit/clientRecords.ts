@@ -121,6 +121,28 @@ function normalizeSeverity(value: unknown): InsightSeverity {
   return "info";
 }
 
+function deriveSeverityFromAnalysis(parsed: Record<string, unknown>): InsightSeverity {
+  const gaps = Array.isArray(parsed.gaps_operacionais) ? parsed.gaps_operacionais : [];
+  let highest: InsightSeverity = "info";
+
+  for (const rawGap of gaps) {
+    const gapObj = rawGap && typeof rawGap === "object" ? (rawGap as Record<string, unknown>) : {};
+    const gapSeverity = normalizeSeverity(
+      gapObj.severidade || gapObj.severity || gapObj.nivel || gapObj.prioridade || gapObj.priority,
+    );
+    if (severityOrder[gapSeverity] > severityOrder[highest]) {
+      highest = gapSeverity;
+    }
+  }
+
+  if (highest !== "info") return highest;
+
+  const topLevel = normalizeSeverity(parsed.severidade || parsed.severity || parsed.nivel_risco || parsed.risco);
+  if (topLevel !== "info") return topLevel;
+
+  return Boolean(parsed.risco_critico) ? "critical" : "info";
+}
+
 function parsePossibleJsonObject(raw: string): Record<string, unknown> {
   const clean = String(raw || "").trim();
   if (!clean) return {};
@@ -241,7 +263,7 @@ export function buildClientRecordsFromAnalyses(analyses: AnalysisItem[]): Client
       record.status = "resolvido";
     }
 
-    const severity = normalizeSeverity(parsed.severidade || parsed.severity || parsed.nivel_risco || parsed.risco);
+    const severity = deriveSeverityFromAnalysis(parsed);
     if (severityOrder[severity] > severityOrder[record.severity]) {
       record.severity = severity;
     }

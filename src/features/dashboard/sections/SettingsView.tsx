@@ -123,7 +123,7 @@ export function SettingsView({ currentUser, onUpdateProfile }: SettingsViewProps
         <p>Ajustes de perfil, segurança e preferências do dashboard.</p>
       </div>
 
-      <section className="settings-card">
+      <section className="settings-card" id="settings-profile">
         <div className="settings-card-head">Perfil</div>
         <div className="settings-card-body" style={{ gap: 18 }}>
           <div>
@@ -164,7 +164,7 @@ export function SettingsView({ currentUser, onUpdateProfile }: SettingsViewProps
         </div>
       </section>
 
-      <section className="settings-card">
+      <section className="settings-card" id="settings-security">
         <div className="settings-card-head">Segurança</div>
         <div className="settings-card-body" style={{ gap: 18 }}>
           <div>
@@ -245,7 +245,7 @@ export function SettingsView({ currentUser, onUpdateProfile }: SettingsViewProps
         </div>
       </section>
 
-      <section className="settings-card">
+      <section className="settings-card" id="settings-preferences">
         <div className="settings-card-head">Preferências</div>
         <div className="settings-card-body" style={{ gap: 18 }}>
           <div>

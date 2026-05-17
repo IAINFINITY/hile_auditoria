@@ -16,6 +16,14 @@
 .settings-animated .settings-shell > *:nth-child(3){animation-delay:.2s}
 .settings-animated .settings-shell > *:nth-child(4){animation-delay:.26s}
 
+.analysis-content-shell{
+  width:min(var(--shell-max), calc(100% - var(--shell-gutter) * 2));
+  margin:0 auto;
+  padding:0 0 40px;
+  display:grid;
+  gap:20px;
+}
+
 .settings-animated .accounts-shell > *{
   opacity:0;
   transform:translateY(14px);
@@ -47,7 +55,6 @@
   transition:box-shadow .2s ease,border-color .2s ease;
 }
 .settings-card:hover{box-shadow:0 2px 16px rgba(16,107,182,0.06);border-color:var(--azul-line)}
-
 .settings-card-head{
   background:var(--azul);
   color:var(--branco);

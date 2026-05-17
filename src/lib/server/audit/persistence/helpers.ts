@@ -47,8 +47,12 @@ export function buildConversationLink(baseUrl: string, accountId: number, inboxI
 
 export function parseGapSeverity(value: unknown): GapSeverity {
   const raw = String(value || "").trim().toLowerCase();
+  if (raw.startsWith("cr") || raw === "critical") return GapSeverity.alta;
+  if (raw === "high") return GapSeverity.alta;
   if (raw.startsWith("alt")) return GapSeverity.alta;
+  if (raw === "medium") return GapSeverity.media;
   if (raw.startsWith("med")) return GapSeverity.media;
+  if (raw === "low" || raw === "info") return GapSeverity.baixa;
   if (raw.startsWith("baix")) return GapSeverity.baixa;
   return GapSeverity.nao_informado;
 }

@@ -32,7 +32,7 @@ export function GroupedHourlyChart({ data }: { data: GroupedHourPoint[] }) {
   const groupW = barW * 3 + seriesGap * 2;
   const groupGap = 18;
   const plotW = data.length * groupW + Math.max(0, data.length - 1) * groupGap;
-  const chartW = Math.max(1040, margin.left + margin.right + plotW + 24);
+  const chartW = margin.left + margin.right + plotW + 24;
 
   const ticks = Array.from({ length: tickCount + 1 }, (_, index) => {
     const value = Math.round((yMax / tickCount) * index);
@@ -42,7 +42,7 @@ export function GroupedHourlyChart({ data }: { data: GroupedHourPoint[] }) {
 
   return (
     <div className="chart-wrap">
-      <svg viewBox={`0 0 ${chartW} ${chartH}`} width="100%" height={chartH}>
+      <svg viewBox={`0 0 ${chartW} ${chartH}`} width="100%" height={chartH} preserveAspectRatio="xMinYMin meet">
         <text
           x={margin.left + plotW / 2}
           y={chartH - 8}
@@ -94,7 +94,7 @@ export function GroupedHourlyChart({ data }: { data: GroupedHourPoint[] }) {
           const startX = margin.left + index * (groupW + groupGap);
           const bars = [
             { key: "conversas", value: point.conversas, color: "var(--accent)" },
-            { key: "ia", value: point.ia, color: "#0f1d3d" },
+            { key: "ia", value: point.ia, color: "var(--navy)" },
             { key: "usuario", value: point.usuario, color: "var(--muted)" },
           ];
 

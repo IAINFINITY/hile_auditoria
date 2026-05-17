@@ -1,6 +1,6 @@
 import type { Severity } from "../../../../types";
 
-export type ReportSeverityFilter = "all" | "critical" | "high" | "medium" | "low" | "info";
+export type ReportSeverityFilter = "all" | "critical" | "high" | "medium" | "low";
 
 export function normalizeTextForMatch(value: unknown): string {
   return String(value || "")

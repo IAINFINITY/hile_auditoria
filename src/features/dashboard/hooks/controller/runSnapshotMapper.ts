@@ -31,6 +31,7 @@ function extractMaxSeverityFromAnswer(answer: Record<string, unknown>): string {
   }
 
   if (order(highest) < 5) return highest;
+  // fallback final: only when analysis did not return usable severity labels
   if (asBoolean(answer.risco_critico)) return "critical";
   return "info";
 }

@@ -9,6 +9,8 @@ interface MovementSectionProps {
   severitySnapshot: Record<Severity, number>;
   totalMessagesDay: number;
   totalConversationsDay: number;
+  sectionId?: string;
+  sectionNumber?: string;
 }
 
 export function MovementSection({
@@ -16,6 +18,8 @@ export function MovementSection({
   severitySnapshot,
   totalMessagesDay,
   totalConversationsDay,
+  sectionId = "movimentacao",
+  sectionNumber = "04",
 }: MovementSectionProps) {
   const hasMovementData = trendSeries.length > 0;
   const total = trendSeries.reduce((sum, item) => sum + item.conversas, 0);
@@ -40,10 +44,10 @@ export function MovementSection({
   const groupedData = useMemo(() => trendSeries, [trendSeries]);
 
   return (
-    <div className="section reveal" id="movimentacao">
+    <div className="section reveal" id={sectionId}>
       <div className="section-inner">
         <div className="section-header">
-          <span className="section-num">04</span>
+          <span className="section-num">{sectionNumber}</span>
           <div className="section-title">
             <h2>Movimentação</h2>
             <p>Volume por hora e distribuição dos gaps no período</p>
@@ -59,9 +63,9 @@ export function MovementSection({
           </div>
           <div className="metrics-block-body">
             <div className="chart-legend">
-              <span className="legend-item"><span className="legend-dot" style={{ background: "#106bb6" }} /> Conversas</span>
-              <span className="legend-item"><span className="legend-dot" style={{ background: "#45a3ff" }} /> Msg IA</span>
-              <span className="legend-item"><span className="legend-dot" style={{ background: "#0d3f73" }} /> Msg Usuário</span>
+              <span className="legend-item"><span className="legend-dot" style={{ background: "var(--accent)" }} /> Conversas</span>
+              <span className="legend-item"><span className="legend-dot" style={{ background: "var(--navy)" }} /> Msg IA</span>
+              <span className="legend-item"><span className="legend-dot" style={{ background: "var(--muted)" }} /> Msg Usuário</span>
             </div>
             <GroupedHourlyChart data={groupedData} />
           </div>

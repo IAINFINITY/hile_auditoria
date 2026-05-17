@@ -296,6 +296,7 @@ export function AccountsView({ selectedDate, knownRunId = null, refreshHint = nu
     () => Boolean(query.trim()) || statusFilter !== "all" || labelFilter !== "all" || favoritesOnly || pinnedOnly,
     [favoritesOnly, labelFilter, pinnedOnly, query, statusFilter],
   );
+  const shouldDimKanban = filteredRecords.length === 0;
 
   const visibleStatuses = useMemo(() => {
     if (!hasActiveFilters) return STATUS_ORDER;
@@ -341,7 +342,7 @@ export function AccountsView({ selectedDate, knownRunId = null, refreshHint = nu
         </div>
       </article>
 
-      <article className="settings-card">
+      <article className="settings-card" id="clients-filtros">
         <div className="settings-card-head">Filtros</div>
         <div className="settings-card-body accounts-filters">
           <div className="accounts-search">
@@ -392,7 +393,7 @@ export function AccountsView({ selectedDate, knownRunId = null, refreshHint = nu
         </div>
       </article>
 
-      <article className="settings-card">
+      <article className={`settings-card ${shouldDimKanban ? "data-dim" : ""}`} id="clients-kanban">
         <div className="settings-card-head">Kanban — {filteredRecords.length} cliente(s)</div>
         <div className="settings-card-body accounts-list-wrap">
           {loading ? <p className="empty-state">Carregando clientes do banco...</p> : null}

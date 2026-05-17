@@ -12,13 +12,14 @@ import { AccountsView } from "@/features/dashboard/sections/AccountsView";
 import { LogsView } from "@/features/dashboard/sections/LogsView";
 import { MetricsSection } from "@/features/dashboard/sections/MetricsSection";
 import { MovementSection } from "@/features/dashboard/sections/MovementSection";
+import { ProductsOverallView } from "@/features/dashboard/sections/ProductsOverallView";
 import { ProductsView } from "@/features/dashboard/sections/ProductsView";
 import { ReportSection } from "@/features/dashboard/sections/ReportSection";
 import { SettingsView } from "@/features/dashboard/sections/SettingsView";
 import { ShellNavigation } from "@/features/dashboard/sections/ShellNavigation";
 import { supabaseBrowser } from "@/lib/supabase/browser";
 
-type AppView = "dashboard" | "clients" | "products" | "logs" | "settings";
+type AppView = "dashboard" | "clients" | "analysis" | "products" | "logs" | "settings";
 
 interface AuthStatusPayload {
   authenticated: boolean;
@@ -33,8 +34,8 @@ export default function Page() {
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [activeView, setActiveView] = useState<AppView>(() => {
     if (typeof window !== "undefined") {
-      const saved = sessionStorage.getItem("hile_active_view") as AppView | null;
-      if (saved === "dashboard" || saved === "clients" || saved === "products" || saved === "logs" || saved === "settings") return saved;
+      const saved = sessionStorage.getItem("hile_active_view");
+      if (saved === "dashboard" || saved === "clients" || saved === "analysis" || saved === "products" || saved === "logs" || saved === "settings") return saved;
     }
     return "dashboard";
   });
@@ -48,6 +49,7 @@ export default function Page() {
   const [loginError, setLoginError] = useState("");
   const [showForgotPasswordModal, setShowForgotPasswordModal] = useState(false);
   const [showLogoutConfirmModal, setShowLogoutConfirmModal] = useState(false);
+  const [activeSubNavKey, setActiveSubNavKey] = useState<string>("inicio");
   const [currentUser, setCurrentUser] = useState<{ name: string; email: string; role: string } | null>(null);
   useRevealOnScroll({ enabled: stage === "app" });
   const controller = useDashboardController({ enabled: stage === "app" });
@@ -180,6 +182,15 @@ export default function Page() {
   }, [activeView, stage]);
 
   useEffect(() => {
+    if (activeView === "dashboard") setActiveSubNavKey("inicio");
+    if (activeView === "clients") setActiveSubNavKey("clients-filtros");
+    if (activeView === "analysis") setActiveSubNavKey("analysis-overview");
+    if (activeView === "products") setActiveSubNavKey("");
+    if (activeView === "logs") setActiveSubNavKey("logs-saude");
+    if (activeView === "settings") setActiveSubNavKey("settings-profile");
+  }, [activeView]);
+
+  useEffect(() => {
     if (stage !== "app") return;
     window.scrollTo({ top: 0, behavior: "auto" });
   }, [activeView, stage]);
@@ -200,12 +211,57 @@ export default function Page() {
   }
 
   function handleNavigate(section: string) {
+    setActiveSubNavKey(section);
     if (activeView !== "dashboard") {
       setActiveView("dashboard");
       setTimeout(() => controller.navigateToSection(section), 0);
       return;
     }
     controller.navigateToSection(section);
+  }
+
+  function scrollToAnchoredSection(sectionId: string) {
+    const target = document.getElementById(sectionId);
+    if (!target) return;
+    setActiveSubNavKey(sectionId);
+    const top = Math.max(0, target.offsetTop - 68);
+    window.scrollTo({ top, behavior: "smooth" });
+  }
+
+  function handleNavigateAnalysis(section: "analysis-overview" | "analysis-movimentacao" | "analysis-conteudo") {
+    if (activeView !== "analysis") {
+      setActiveView("analysis");
+      setTimeout(() => scrollToAnchoredSection(section), 0);
+      return;
+    }
+    scrollToAnchoredSection(section);
+  }
+
+  function handleNavigateClients(section: "clients-filtros" | "clients-kanban") {
+    if (activeView !== "clients") {
+      setActiveView("clients");
+      setTimeout(() => scrollToAnchoredSection(section), 0);
+      return;
+    }
+    scrollToAnchoredSection(section);
+  }
+
+  function handleNavigateLogs(section: "logs-saude" | "logs-execucao" | "logs-recentes") {
+    if (activeView !== "logs") {
+      setActiveView("logs");
+      setTimeout(() => scrollToAnchoredSection(section), 0);
+      return;
+    }
+    scrollToAnchoredSection(section);
+  }
+
+  function handleNavigateSettings(section: "settings-profile" | "settings-security" | "settings-preferences") {
+    if (activeView !== "settings") {
+      setActiveView("settings");
+      setTimeout(() => scrollToAnchoredSection(section), 0);
+      return;
+    }
+    scrollToAnchoredSection(section);
   }
 
   async function handleLogin(event: FormEvent<HTMLFormElement>) {
@@ -345,6 +401,23 @@ export default function Page() {
     requestAnimationFrame(() => {
       window.scrollTo({ top: 0, behavior: "auto" });
     });
+  }
+
+  function handleOpenAnalysis() {
+    setActiveView("analysis");
+    requestAnimationFrame(() => {
+      window.scrollTo({ top: 0, behavior: "auto" });
+    });
+  }
+
+  function handleOpenDashboard() {
+    setActiveSubNavKey("inicio");
+    if (activeView !== "dashboard") {
+      setActiveView("dashboard");
+      setTimeout(() => controller.navigateToSection("inicio"), 0);
+      return;
+    }
+    controller.navigateToSection("inicio");
   }
 
   function handleUpdateProfile(updates: { name?: string; role?: string }) {
@@ -502,13 +575,19 @@ export default function Page() {
     <div className="app-shell">
       <ShellNavigation
         activeView={activeView}
+        activeSubNavKey={activeSubNavKey}
         navClass={controller.navClass}
         onNavigate={handleNavigate}
         onOpenSettings={handleOpenSettings}
-        onOpenDashboard={() => setActiveView("dashboard")}
+        onOpenDashboard={handleOpenDashboard}
         onOpenClients={handleOpenClients}
+        onOpenAnalysis={handleOpenAnalysis}
         onOpenProducts={handleOpenProducts}
         onOpenLogs={handleOpenLogs}
+        onNavigateAnalysis={handleNavigateAnalysis}
+        onNavigateClients={handleNavigateClients}
+        onNavigateLogs={handleNavigateLogs}
+        onNavigateSettings={handleNavigateSettings}
         currentUser={currentUser || { name: "Usuário", email: "usuario@hile.com.br", role: "Operador" }}
         onLogout={() => setShowLogoutConfirmModal(true)}
         notificationState={notificationState}
@@ -520,17 +599,17 @@ export default function Page() {
         <div className="main-view-slot">
           {activeView === "dashboard" ? (
           <div className="dashboard-animated" key={`dashboard-${viewAnimationKey}`}>
-              <MetricsSection
-                date={controller.date}
-                setDate={controller.setDate}
+            <MetricsSection
+              date={controller.date}
+              setDate={controller.setDate}
               minDate={controller.minDate}
               maxDate={controller.maxDate}
-                periodPreset={controller.periodPreset}
+              periodPreset={controller.periodPreset}
               applyPeriodPreset={controller.applyPeriodPreset}
-                isBusy={controller.isBusy}
-                isRunningOverview={controller.isRunningOverview}
-                onRequestOverview={() => setShowConfirmModal(true)}
-                onOpenLogs={handleOpenLogs}
+              isBusy={controller.isBusy}
+              isRunningOverview={controller.isRunningOverview}
+              onRequestOverview={() => setShowConfirmModal(true)}
+              onOpenLogs={handleOpenLogs}
               overview={controller.overview}
               severitySnapshot={controller.severitySnapshot}
               runProgress={controller.runProgress}
@@ -566,13 +645,6 @@ export default function Page() {
               onOpenReportByContact={controller.focusReportByContact}
             />
 
-            <MovementSection
-              trendSeries={controller.trendSeries}
-              severitySnapshot={controller.severitySnapshot}
-              totalMessagesDay={controller.overview?.overview.total_messages_day ?? 0}
-              totalConversationsDay={controller.overview?.overview.conversations_total_analyzed_day ?? 0}
-            />
-
             <ReportSection
               criticalGapInsights={controller.criticalGapInsights}
               report={controller.report}
@@ -598,7 +670,6 @@ export default function Page() {
                 systemCheck={controller.systemCheck}
                 reportHistory={controller.reportHistory}
                 currentStatus={controller.status}
-                selectedDate={controller.date}
                 isRunningOverview={controller.isRunningOverview}
                 currentRunId={controller.currentRunId}
                 runProgress={controller.runProgress}
@@ -606,12 +677,70 @@ export default function Page() {
                 runTimeline={controller.runTimeline}
               />
             </div>
+          ) : activeView === "analysis" ? (
+            <div className="settings-animated" key={`analysis-${viewAnimationKey}`}>
+              <div className="section reveal" id="analysis-overview">
+                <div className="section-inner">
+                  <div className="section-header">
+                    <span className="section-num">01</span>
+                    <div className="section-title">
+                      <h2>Análise Geral do Dia</h2>
+                      <p>Esta análise geral reflete exatamente os dados do dia selecionado: {controller.date}.</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <section className="analysis-content-shell">
+                <article className="settings-card">
+                  <div className="settings-card-head">Como interpretar esta análise</div>
+                  <div className="settings-card-body">
+                    <p>
+                      <strong>Análise do Dia:</strong> sempre considera somente os dados da data selecionada no período.
+                    </p>
+                    <p>
+                      <strong>Movimentação:</strong> mostra volume horário e distribuição de severidade para o mesmo dia.
+                    </p>
+                    <p>
+                      <strong>Produtos e Contexto:</strong> lista produtos detectados e insights informativos desse dia, sem misturar com outras datas.
+                    </p>
+                  </div>
+                </article>
+              </section>
+
+              <MovementSection
+                trendSeries={controller.trendSeries}
+                severitySnapshot={controller.severitySnapshot}
+                totalMessagesDay={controller.overview?.overview.total_messages_day ?? 0}
+                totalConversationsDay={controller.overview?.overview.conversations_total_analyzed_day ?? 0}
+                sectionId="analysis-movimentacao"
+                sectionNumber="02"
+              />
+
+              <div className="section reveal" id="analysis-conteudo">
+                <div className="section-inner">
+                  <div className="section-header">
+                    <span className="section-num">03</span>
+                    <div className="section-title">
+                      <h2>Produtos e Contexto</h2>
+                      <p>Produtos procurados e insights informativos do dia selecionado</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <ProductsView
+                  items={controller.productDemand}
+                  selectedDate={controller.date}
+                  informationalInsights={controller.informationalInsights}
+                  showHeader={false}
+                />
+              </div>
+            </div>
           ) : activeView === "products" ? (
             <div className="settings-animated" key={`products-${viewAnimationKey}`}>
-              <ProductsView
-                items={controller.productDemand}
-                selectedDate={controller.date}
-              />
+              <ProductsOverallView />
             </div>
           ) : (
             <div className="settings-animated" key={`settings-${viewAnimationKey}`}>

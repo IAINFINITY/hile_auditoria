@@ -6,7 +6,6 @@ interface LogsViewProps {
   systemCheck: SystemCheckResponse | null;
   reportHistory: ReportHistoryItem[];
   currentStatus: string;
-  selectedDate: string;
   isRunningOverview: boolean;
   currentRunId: string | null;
   runProgress: number;
@@ -37,7 +36,6 @@ export function LogsView({
   systemCheck,
   reportHistory,
   currentStatus,
-  selectedDate,
   isRunningOverview,
   currentRunId,
   runProgress,
@@ -54,11 +52,9 @@ export function LogsView({
     return Array.from(map.entries()).sort((a, b) => b[0].localeCompare(a[0]));
   }, [reportHistory]);
 
-  const latestRuns = useMemo(() =>
-    reportHistory
-      .filter((run) => String(run.date_ref || "").trim() === String(selectedDate || "").trim())
-      .slice(0, 8),
-  [reportHistory, selectedDate]);
+  const hasRecentRuns = runsByDate.length > 0;
+  const dimExec = !isRunningOverview;
+  const dimRecent = !hasRecentRuns;
 
   return (
     <div className="settings-shell">
@@ -67,7 +63,7 @@ export function LogsView({
         <p>Registro de execuções, integrações e eventos do sistema.</p>
       </div>
 
-      <article className="settings-card">
+      <article className="settings-card" id="logs-saude">
         <div className="settings-card-head">Saúde rápida</div>
         <div className="settings-card-body logs-grid">
           <p>
@@ -82,7 +78,7 @@ export function LogsView({
         </div>
       </article>
 
-      <article className="settings-card">
+      <article className={`settings-card ${dimExec ? "data-dim" : ""}`} id="logs-execucao">
         <div className="settings-card-head">Execução em andamento</div>
         <div className="settings-card-body">
           {!isRunningOverview ? (
@@ -107,7 +103,7 @@ export function LogsView({
         </div>
       </article>
 
-      <article className="settings-card">
+      <article className={`settings-card ${dimRecent ? "data-dim" : ""}`} id="logs-recentes">
         <div className="settings-card-head">Execuções recentes</div>
         <div className="settings-card-body" style={{ gap: 0 }}>
           {runsByDate.length === 0 ? (
@@ -162,26 +158,6 @@ export function LogsView({
         </div>
       </article>
 
-      {latestRuns.length > 0 && (
-        <article className="settings-card">
-          <div className="settings-card-head">Execuções da data selecionada</div>
-          <div className="settings-card-body">
-            {latestRuns.map((run) => (
-              <article className="log-item" key={run.id}>
-                <p>
-                  <strong>{run.date_ref}</strong> • {run.channel}
-                </p>
-                <p>
-                  Status: {run.status} • Processadas: {run.processed}/{run.total_conversations} • Sucesso: {run.success_count} • Falhas: {run.failure_count}
-                </p>
-                <p style={{ fontSize: "var(--fs-tiny)", color: "var(--muted)" }}>
-                  Início: {fmtBr(run.started_at)} • Término: {fmtBr(run.finished_at)} • Duração: {durationSec(run.started_at, run.finished_at)}
-                </p>
-              </article>
-            ))}
-          </div>
-        </article>
-      )}
     </div>
   );
 }

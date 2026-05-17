@@ -48,7 +48,7 @@ export function useDashboardController(options?: { enabled?: boolean }): Dashboa
   const enabled = options?.enabled ?? true;
   const SELECTED_DATE_STORAGE_KEY = "hile_selected_date_v1";
   const PROGRESS_STEPS = 6;
-  const SECTION_IDS = ["inicio", "gaps", "insights", "movimentacao", "relatorio"] as const;
+  const SECTION_IDS = ["gaps", "insights", "relatorio"] as const;
   const NAVBAR_HEIGHT = 68;
   const minDate = "2024-01-01";
   const maxDate = toDateInputValue();
@@ -68,8 +68,8 @@ export function useDashboardController(options?: { enabled?: boolean }): Dashboa
   const [insightFilter, setInsightFilter] = useState<InsightFilter>("all");
   const [insightsPage, setInsightsPage] = useState<number>(1);
   const [showTrend, setShowTrend] = useState<boolean>(false);
-  const [activeNav, setActiveNav] = useState<string>("inicio");
-  const activeNavRef = useRef<string>("inicio");
+  const [activeNav, setActiveNav] = useState<string>("gaps");
+  const activeNavRef = useRef<string>("gaps");
   const navFreezeUntilRef = useRef<number>(0);
   const [lastRunAt, setLastRunAt] = useState<string | null>(null);
   const [overviewRunCount, setOverviewRunCount] = useState<number>(0);
@@ -97,6 +97,9 @@ export function useDashboardController(options?: { enabled?: boolean }): Dashboa
     const normalized = normalizeDateInput(value, maxDate);
     const safe = clampDateInput(normalized, minDate, maxDate);
     if (safe > maxDate) return;
+    if (periodPreset === "week" || periodPreset === "month" || periodPreset === "year") {
+      setPeriodPreset("today");
+    }
     setDateState(safe);
     setLastValidDate(safe);
   }
@@ -306,7 +309,7 @@ export function useDashboardController(options?: { enabled?: boolean }): Dashboa
       }
 
       const probeY = scrollTop + NAVBAR_HEIGHT + 24;
-      let chosen: string = "inicio";
+      let chosen: string = "gaps";
       let bestTop = -Infinity;
 
       for (const id of SECTION_IDS) {
@@ -407,13 +410,19 @@ export function useDashboardController(options?: { enabled?: boolean }): Dashboa
     };
   }, [date, enabled, hasLoadedAvailableDates, isDateHydrated, isRunningOverview, isPeriodMode]);
 
+  const informationalInsights = useMemo(() => {
+    return insights.filter((insight) => insight.severity === "info");
+  }, [insights]);
+
   const sortedInsights = useMemo(() => {
-    return [...insights].sort((a, b) => severityOrder[b.severity] - severityOrder[a.severity]);
+    return [...insights]
+      .filter((insight) => insight.severity !== "info")
+      .sort((a, b) => severityOrder[b.severity] - severityOrder[a.severity]);
   }, [insights]);
 
   const improvementInsights = useMemo(() => {
     return sortedInsights.filter(
-      (insight) => insight.severity === "medium" || insight.severity === "low" || insight.severity === "info",
+      (insight) => insight.severity === "medium" || insight.severity === "low",
     );
   }, [sortedInsights]);
 
@@ -442,7 +451,7 @@ export function useDashboardController(options?: { enabled?: boolean }): Dashboa
       high: sortedInsights.filter((i) => i.severity === "high").length,
       medium: sortedInsights.filter((i) => i.severity === "medium").length,
       low: sortedInsights.filter((i) => i.severity === "low").length,
-      info: sortedInsights.filter((i) => i.severity === "info").length,
+      info: 0,
     } as SeveritySnapshot;
   }, [sortedInsights]);
 
@@ -534,14 +543,13 @@ export function useDashboardController(options?: { enabled?: boolean }): Dashboa
 
   const riskRows = useMemo(() => {
     const snapshot = severitySnapshot;
-    const total = (Object.values(snapshot) as number[]).reduce((acc, value) => acc + value, 0);
+    const total = snapshot.critical + snapshot.high + snapshot.medium + snapshot.low;
 
     const baseRows: Array<{ key: Severity; label: string; count: number; pct: string }> = [
       { key: "critical", label: "Crítico", count: snapshot.critical, pct: total ? ((snapshot.critical / total) * 100).toFixed(1) : "0.0" },
       { key: "high", label: "Alto", count: snapshot.high, pct: total ? ((snapshot.high / total) * 100).toFixed(1) : "0.0" },
       { key: "medium", label: "Médio", count: snapshot.medium, pct: total ? ((snapshot.medium / total) * 100).toFixed(1) : "0.0" },
       { key: "low", label: "Baixo", count: snapshot.low, pct: total ? ((snapshot.low / total) * 100).toFixed(1) : "0.0" },
-      { key: "info", label: "Informação", count: snapshot.info, pct: total ? ((snapshot.info / total) * 100).toFixed(1) : "0.0" },
     ];
 
     const rows: RiskRow[] = baseRows.map((row) => ({ ...row }));
@@ -598,8 +606,8 @@ export function useDashboardController(options?: { enabled?: boolean }): Dashboa
 
     if (date < today) {
       return selectedDateHasSavedReport
-        ? "Você está em um dia anterior com relatório salvo."
-        : "Você está em um dia anterior sem relatório salvo ainda.";
+        ? "Você está em um dia personalizado com relatório salvo."
+        : "Você está em um dia personalizado sem relatório salvo ainda.";
     }
 
     return "Data fora do intervalo permitido.";
@@ -781,19 +789,21 @@ export function useDashboardController(options?: { enabled?: boolean }): Dashboa
 
         let reportData: ReportPayload | null = finalStatus.result as ReportPayload | null;
         let persistedByDate: ReportByDateResponse | null = null;
-        for (let attempt = 0; attempt < 8; attempt += 1) {
+        const expectedRunId = finalStatus.db_run_id || reportJob.db_run_id || null;
+        for (let attempt = 0; attempt < 20; attempt += 1) {
           try {
             const payload = await apiGet<ReportByDateResponse>(
               `/api/report-day/by-date?date=${encodeURIComponent(safeDate)}`,
             );
-            if (payload?.run) {
+            const sameRun = expectedRunId ? payload?.run?.id === expectedRunId : Boolean(payload?.run);
+            if (payload?.run && sameRun) {
               persistedByDate = payload;
               break;
             }
           } catch {
             // tenta novamente
           }
-          await sleep(700);
+          await sleep(800);
         }
 
         if (persistedByDate?.run) {
@@ -936,6 +946,7 @@ export function useDashboardController(options?: { enabled?: boolean }): Dashboa
     setInsightsPage,
     filteredInsights,
     allInsights: sortedInsights,
+    informationalInsights,
     criticalGapInsights,
     visibleInsights,
     insightsPageSize,

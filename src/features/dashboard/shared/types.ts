@@ -89,6 +89,7 @@ export interface DashboardController {
   setInsightsPage: (value: number) => void;
   filteredInsights: InsightItem[];
   allInsights: InsightItem[];
+  informationalInsights: InsightItem[];
   criticalGapInsights: InsightItem[];
   visibleInsights: InsightItem[];
   insightsPageSize: number;
@@ -106,8 +107,8 @@ export interface DashboardController {
   reportContacts: string[];
   selectedReportContact: string | null;
   setSelectedReportContact: (value: string | null) => void;
-  reportSeverityFilter: "all" | "critical" | "high" | "medium" | "low" | "info";
-  setReportSeverityFilter: (value: "all" | "critical" | "high" | "medium" | "low" | "info") => void;
+  reportSeverityFilter: "all" | "critical" | "high" | "medium" | "low";
+  setReportSeverityFilter: (value: "all" | "critical" | "high" | "medium" | "low") => void;
   filteredReportMarkdown: string;
   rawOutput: string;
   overviewRunCount: number;

@@ -133,6 +133,8 @@ export function MetricsSection({
   }, [kpis.finalizadas, kpis.gapsCriticosAltos, kpis.gatilhos, summary?.conversations_total_analyzed_day, summary?.total_messages_day]);
 
   const relativePreset = useMemo(() => getRelativePreset(date), [date]);
+  const isAggregateMode = periodPreset === "week" || periodPreset === "month" || periodPreset === "year";
+  const isCustomDay = !isAggregateMode && relativePreset === null;
 
   return (
     <div className="section reveal" id="inicio">
@@ -174,6 +176,14 @@ export function MetricsSection({
                       </button>
                     </Fragment>
                   ))}
+                  {isCustomDay ? (
+                    <>
+                      <div className="filter-sep" />
+                      <button type="button" className="filter-pill active" disabled aria-current="true">
+                        Dia personalizado
+                      </button>
+                    </>
+                  ) : null}
                 </div>
               </div>
             </div>

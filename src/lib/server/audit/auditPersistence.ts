@@ -1,4 +1,4 @@
-﻿import { GapSeverity, Prisma, RunStatus } from "@prisma/client";
+﻿import { Prisma, RunStatus } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import type { AppConfig } from "./types";
 import type { ReportPayload } from "@/types";
@@ -57,6 +57,157 @@ function hasRenderableReportData(reportJson: Record<string, unknown> | null | un
   const logs = Array.isArray(reportJson.logs) ? reportJson.logs : [];
   const logsCount = Number(reportJson.logs_count || 0);
   return analyses.length > 0 || failures.length > 0 || logs.length > 0 || logsCount > 0;
+}
+
+function normalizeSeverityLabel(value: unknown): string {
+  return String(value || "")
+    .toLowerCase()
+    .trim()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
+function isCriticalSeverityLabel(value: unknown): boolean {
+  const normalized = normalizeSeverityLabel(value);
+  return normalized.startsWith("crit") || normalized === "critical";
+}
+
+function deriveRiskLevelFromParsed(parsed: Record<string, unknown>): "critical" | "non_critical" {
+  const topLevel = parsed.severidade || parsed.severity || parsed.nivel_risco || parsed.risco;
+  if (isCriticalSeverityLabel(topLevel)) return "critical";
+
+  const gaps = parseGapEntries(parsed);
+  for (const gap of gaps) {
+    const severityLabel = pickFirstText(gap, ["severidade", "severity", "nivel", "prioridade", "priority"]);
+    if (isCriticalSeverityLabel(severityLabel)) return "critical";
+  }
+
+  return "non_critical";
+}
+
+type ParsedOperationalMessage = {
+  role: "USER" | "AGENT";
+  content: string;
+  timestamp: Date | null;
+};
+
+function parseOperationalMessages(logText: string): ParsedOperationalMessage[] {
+  const lines = String(logText || "")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  const messages: ParsedOperationalMessage[] = [];
+  for (const line of lines) {
+    const match = line.match(
+      /^\[(.*?)\]\s*(?:\[[^\]]+\]\s*)?([A-Z_À-ÿ ]+?)(?:\s*\([^)]+\))?\s*[:\-]\s*(.*)$/i,
+    );
+    if (!match) continue;
+    const roleRaw = String(match[2] || "")
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "");
+    if (!/(user|usuario|cliente|agent|assistant|acesso infinity|acesso_infinity|atendente|bot|ia)/.test(roleRaw)) {
+      continue;
+    }
+    const role: "USER" | "AGENT" =
+      /(user|usuario|cliente)/.test(roleRaw) ? "USER" : "AGENT";
+    const timestampRaw = String(match[1] || "");
+    const timestamp = new Date(timestampRaw);
+    messages.push({
+      role,
+      content: String(match[3] || "").trim(),
+      timestamp: Number.isNaN(timestamp.getTime()) ? null : timestamp,
+    });
+  }
+  return messages;
+}
+
+function deriveFallbackMetricsAndProducts(
+  parsed: Record<string, unknown>,
+  logText: string,
+): Record<string, unknown> {
+  const next = { ...parsed } as Record<string, unknown>;
+
+  if (!next.metricas_cliente || typeof next.metricas_cliente !== "object") {
+    const messages = parseOperationalMessages(logText);
+    let waitingSince: Date | null = null;
+    const delays: number[] = [];
+    const userHours = new Array<number>(24).fill(0);
+    let totalUser = 0;
+
+    for (const msg of messages) {
+      if (msg.role === "AGENT" && msg.timestamp) {
+        waitingSince = msg.timestamp;
+        continue;
+      }
+      if (msg.role === "USER" && msg.timestamp) {
+        totalUser += 1;
+        userHours[msg.timestamp.getHours()] += 1;
+        if (waitingSince) {
+          const delta = Math.floor((msg.timestamp.getTime() - waitingSince.getTime()) / 1000);
+          if (delta >= 0) delays.push(delta);
+          waitingSince = null;
+        }
+      }
+    }
+
+    let peakHour = -1;
+    let peakCount = 0;
+    for (let i = 0; i < userHours.length; i += 1) {
+      if (userHours[i] > peakCount) {
+        peakCount = userHours[i];
+        peakHour = i;
+      }
+    }
+
+    const avgSeconds =
+      delays.length > 0 ? Math.round(delays.reduce((acc, current) => acc + current, 0) / delays.length) : null;
+    next.metricas_cliente = {
+      tempo_medio_resposta_seg: avgSeconds,
+      hora_pico_resposta: peakHour >= 0 ? `${String(peakHour).padStart(2, "0")}h` : null,
+      amostragem_respostas: delays.length > 0 ? delays.length : null,
+      total_mensagens: totalUser > 0 ? totalUser : null,
+    };
+  }
+
+  if (!Array.isArray(next.produtos_citados) || next.produtos_citados.length === 0) {
+    const aliases: Array<{ name: string; terms: string[] }> = [
+      { name: "whey_protein", terms: ["whey", "wei", "wehy", "whey protein"] },
+      { name: "creatina", terms: ["creatina", "creatine"] },
+      { name: "pre_treino", terms: ["pre treino", "pre-treino", "pretreino", "pre workout", "pre-workout"] },
+      { name: "colageno", terms: ["colageno", "colágeno", "collagen"] },
+    ];
+    const userText = parseOperationalMessages(logText)
+      .filter((msg) => msg.role === "USER")
+      .map((msg) =>
+        String(msg.content || "")
+          .toLowerCase()
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, ""),
+      )
+      .join(" ");
+
+    const products = aliases
+      .filter((entry) =>
+        entry.terms.some((term) =>
+          userText.includes(
+            term
+              .toLowerCase()
+              .normalize("NFD")
+              .replace(/[\u0300-\u036f]/g, ""),
+          ),
+        ),
+      )
+      .map((entry) => ({
+        nome_produto: entry.name,
+        termo_detectado: entry.terms[0],
+      }));
+
+    next.produtos_citados = products;
+  }
+
+  return next;
 }
 
 export async function createRunRecord(params: {
@@ -432,7 +583,12 @@ export async function persistCompletedRun(params: {
     });
 
     for (const analysis of analyses) {
-      const parsed = parseJsonSafe(analysis.analysis?.answer);
+      const parsed = deriveFallbackMetricsAndProducts(
+        parseJsonSafe(analysis.analysis?.answer),
+        String(analysis.log_text || ""),
+      );
+      const answerJson = JSON.stringify(parsed);
+      const derivedRiskLevel = deriveRiskLevelFromParsed(parsed);
       const contactIdentifier = String(analysis.contact?.identifier || '').trim();
       const contactName = toTitleCaseName(String(analysis.contact?.name || "").trim());
       const contact = await upsertContactByReference({
@@ -477,7 +633,7 @@ export async function persistCompletedRun(params: {
 
         const baseAnalysisUpdateData: Prisma.ConversationAnalysisUncheckedUpdateInput = {
           contactId: contact.id,
-          riskLevel: Boolean(parsed.risco_critico) ? "critical" : "non_critical",
+          riskLevel: derivedRiskLevel,
           summary: String(parsed.resumo || "").trim() || null,
           improvementsJson: asStringList(parsed.pontos_melhoria),
           nextStepsJson: asStringList(parsed.proximos_passos),
@@ -490,7 +646,7 @@ export async function persistCompletedRun(params: {
           runId: params.runId,
           conversationId: conversation.id,
           contactId: contact.id,
-          riskLevel: Boolean(parsed.risco_critico) ? "critical" : "non_critical",
+          riskLevel: derivedRiskLevel,
           summary: String(parsed.resumo || "").trim() || null,
           improvementsJson: asStringList(parsed.pontos_melhoria),
           nextStepsJson: asStringList(parsed.proximos_passos),
@@ -519,7 +675,7 @@ export async function persistCompletedRun(params: {
         const gapRows = gaps.map((gap) => {
           const severityLabel = pickFirstText(gap, ["severidade", "severity", "nivel", "prioridade"]);
           const severity = parseGapSeverity(severityLabel);
-          const isCritical = String(severityLabel).toLowerCase().startsWith("cr") || severity === GapSeverity.alta;
+          const isCritical = isCriticalSeverityLabel(severityLabel);
           return {
             analysisId: entry.id,
             name: pickFirstText(gap, ["nome_gap", "nome", "titulo", "title", "gap", "categoria"]) || "Gap operacional",
@@ -576,7 +732,7 @@ export async function persistCompletedRun(params: {
         contact_name: analysis.contact?.name || analysis.contact?.identifier || analysis.contact_key,
         conversation_ids: analysis.conversation_ids || [],
         chatwoot_links: links,
-        risk_level: Boolean(parsed.risco_critico) ? 'critical' : 'non_critical',
+        risk_level: derivedRiskLevel,
         summary: String(parsed.resumo || '').trim() || null,
         improvements: asStringList(parsed.pontos_melhoria),
         next_steps: asStringList(parsed.proximos_passos),
@@ -604,7 +760,7 @@ export async function persistCompletedRun(params: {
         log_text: analysis.log_text || "",
         conversation_operational: analysis.conversation_operational || [],
         analysis: {
-          answer: analysis.analysis?.answer || null,
+          answer: answerJson || analysis.analysis?.answer || null,
         },
       });
 
@@ -1885,6 +2041,3 @@ export async function listClientsByDate(date: string) {
     items: contactItems,
   };
 }
-
-
-
