@@ -52,7 +52,10 @@ export default function Page() {
   const [activeSubNavKey, setActiveSubNavKey] = useState<string>("inicio");
   const [currentUser, setCurrentUser] = useState<{ name: string; email: string; role: string } | null>(null);
   useRevealOnScroll({ enabled: stage === "app" });
-  const controller = useDashboardController({ enabled: stage === "app" });
+  const controller = useDashboardController({
+    enabled: stage === "app",
+    syncNavOnScroll: stage === "app" && activeView === "dashboard",
+  });
 
   const notifyPrefs = useMemo(() => {
     try {
@@ -70,6 +73,7 @@ export default function Page() {
     notifyLog: notifyPrefs.log,
     notifyClient: notifyPrefs.client,
     currentDate: controller.date,
+    runCompletedCount: controller.overviewRunCount,
   });
 
   const clientsSnapshotDate = useMemo(() => {
@@ -193,6 +197,10 @@ export default function Page() {
   useEffect(() => {
     if (stage !== "app") return;
     window.scrollTo({ top: 0, behavior: "auto" });
+    requestAnimationFrame(() => {
+      window.scrollTo({ top: 0, behavior: "auto" });
+      requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "auto" }));
+    });
   }, [activeView, stage]);
 
   useEffect(() => {
@@ -404,9 +412,11 @@ export default function Page() {
   }
 
   function handleOpenAnalysis() {
+    setActiveSubNavKey("analysis-overview");
     setActiveView("analysis");
     requestAnimationFrame(() => {
       window.scrollTo({ top: 0, behavior: "auto" });
+      requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "auto" }));
     });
   }
 
@@ -740,7 +750,7 @@ export default function Page() {
             </div>
           ) : activeView === "products" ? (
             <div className="settings-animated" key={`products-${viewAnimationKey}`}>
-              <ProductsOverallView />
+              <ProductsOverallView refreshHint={controller.lastRunAt} />
             </div>
           ) : (
             <div className="settings-animated" key={`settings-${viewAnimationKey}`}>

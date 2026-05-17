@@ -44,8 +44,9 @@ import {
   extractProductDemand,
 } from "./controller/operationalSignals";
 
-export function useDashboardController(options?: { enabled?: boolean }): DashboardController {
+export function useDashboardController(options?: { enabled?: boolean; syncNavOnScroll?: boolean }): DashboardController {
   const enabled = options?.enabled ?? true;
+  const syncNavOnScroll = options?.syncNavOnScroll ?? true;
   const SELECTED_DATE_STORAGE_KEY = "hile_selected_date_v1";
   const PROGRESS_STEPS = 6;
   const SECTION_IDS = ["gaps", "insights", "relatorio"] as const;
@@ -290,7 +291,7 @@ export function useDashboardController(options?: { enabled?: boolean }): Dashboa
   }, [activeNav]);
 
   useEffect(() => {
-    if (!enabled) return;
+    if (!enabled || !syncNavOnScroll) return;
     const handler = () => {
       if (Date.now() < navFreezeUntilRef.current) return;
 
@@ -336,7 +337,7 @@ export function useDashboardController(options?: { enabled?: boolean }): Dashboa
       window.removeEventListener("scroll", handler);
       window.removeEventListener("resize", handler);
     };
-  }, [enabled]);
+  }, [enabled, syncNavOnScroll]);
 
   useEffect(() => {
     setInsightsPage(1);
@@ -486,14 +487,12 @@ export function useDashboardController(options?: { enabled?: boolean }): Dashboa
     const hasRoles = hourlyIa.some((value) => value > 0) || hourlyUsuario.some((value) => value > 0);
     if (!hasConversations && !hasRoles) return [] as Array<{ label: string; conversas: number; ia: number; usuario: number }>;
 
-    return hourlyConversations
-      .map((conversas, hour) => ({
-        label: `${String(hour).padStart(2, "0")}h`,
-        conversas,
-        ia: hourlyIa[hour],
-        usuario: hourlyUsuario[hour],
-      }))
-      .filter((item) => item.conversas > 0 || item.ia > 0 || item.usuario > 0);
+    return hourlyConversations.map((conversas, hour) => ({
+      label: `${String(hour).padStart(2, "0")}h`,
+      conversas,
+      ia: hourlyIa[hour],
+      usuario: hourlyUsuario[hour],
+    }));
   }, [overview, report]);
 
   const metricCards = useMemo<MetricCard[]>(() => {
@@ -526,13 +525,11 @@ export function useDashboardController(options?: { enabled?: boolean }): Dashboa
   }, [overview]);
 
   const gaugeData = useMemo(() => {
-    const totalInsights = overview?.overview?.insights_total || 0;
-    const critical = overview?.overview?.critical_insights_count || 0;
-    const score = totalInsights > 0
-      ? Math.max(0, Math.round(((totalInsights - critical) / totalInsights) * 100))
-      : 100;
+    const total = severitySnapshot.critical + severitySnapshot.high + severitySnapshot.medium + severitySnapshot.low;
+    const critical = severitySnapshot.critical;
+    const score = total > 0 ? Math.max(0, Math.round(((total - critical) / total) * 100)) : 100;
     return { current: score, total: 100 };
-  }, [overview]);
+  }, [severitySnapshot]);
 
   const panoramaExtra = useMemo(() => {
     if (!overview) return "Execute o overview para consolidar os indicadores.";

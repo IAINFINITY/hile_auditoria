@@ -194,14 +194,6 @@ export function InsightsSection({
                 >
                   Baixo
                 </button>
-                <button
-                  type="button"
-                  className="gap-chip"
-                  disabled
-                  title="Insights informativos foram movidos para Análise Geral."
-                >
-                  Informativo na Análise Geral
-                </button>
               </div>
             </div>
           </div>

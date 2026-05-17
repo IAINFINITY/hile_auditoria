@@ -64,6 +64,7 @@
   .side-item > span:last-child,
   .side-account-text,
   .side-subnav{display:none}
+  .side-item-toggle{display:none}
   .side-item{justify-content:center;padding:10px}
   .side-nav{padding:12px 8px}
   .side-account{

@@ -118,9 +118,14 @@ export function SettingsView({ currentUser, onUpdateProfile }: SettingsViewProps
 
   return (
     <div className="settings-shell">
-      <div className="settings-header">
-        <h1>Configurações</h1>
-        <p>Ajustes de perfil, segurança e preferências do dashboard.</p>
+      <div className="section-inner">
+        <div className="section-header">
+          <span className="section-num">01</span>
+          <div className="section-title">
+            <h2>Configurações</h2>
+            <p>Ajustes de perfil, segurança e preferências do dashboard.</p>
+          </div>
+        </div>
       </div>
 
       <section className="settings-card" id="settings-profile">

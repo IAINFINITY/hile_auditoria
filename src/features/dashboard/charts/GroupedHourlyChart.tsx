@@ -30,7 +30,7 @@ export function GroupedHourlyChart({ data }: { data: GroupedHourPoint[] }) {
   const barW = 12;
   const seriesGap = 4;
   const groupW = barW * 3 + seriesGap * 2;
-  const groupGap = 18;
+  const groupGap = 12;
   const plotW = data.length * groupW + Math.max(0, data.length - 1) * groupGap;
   const chartW = margin.left + margin.right + plotW + 24;
 
@@ -93,7 +93,7 @@ export function GroupedHourlyChart({ data }: { data: GroupedHourPoint[] }) {
         {data.map((point, index) => {
           const startX = margin.left + index * (groupW + groupGap);
           const bars = [
-            { key: "conversas", value: point.conversas, color: "var(--accent)" },
+            { key: "conversas", value: point.conversas, color: "var(--azul)" },
             { key: "ia", value: point.ia, color: "var(--navy)" },
             { key: "usuario", value: point.usuario, color: "var(--muted)" },
           ];
@@ -124,7 +124,7 @@ export function GroupedHourlyChart({ data }: { data: GroupedHourPoint[] }) {
                 x={startX + groupW / 2}
                 y={margin.top + plotH + 24}
                 textAnchor="middle"
-                fontSize="12"
+                fontSize="10"
                 fill="#5a6f90"
                 fontFamily="'Inter',sans-serif"
               >

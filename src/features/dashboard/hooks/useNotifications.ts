@@ -17,19 +17,38 @@ interface UseNotificationsOptions {
   notifyLog: boolean;
   notifyClient: boolean;
   currentDate: string;
+  runCompletedCount?: number;
 }
 
 const POLL_MS = 30_000;
 
 export function useNotifications(options: UseNotificationsOptions) {
   const [state, setState] = useState<NotificationState>({ newReport: false, newLog: false, newClient: false, total: 0 });
-  const lastSeenRunIdRef = useRef<string | null>(null);
-  const lastSeenFinishedAtRef = useRef<string | null>(null);
+  const lastSeenRunSignatureRef = useRef<string | null>(null);
   const knownClientPksRef = useRef<Set<string> | null>(null);
+  const lastRunCompletedCountRef = useRef<number | null>(null);
 
   const clear = useCallback(() => {
     setState({ newReport: false, newLog: false, newClient: false, total: 0 });
   }, []);
+
+  useEffect(() => {
+    if (!options.enabled) return;
+    const completedCount = Number(options.runCompletedCount || 0);
+    if (lastRunCompletedCountRef.current === null) {
+      lastRunCompletedCountRef.current = completedCount;
+      return;
+    }
+    if (completedCount > lastRunCompletedCountRef.current) {
+      setState((prev) => {
+        const nextReport = prev.newReport || options.notifyReport;
+        const nextLog = prev.newLog || options.notifyLog;
+        const total = (nextReport ? 1 : 0) + (nextLog ? 1 : 0) + (prev.newClient ? 1 : 0);
+        return { ...prev, newReport: nextReport, newLog: nextLog, total };
+      });
+    }
+    lastRunCompletedCountRef.current = completedCount;
+  }, [options.enabled, options.notifyLog, options.notifyReport, options.runCompletedCount]);
 
   useEffect(() => {
     if (!options.enabled) return;
@@ -49,29 +68,24 @@ export function useNotifications(options: UseNotificationsOptions) {
           const latestRun = items.find((i) => i.status === "completed") || null;
 
           if (latestRun) {
-            if (lastSeenRunIdRef.current === null) {
-              lastSeenRunIdRef.current = latestRun.id;
-              lastSeenFinishedAtRef.current = latestRun.finished_at;
+            const runSignature = `${latestRun.id}:${latestRun.finished_at || latestRun.started_at || ""}`;
+            if (lastSeenRunSignatureRef.current === null) {
+              lastSeenRunSignatureRef.current = runSignature;
             } else {
-              const isNewRun = latestRun.id !== lastSeenRunIdRef.current;
-              const isNewer =
-                latestRun.finished_at &&
-                lastSeenFinishedAtRef.current &&
-                new Date(latestRun.finished_at).getTime() > new Date(lastSeenFinishedAtRef.current).getTime();
-
-              if (isNewRun && isNewer) {
+              const hasChanged = runSignature !== lastSeenRunSignatureRef.current;
+              if (hasChanged) {
                 setState((prev) => {
-                  const nr = options.notifyReport;
-                  const nl = options.notifyLog;
+                  const nr = prev.newReport || options.notifyReport;
+                  const nl = prev.newLog || options.notifyLog;
+                  const nc = prev.newClient;
                   return {
                     newReport: nr,
                     newLog: nl,
-                    newClient: prev.newClient,
-                    total: (nr ? 1 : 0) + (nl ? 1 : 0) + (prev.newClient ? 1 : 0),
+                    newClient: nc,
+                    total: (nr ? 1 : 0) + (nl ? 1 : 0) + (nc ? 1 : 0),
                   };
                 });
-                lastSeenRunIdRef.current = latestRun.id;
-                lastSeenFinishedAtRef.current = latestRun.finished_at;
+                lastSeenRunSignatureRef.current = runSignature;
               }
             }
           }

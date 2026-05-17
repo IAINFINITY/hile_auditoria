@@ -63,9 +63,9 @@ export function MovementSection({
           </div>
           <div className="metrics-block-body">
             <div className="chart-legend">
-              <span className="legend-item"><span className="legend-dot" style={{ background: "var(--accent)" }} /> Conversas</span>
-              <span className="legend-item"><span className="legend-dot" style={{ background: "var(--navy)" }} /> Msg IA</span>
-              <span className="legend-item"><span className="legend-dot" style={{ background: "var(--muted)" }} /> Msg Usuário</span>
+              <span className="legend-item"><span className="legend-dot" style={{ background: "var(--azul)" }} /> Conversas</span>
+              <span className="legend-item"><span className="legend-dot" style={{ background: "var(--navy)" }} /> Mensagens IA</span>
+              <span className="legend-item"><span className="legend-dot" style={{ background: "var(--muted)" }} /> Mensagens Usuário</span>
             </div>
             <GroupedHourlyChart data={groupedData} />
           </div>

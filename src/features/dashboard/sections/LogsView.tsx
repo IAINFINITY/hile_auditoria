@@ -58,9 +58,14 @@ export function LogsView({
 
   return (
     <div className="settings-shell">
-      <div className="settings-header">
-        <h1>Logs Operacionais</h1>
-        <p>Registro de execuções, integrações e eventos do sistema.</p>
+      <div className="section-inner">
+        <div className="section-header">
+          <span className="section-num">01</span>
+          <div className="section-title">
+            <h2>Logs Operacionais</h2>
+            <p>Registro de execuções, integrações e eventos do sistema.</p>
+          </div>
+        </div>
       </div>
 
       <article className="settings-card" id="logs-saude">

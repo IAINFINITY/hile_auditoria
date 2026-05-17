@@ -16,6 +16,42 @@ function normalizeProductName(value: string): string {
     .replace(/\b\w/g, (m) => m.toUpperCase());
 }
 
+function normalizeForMatch(value: string): string {
+  return String(value || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+const PRODUCT_ALIASES: Record<string, string[]> = {
+  Whey: ["whey", "uei", "wehy"],
+  Creatina: ["creatina", "creatine", "creatin", "creatna"],
+  "Pré-treino": ["pre treino", "pre-treino", "pretreino", "preworkout", "pré treino", "pré-treino"],
+  Colageno: ["colageno", "colágeno", "collagen"],
+  "Suplementos fitness": ["suplemento", "suplementos", "fitness"],
+};
+
+function extractUserLogText(logText: string): string {
+  const lines = String(logText || "").split("\n");
+  const collected: string[] = [];
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (!line) continue;
+    const explicitUser = line.match(/^\[(.*?)\]\s*(?:\[[^\]]+\]\s*)?(USER|USUARIO|CLIENTE|CONTACT)[^:]*[:\-]\s*(.*)$/i);
+    if (explicitUser?.[3]) {
+      collected.push(explicitUser[3]);
+      continue;
+    }
+    const compactUser = line.match(/^(USER|USUARIO|CLIENTE|CONTACT)[^:]*[:\-]\s*(.*)$/i);
+    if (compactUser?.[2]) {
+      collected.push(compactUser[2]);
+    }
+  }
+  return normalizeForMatch(collected.join(" "));
+}
+
 type ProductCounter = {
   count: number;
   contacts: Set<string>;
@@ -56,6 +92,8 @@ export async function GET(request: Request) {
       for (const analysis of analyses) {
         const analysisObj = analysis && typeof analysis === "object" ? analysis : {};
         const contactKey = String((analysisObj as Record<string, unknown>).contact_key || "").trim();
+        const logText = String((analysisObj as Record<string, unknown>).log_text || "");
+        const userText = extractUserLogText(logText);
         const answerRaw = String(
           ((analysisObj as Record<string, unknown>).analysis as Record<string, unknown> | undefined)?.answer || "",
         );
@@ -68,6 +106,29 @@ export async function GET(request: Request) {
         for (const product of productsRaw) {
           const rawName = String(product?.nome_produto || product?.termo_detectado || "").trim();
           const name = normalizeProductName(rawName);
+          if (!name || seenInAnalysis.has(name)) continue;
+          seenInAnalysis.add(name);
+
+          const current = counters.get(name) || {
+            count: 0,
+            contacts: new Set<string>(),
+            days: new Set<string>(),
+            lastSeenDate: null,
+          };
+          current.count += 1;
+          if (contactKey) current.contacts.add(contactKey);
+          current.days.add(dateRef);
+          if (!current.lastSeenDate || dateRef > current.lastSeenDate) {
+            current.lastSeenDate = dateRef;
+          }
+          counters.set(name, current);
+        }
+
+        for (const [canonicalName, aliases] of Object.entries(PRODUCT_ALIASES)) {
+          if (!userText) continue;
+          const matched = aliases.some((alias) => userText.includes(normalizeForMatch(alias)));
+          if (!matched) continue;
+          const name = normalizeProductName(canonicalName);
           if (!name || seenInAnalysis.has(name)) continue;
           seenInAnalysis.add(name);
 
@@ -107,4 +168,3 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "products_overall_failed", message }, { status: 400 });
   }
 }
-

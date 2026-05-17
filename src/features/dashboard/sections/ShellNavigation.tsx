@@ -1,7 +1,21 @@
 ﻿import { useCallback, useEffect, useRef, useState } from "react";
 import type { MouseEvent } from "react";
 import { BsDiamond } from "react-icons/bs";
-import { FiAlertTriangle, FiBarChart2, FiBell, FiBox, FiCheckCircle, FiClock, FiFileText, FiLayers, FiSettings, FiUsers, FiZap } from "react-icons/fi";
+import {
+  FiAlertTriangle,
+  FiBarChart2,
+  FiBell,
+  FiBox,
+  FiCheckCircle,
+  FiChevronDown,
+  FiChevronRight,
+  FiClock,
+  FiFileText,
+  FiLayers,
+  FiSettings,
+  FiUsers,
+  FiZap,
+} from "react-icons/fi";
 import type { NotificationState } from "../hooks/useNotifications";
 
 interface ShellNavigationProps {
@@ -56,6 +70,13 @@ export function ShellNavigation({
   onOpenView,
 }: ShellNavigationProps) {
   const [notifyOpen, setNotifyOpen] = useState(false);
+  const [openSections, setOpenSections] = useState({
+    dashboard: true,
+    analysis: false,
+    clients: false,
+    logs: false,
+    settings: false,
+  });
   const notifyRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -98,11 +119,11 @@ export function ShellNavigation({
         ? "Clientes"
         : activeView === "analysis"
           ? "Análise Geral do Dia"
-        : activeView === "products"
-          ? "Produtos (Geral)"
-        : activeView === "logs"
-          ? "Logs Operacionais"
-          : "Configurações";
+          : activeView === "products"
+            ? "Produtos (Geral)"
+            : activeView === "logs"
+              ? "Logs Operacionais"
+              : "Configurações";
 
   function handleSection(section: string, event: MouseEvent<HTMLButtonElement>) {
     event.preventDefault();
@@ -111,6 +132,14 @@ export function ShellNavigation({
 
   function subItemClass(key: string): string {
     return `side-sub-item ${activeSubNavKey === key ? "active" : ""}`;
+  }
+
+  function toggleSection(section: "dashboard" | "analysis" | "clients" | "logs" | "settings") {
+    setOpenSections((current) => ({ ...current, [section]: !current[section] }));
+  }
+
+  function openSection(section: "dashboard" | "analysis" | "clients" | "logs" | "settings") {
+    setOpenSections((current) => ({ ...current, [section]: true }));
   }
 
   return (
@@ -126,14 +155,31 @@ export function ShellNavigation({
         </button>
 
         <nav className="side-nav">
-          <button type="button" className={sideItemClass(activeView === "dashboard")} onClick={onOpenDashboard}>
-            <span className="side-item-icon" aria-hidden="true">
-              <BsDiamond />
-            </span>
-            <span>Dashboard</span>
-          </button>
+          <div className={`side-item-row ${activeView === "dashboard" ? "active" : ""}`}>
+            <button
+              type="button"
+              className={sideItemClass(activeView === "dashboard")}
+              onClick={() => {
+                openSection("dashboard");
+                onOpenDashboard();
+              }}
+            >
+              <span className="side-item-icon" aria-hidden="true">
+                <BsDiamond />
+              </span>
+              <span>Dashboard</span>
+            </button>
+            <button
+              type="button"
+              className="side-item-toggle"
+              aria-label={openSections.dashboard ? "Recolher Dashboard" : "Expandir Dashboard"}
+              onClick={() => toggleSection("dashboard")}
+            >
+              {openSections.dashboard ? <FiChevronDown /> : <FiChevronRight />}
+            </button>
+          </div>
 
-          {activeView === "dashboard" ? (
+          {openSections.dashboard ? (
             <div className="side-subnav">
               <button type="button" className={`side-sub-item ${navClass("inicio")}`} onClick={(event) => handleSection("inicio", event)}>
                 <span className="side-sub-dot" />
@@ -158,13 +204,30 @@ export function ShellNavigation({
             </div>
           ) : null}
 
-          <button type="button" className={sideItemClass(activeView === "analysis")} onClick={onOpenAnalysis}>
-            <span className="side-item-icon" aria-hidden="true">
-              <FiBarChart2 />
-            </span>
-            <span>Análise Geral</span>
-          </button>
-          {activeView === "analysis" ? (
+          <div className={`side-item-row ${activeView === "analysis" ? "active" : ""}`}>
+            <button
+              type="button"
+              className={sideItemClass(activeView === "analysis")}
+              onClick={() => {
+                openSection("analysis");
+                onOpenAnalysis();
+              }}
+            >
+              <span className="side-item-icon" aria-hidden="true">
+                <FiBarChart2 />
+              </span>
+              <span>Análise Geral</span>
+            </button>
+            <button
+              type="button"
+              className="side-item-toggle"
+              aria-label={openSections.analysis ? "Recolher Análise Geral" : "Expandir Análise Geral"}
+              onClick={() => toggleSection("analysis")}
+            >
+              {openSections.analysis ? <FiChevronDown /> : <FiChevronRight />}
+            </button>
+          </div>
+          {openSections.analysis ? (
             <div className="side-subnav">
               <button type="button" className={subItemClass("analysis-overview")} onClick={() => onNavigateAnalysis("analysis-overview")}>
                 <span className="side-sub-dot" />
@@ -184,13 +247,30 @@ export function ShellNavigation({
             </div>
           ) : null}
 
-          <button type="button" className={sideItemClass(activeView === "clients")} onClick={onOpenClients}>
-            <span className="side-item-icon" aria-hidden="true">
-              <FiUsers />
-            </span>
-            <span>Clientes</span>
-          </button>
-          {activeView === "clients" ? (
+          <div className={`side-item-row ${activeView === "clients" ? "active" : ""}`}>
+            <button
+              type="button"
+              className={sideItemClass(activeView === "clients")}
+              onClick={() => {
+                openSection("clients");
+                onOpenClients();
+              }}
+            >
+              <span className="side-item-icon" aria-hidden="true">
+                <FiUsers />
+              </span>
+              <span>Clientes</span>
+            </button>
+            <button
+              type="button"
+              className="side-item-toggle"
+              aria-label={openSections.clients ? "Recolher Clientes" : "Expandir Clientes"}
+              onClick={() => toggleSection("clients")}
+            >
+              {openSections.clients ? <FiChevronDown /> : <FiChevronRight />}
+            </button>
+          </div>
+          {openSections.clients ? (
             <div className="side-subnav">
               <button type="button" className={subItemClass("clients-filtros")} onClick={() => onNavigateClients("clients-filtros")}>
                 <span className="side-sub-dot" />
@@ -212,13 +292,30 @@ export function ShellNavigation({
             <span>Produtos</span>
           </button>
 
-          <button type="button" className={sideItemClass(activeView === "logs")} onClick={onOpenLogs}>
-            <span className="side-item-icon" aria-hidden="true">
-              <FiLayers />
-            </span>
-            <span>Logs</span>
-          </button>
-          {activeView === "logs" ? (
+          <div className={`side-item-row ${activeView === "logs" ? "active" : ""}`}>
+            <button
+              type="button"
+              className={sideItemClass(activeView === "logs")}
+              onClick={() => {
+                openSection("logs");
+                onOpenLogs();
+              }}
+            >
+              <span className="side-item-icon" aria-hidden="true">
+                <FiLayers />
+              </span>
+              <span>Logs</span>
+            </button>
+            <button
+              type="button"
+              className="side-item-toggle"
+              aria-label={openSections.logs ? "Recolher Logs" : "Expandir Logs"}
+              onClick={() => toggleSection("logs")}
+            >
+              {openSections.logs ? <FiChevronDown /> : <FiChevronRight />}
+            </button>
+          </div>
+          {openSections.logs ? (
             <div className="side-subnav">
               <button type="button" className={subItemClass("logs-saude")} onClick={() => onNavigateLogs("logs-saude")}>
                 <span className="side-sub-dot" />
@@ -238,13 +335,30 @@ export function ShellNavigation({
             </div>
           ) : null}
 
-          <button type="button" className={sideItemClass(activeView === "settings")} onClick={onOpenSettings}>
-            <span className="side-item-icon" aria-hidden="true">
-              <FiSettings />
-            </span>
-            <span>Configurações</span>
-          </button>
-          {activeView === "settings" ? (
+          <div className={`side-item-row ${activeView === "settings" ? "active" : ""}`}>
+            <button
+              type="button"
+              className={sideItemClass(activeView === "settings")}
+              onClick={() => {
+                openSection("settings");
+                onOpenSettings();
+              }}
+            >
+              <span className="side-item-icon" aria-hidden="true">
+                <FiSettings />
+              </span>
+              <span>Configurações</span>
+            </button>
+            <button
+              type="button"
+              className="side-item-toggle"
+              aria-label={openSections.settings ? "Recolher Configurações" : "Expandir Configurações"}
+              onClick={() => toggleSection("settings")}
+            >
+              {openSections.settings ? <FiChevronDown /> : <FiChevronRight />}
+            </button>
+          </div>
+          {openSections.settings ? (
             <div className="side-subnav">
               <button type="button" className={subItemClass("settings-profile")} onClick={() => onNavigateSettings("settings-profile")}>
                 <span className="side-sub-dot" />
@@ -347,3 +461,4 @@ export function ShellNavigation({
     </>
   );
 }
+

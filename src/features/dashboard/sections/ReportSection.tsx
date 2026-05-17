@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from "react";
+﻿import { useMemo, useState } from "react";
 import type { Severity } from "../../../types";
 import type { ReportHistoryItem, ReportPayload } from "../../../types";
 import { PaginationControls } from "./report/PaginationControls";
@@ -13,10 +13,8 @@ import {
   toSeverity,
   toneColor,
   type ContactContextItem,
-  type ReportItem,
   type SeverityFilter,
 } from "./report/utils";
-import { classifyGapPhase } from "../hooks/controller/operationalSignals";
 
 interface ReportSectionProps {
   criticalGapInsights: Array<{
@@ -46,17 +44,13 @@ export function ReportSection({
   selectedDate,
 }: ReportSectionProps) {
   const hasReportData = Boolean(report?.raw_analysis?.analyses?.length) || criticalGapInsights.length > 0;
+  const [isDownloadingTxt, setIsDownloadingTxt] = useState(false);
   const [contextPage, setContextPage] = useState(1);
-  const [gapsPage, setGapsPage] = useState(1);
-  const [localContactFilter, setLocalContactFilter] = useState<string>("");
   const [situacaoFilter, setSituacaoFilter] = useState<string>("all");
   const [selectedLabels, setSelectedLabels] = useState<string[]>([]);
   const [filterPulse, setFilterPulse] = useState(0);
   const perPage = 5;
-
-  useEffect(() => {
-    setLocalContactFilter(selectedReportContact || "");
-  }, [selectedReportContact]);
+  const contactFilterValue = selectedReportContact || "";
 
   const historyForSelectedDate = useMemo(() => {
     const target = String(selectedDate || "").trim();
@@ -70,34 +64,6 @@ export function ReportSection({
     if (!dateIso) return "--";
     return new Date(dateIso).toLocaleString("pt-BR");
   }, [historyForSelectedDate]);
-
-  const contextOverview = useMemo(() => {
-    const analyses = report?.raw_analysis?.analyses || [];
-    if (analyses.length === 0) return [] as string[];
-
-    const tags = new Map<string, number>();
-    let waitingOnAgentCount = 0;
-
-    for (const analysis of analyses) {
-      const state = analysis.conversation_operational?.[0]?.state;
-      if (state?.waiting_on_agent) waitingOnAgentCount += 1;
-      for (const tag of parseLabelsFromLogText(String(analysis.log_text || ""))) {
-        const key = tag.toLowerCase();
-        tags.set(key, (tags.get(key) || 0) + 1);
-      }
-    }
-
-    const topTags = [...tags.entries()]
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 3)
-      .map(([tag, count]) => `${tag} (${count})`);
-
-    return [
-      `Análises processadas no dia: ${analyses.length}.`,
-      `Conversas aguardando resposta da IA/atendente: ${waitingOnAgentCount}.`,
-      topTags.length > 0 ? `Etiquetas mais frequentes: ${topTags.join(" • ")}.` : "Sem etiquetas relevantes no período.",
-    ];
-  }, [report]);
 
   const contactContextItems = useMemo<ContactContextItem[]>(() => {
     const analyses = report?.raw_analysis?.analyses || [];
@@ -115,9 +81,7 @@ export function ReportSection({
         const melhorias = toList(parsed.pontos_melhoria);
         const proximos = toList(parsed.proximos_passos);
         const riscoCritico = Boolean(parsed.risco_critico);
-        const gapsRaw = Array.isArray(parsed.gaps_operacionais)
-          ? parsed.gaps_operacionais
-          : [];
+        const gapsRaw = Array.isArray(parsed.gaps_operacionais) ? parsed.gaps_operacionais : [];
         const gapSeverity = gapsRaw
           .map((gap) => (gap && typeof gap === "object" ? (gap as Record<string, unknown>) : {}))
           .map((gap) => toSeverity(gap.severidade || gap.severity || gap.nivel || gap.prioridade, "info"))
@@ -131,13 +95,7 @@ export function ReportSection({
           "info",
         );
         const severity: Severity =
-          gapSeverity !== "info"
-            ? gapSeverity
-            : topSeverity !== "info"
-              ? topSeverity
-              : riscoCritico
-                ? "critical"
-                : "info";
+          gapSeverity !== "info" ? gapSeverity : topSeverity !== "info" ? topSeverity : riscoCritico ? "critical" : "info";
 
         const state = analysis.conversation_operational?.[0]?.state;
         const situacao =
@@ -156,7 +114,8 @@ export function ReportSection({
           .filter((line) => /\] (USER|AGENT) /i.test(line))
           .slice(-2);
         const evidencia = evidenceLines.length > 0 ? evidenceLines.join(" | ") : "Sem trecho de evidência disponível.";
-        const labels = extractStateLabels(state).length > 0 ? extractStateLabels(state) : parseLabelsFromLogText(String(analysis.log_text || ""));
+        const labels =
+          extractStateLabels(state).length > 0 ? extractStateLabels(state) : parseLabelsFromLogText(String(analysis.log_text || ""));
 
         return {
           key: `${analysis.contact_key}-${analysis.analysis_index || 0}`,
@@ -185,34 +144,15 @@ export function ReportSection({
     return Array.from(unique).sort((a, b) => a.localeCompare(b, "pt-BR"));
   }, [contactContextItems]);
 
-  const reportGaps = useMemo<ReportItem[]>(() => {
-    return criticalGapInsights.map((item) => ({
-      key: `gap-${item.id}`,
-      title: item.severity === "critical" ? "Gap Crítico" : "Gap Alto",
-      desc: `${item.contact_name}: ${item.summary}`,
-      phase: classifyGapPhase(item.summary),
-      severity: item.severity,
-      contactName: item.contact_name,
-      labels: Array.isArray(item.labels) ? item.labels : [],
-    }));
-  }, [criticalGapInsights]);
-
   const availableLabels = useMemo(() => {
     const all = new Set<string>();
     for (const item of contactContextItems) {
       for (const label of item.labels) all.add(label);
     }
-    for (const item of reportGaps) {
-      for (const label of item.labels) all.add(label);
-    }
     return Array.from(all).sort((a, b) => a.localeCompare(b, "pt-BR"));
-  }, [contactContextItems, reportGaps]);
+  }, [contactContextItems]);
 
-  const displayLabels = useMemo(() => {
-    return availableLabels;
-  }, [availableLabels]);
-
-  const normalizedContactFilter = localContactFilter.trim().toLowerCase();
+  const normalizedContactFilter = contactFilterValue.trim().toLowerCase();
   const normalizedSituacaoFilter = situacaoFilter.trim().toLowerCase();
 
   const filteredContactContextItems = useMemo<ContactContextItem[]>(() => {
@@ -225,17 +165,7 @@ export function ReportSection({
     });
   }, [contactContextItems, normalizedContactFilter, normalizedSituacaoFilter, selectedLabels, reportSeverityFilter]);
 
-  const filteredGaps = useMemo<ReportItem[]>(() => {
-    return reportGaps.filter((item) => {
-      const byUser = !normalizedContactFilter || item.contactName.toLowerCase().includes(normalizedContactFilter);
-      const byLabel = includesAnyLabel(item.labels, selectedLabels);
-      const bySeverity = reportSeverityFilter === "all" || item.severity === reportSeverityFilter;
-      return byUser && byLabel && bySeverity;
-    });
-  }, [reportGaps, normalizedContactFilter, selectedLabels, reportSeverityFilter]);
-
   const contextChunk = paginate(filteredContactContextItems, contextPage, perPage);
-  const gapsChunk = paginate(filteredGaps, gapsPage, perPage);
 
   function keepScroll(update: () => void) {
     const y = typeof window !== "undefined" ? window.scrollY : 0;
@@ -253,7 +183,35 @@ export function ReportSection({
     setSelectedLabels((current) => (current.includes(low) ? current.filter((item) => item !== low) : [...current, low]));
     setFilterPulse((value) => value + 1);
     setContextPage(1);
-    setGapsPage(1);
+  }
+
+  async function handleDownloadTxt() {
+    if (isDownloadingTxt) return;
+    setIsDownloadingTxt(true);
+    try {
+      const response = await fetch(`/api/report-day/export-txt?date=${encodeURIComponent(selectedDate)}`, {
+        method: "GET",
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        throw new Error(payload?.message || "Não foi possível baixar o relatório em TXT.");
+      }
+
+      const blob = await response.blob();
+      const objectUrl = window.URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = objectUrl;
+      anchor.download = `relatorio-${selectedDate}.txt`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      window.URL.revokeObjectURL(objectUrl);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "Falha ao baixar relatório em TXT.";
+      alert(message);
+    } finally {
+      setIsDownloadingTxt(false);
+    }
   }
 
   return (
@@ -270,29 +228,18 @@ export function ReportSection({
         <div className={`metrics-block ${hasReportData ? "" : "data-dim"}`}>
           <div className="metrics-block-header">
             <span>Relatório consolidado</span>
-            <span>Gerado em: {generatedAtLabel}</span>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+              <span>Gerado em: {generatedAtLabel}</span>
+              <button type="button" className="btn btn-sm" onClick={() => void handleDownloadTxt()} disabled={isDownloadingTxt}>
+                {isDownloadingTxt ? "Baixando..." : "Baixar TXT do dia"}
+              </button>
+            </span>
           </div>
 
           <div className="metrics-block-body">
             <div className="report-section-sep">
-              <h3 className="report-section-title">Contexto do Dia</h3>
-              {contextOverview.length === 0 ? (
-                <p className="empty-state">Execute o overview para consolidar contexto do dia.</p>
-              ) : (
-                contextOverview.map((line, index) => (
-                  <article className="report-card" key={`ctx-${index}`}>
-                    <span className="report-card-dot" style={{ background: "var(--azul)" }} />
-                    <div className="report-card-content">
-                      <p>{line}</p>
-                    </div>
-                  </article>
-                ))
-              )}
-            </div>
-
-            <div className="report-section-sep">
               <h3 className="report-section-title">Filtros do Relatório</h3>
-                            <div className="report-filters-shell" key={filterPulse}>
+              <div className="report-filters-shell" key={filterPulse}>
                 <div className="report-filters-grid">
                   <div className="report-filter-field">
                     <label htmlFor="report-situacao-filter">Situação</label>
@@ -323,7 +270,6 @@ export function ReportSection({
                         onChangeReportSeverityFilter(event.target.value as SeverityFilter);
                         setFilterPulse((value) => value + 1);
                         setContextPage(1);
-                        setGapsPage(1);
                       }}
                     >
                       {REPORT_SEVERITY_OPTIONS.map((option) => (
@@ -338,14 +284,12 @@ export function ReportSection({
                     <label htmlFor="report-user-filter">Usuário</label>
                     <select
                       id="report-user-filter"
-                      value={localContactFilter}
+                      value={contactFilterValue}
                       onChange={(event) => {
                         const next = event.target.value;
-                        setLocalContactFilter(next);
                         onSelectReportContact(next.trim() ? next : null);
                         setFilterPulse((value) => value + 1);
                         setContextPage(1);
-                        setGapsPage(1);
                       }}
                     >
                       <option value="">Todos</option>
@@ -361,7 +305,7 @@ export function ReportSection({
                 <div className="report-filter-labels">
                   <span className="report-filter-label-title">Etiquetas</span>
                   <div className="gap-label-row">
-                    {displayLabels.map((label) => {
+                    {availableLabels.map((label) => {
                       const selected = selectedLabels.includes(label.toLowerCase());
                       return (
                         <button
@@ -379,14 +323,12 @@ export function ReportSection({
                       className="tag tag-clear"
                       type="button"
                       onClick={() => {
-                        setLocalContactFilter("");
                         setSituacaoFilter("all");
                         setSelectedLabels([]);
                         onSelectReportContact(null);
                         onChangeReportSeverityFilter("all");
                         setFilterPulse((value) => value + 1);
                         setContextPage(1);
-                        setGapsPage(1);
                       }}
                     >
                       Limpar
@@ -430,9 +372,6 @@ export function ReportSection({
                             <strong>Evidência:</strong> {item.evidencia}
                           </p>
                           <p>
-                            <strong>Risco:</strong> {item.risco}
-                          </p>
-                          <p>
                             <strong>Ação recomendada:</strong> {item.acao}
                           </p>
                           <div className="gap-label-row">
@@ -462,62 +401,9 @@ export function ReportSection({
                 </>
               )}
             </div>
-
-            <div className="report-section-sep">
-              <h3 className="report-section-title">Gaps Operacionais</h3>
-              {gapsChunk.rows.length === 0 ? (
-                <p className="empty-state">Nenhum gap operacional para exibir.</p>
-              ) : (
-                <>
-                  <div className="report-list-animated" key={`gaps-${filterPulse}-${gapsChunk.safePage}`}>
-                    {gapsChunk.rows.map((item) => (
-                      <article className="report-card" key={item.key}>
-                        <span className="report-card-dot" style={{ background: toneColor(item.severity) }} />
-                        <div className="report-card-content">
-                          <h4>{item.title}</h4>
-                          {item.phase ? (
-                            <p>
-                              <strong>Fase:</strong> {item.phase}
-                            </p>
-                          ) : null}
-                          <p>{item.desc}</p>
-                          <div className="gap-label-row">
-                            {item.labels.length > 0 ? (
-                              item.labels.map((tag) => (
-                                <span className={labelClass(tag)} key={`${item.key}-${tag}`}>
-                                  {tag}
-                                </span>
-                              ))
-                            ) : (
-                              <span className="tag">sem etiqueta</span>
-                            )}
-                          </div>
-                        </div>
-                      </article>
-                    ))}
-                  </div>
-                  {filteredGaps.length > perPage ? (
-                    <PaginationControls
-                      total={filteredGaps.length}
-                      safePage={gapsChunk.safePage}
-                      pages={gapsChunk.pages}
-                      onPrev={() => keepScroll(() => setGapsPage(Math.max(1, gapsChunk.safePage - 1)))}
-                      onNext={() => keepScroll(() => setGapsPage(Math.min(gapsChunk.pages, gapsChunk.safePage + 1)))}
-                    />
-                  ) : null}
-                </>
-              )}
-            </div>
           </div>
         </div>
       </div>
     </div>
   );
 }
-
-
-
-
-
-
-

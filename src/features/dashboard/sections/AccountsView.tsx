@@ -317,14 +317,19 @@ export function AccountsView({ selectedDate, knownRunId = null, refreshHint = nu
 
   return (
     <section className="accounts-shell">
-      <header className="accounts-header">
-        <h1>Clientes</h1>
-        <p>
-          Chave primária operacional: <strong>telefone</strong>. Registros carregados do banco para{" "}
-          <strong>{selectedDate}</strong>
-          {runId ? <> (execução: <code>{runId}</code>)</> : null}.
-        </p>
-      </header>
+      <div className="section-inner">
+        <div className="section-header">
+          <span className="section-num">01</span>
+          <div className="section-title">
+            <h2>Clientes</h2>
+            <p>
+              Chave primária operacional: <strong>telefone</strong>. Registros carregados do banco para{" "}
+              <strong>{selectedDate}</strong>
+              {runId ? <> (execução: <code>{runId}</code>)</> : null}.
+            </p>
+          </div>
+        </div>
+      </div>
 
       <article className="settings-card">
         <div className="settings-card-head">Como funciona a classificação</div>
