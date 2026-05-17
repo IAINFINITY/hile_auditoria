@@ -326,10 +326,12 @@
 }
 
 .topbar-notify{
-  width:40px;
-  height:40px;
-  border:1px solid var(--line);
-  background:#eff5fc;
+  width:auto;
+  height:auto;
+  border:0;
+  background:transparent;
+  padding:4px;
+  border-radius:8px;
   display:grid;
   place-items:center;
   position:relative;
@@ -337,8 +339,7 @@
 }
 
 .topbar-notify:hover{
-  border-color:var(--azul-line);
-  background:#e7f1fb;
+  background:rgba(16,107,182,.08);
 }
 
 .topbar-notify-icon{

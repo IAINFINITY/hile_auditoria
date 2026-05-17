@@ -15,7 +15,7 @@ interface AccountsViewProps {
 const STATUS_ORDER: AccountStatus[] = ["aberto", "atencao", "resolvido"];
 const CLIENTS_REVALIDATE_MS = 5 * 60 * 1000;
 const CLIENTS_REVALIDATE_TODAY_MS = 60 * 1000;
-const CLIENTS_CACHE_VERSION = "v3";
+const CLIENTS_CACHE_VERSION = "v6";
 
 function normalizeFilterText(value: unknown): string {
   return String(value || "")
@@ -79,6 +79,12 @@ function normalizeLabelKey(label: string): string {
     .replace(/[\u0300-\u036f]/g, "");
 }
 
+function formatProductDisplayName(value: string): string {
+  const clean = String(value || "").trim().replace(/\s+/g, " ");
+  if (!clean) return "";
+  return clean.charAt(0).toUpperCase() + clean.slice(1).toLowerCase();
+}
+
 function hasExitFromAiLabel(labels: string[]): boolean {
   const normalized = (labels || []).map(normalizeLabelKey);
   return normalized.includes("lead_agendado") || normalized.includes("pausar_ia");
@@ -87,7 +93,7 @@ function hasExitFromAiLabel(labels: string[]): boolean {
 function mapStatus(record: ClientRecordItem): AccountStatus {
   if (hasExitFromAiLabel(record.labels || [])) return "resolvido";
   if (record.status === "resolvido") return "resolvido";
-  if (record.status === "atencao") return "atencao";
+  if (record.severity === "critical" || record.severity === "high") return "atencao";
   return "aberto";
 }
 
@@ -99,6 +105,7 @@ export function AccountsView({ selectedDate, knownRunId = null, refreshHint = nu
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | AccountStatus>("all");
   const [labelFilter, setLabelFilter] = useState<string>("all");
+  const [analysisFilter, setAnalysisFilter] = useState<"all" | "gaps_insights" | Severity>("all");
   const [favoritesOnly, setFavoritesOnly] = useState(false);
   const [pinnedOnly, setPinnedOnly] = useState(false);
   const [favoritePhones, setFavoritePhones] = useState<string[]>([]);
@@ -249,6 +256,38 @@ export function AccountsView({ selectedDate, knownRunId = null, refreshHint = nu
     return Array.from(set).sort((a, b) => a.localeCompare(b, "pt-BR"));
   }, [records]);
 
+  const analysisFilterOptions = useMemo(() => {
+    const hasGapsOrInsights = records.some(
+      (record) => (record.gaps || []).length > 0 || (record.attentions || []).length > 0,
+    );
+    const hasCritical = records.some((record) => record.severity === "critical");
+    const hasHigh = records.some((record) => record.severity === "high");
+    const hasMedium = records.some((record) => record.severity === "medium");
+    const hasLow = records.some((record) => record.severity === "low");
+    const hasInfo = records.some((record) => record.severity === "info");
+
+    const options: Array<{ value: "all" | "gaps_insights" | Severity; label: string }> = [
+      { value: "all", label: "Todos" },
+    ];
+    if (hasGapsOrInsights) options.push({ value: "gaps_insights", label: "Gaps/insights" });
+    if (hasCritical) options.push({ value: "critical", label: "Crítico" });
+    if (hasHigh) options.push({ value: "high", label: "Alto" });
+    if (hasMedium) options.push({ value: "medium", label: "Médio" });
+    if (hasLow) options.push({ value: "low", label: "Baixo" });
+    if (hasInfo) options.push({ value: "info", label: "Informativo" });
+
+    return options;
+  }, [records]);
+
+  const availableAnalysisValues = useMemo(
+    () => new Set(analysisFilterOptions.map((item) => item.value)),
+    [analysisFilterOptions],
+  );
+
+  const effectiveAnalysisFilter: "all" | "gaps_insights" | Severity = availableAnalysisValues.has(analysisFilter)
+    ? analysisFilter
+    : "all";
+
   const filteredRecords = useMemo(() => {
     const q = normalizeFilterText(query);
     const list = records.filter((record) => {
@@ -263,9 +302,19 @@ export function AccountsView({ selectedDate, knownRunId = null, refreshHint = nu
       const byLabel =
         labelFilter === "all" ||
         record.labels.some((label) => normalizeFilterText(label) === normalizeFilterText(labelFilter));
+      const hasGaps = (record.gaps || []).length > 0;
+      const hasInsights = (record.attentions || []).length > 0;
+      const byAnalysis =
+        effectiveAnalysisFilter === "all" ||
+        (effectiveAnalysisFilter === "gaps_insights" && (hasGaps || hasInsights)) ||
+        (effectiveAnalysisFilter === "critical" && record.severity === "critical") ||
+        (effectiveAnalysisFilter === "high" && record.severity === "high") ||
+        (effectiveAnalysisFilter === "medium" && record.severity === "medium") ||
+        (effectiveAnalysisFilter === "low" && record.severity === "low") ||
+        (effectiveAnalysisFilter === "info" && record.severity === "info");
       const byFavorite = !favoritesOnly || favoritePhones.includes(record.phonePk);
       const byPinned = !pinnedOnly || pinnedPhones.includes(record.phonePk);
-      return byText && byStatus && byLabel && byFavorite && byPinned;
+      return byText && byStatus && byLabel && byAnalysis && byFavorite && byPinned;
     });
 
     return list.sort((a, b) => {
@@ -275,7 +324,7 @@ export function AccountsView({ selectedDate, knownRunId = null, refreshHint = nu
       if (favDiff !== 0) return favDiff;
       return String(a.contactName || "").localeCompare(String(b.contactName || ""), "pt-BR");
     });
-  }, [favoritePhones, favoritesOnly, labelFilter, pinnedOnly, pinnedPhones, query, records, statusFilter]);
+  }, [effectiveAnalysisFilter, favoritePhones, favoritesOnly, labelFilter, pinnedOnly, pinnedPhones, query, records, statusFilter]);
 
   const recordsByStatus = useMemo(() => {
     const grouped: Record<AccountStatus, ClientRecordItem[]> = {
@@ -293,8 +342,14 @@ export function AccountsView({ selectedDate, knownRunId = null, refreshHint = nu
   }, [filteredRecords]);
 
   const hasActiveFilters = useMemo(
-    () => Boolean(query.trim()) || statusFilter !== "all" || labelFilter !== "all" || favoritesOnly || pinnedOnly,
-    [favoritesOnly, labelFilter, pinnedOnly, query, statusFilter],
+    () =>
+      Boolean(query.trim()) ||
+      statusFilter !== "all" ||
+      labelFilter !== "all" ||
+      effectiveAnalysisFilter !== "all" ||
+      favoritesOnly ||
+      pinnedOnly,
+    [effectiveAnalysisFilter, favoritesOnly, labelFilter, pinnedOnly, query, statusFilter],
   );
   const shouldDimKanban = filteredRecords.length === 0;
 
@@ -302,6 +357,9 @@ export function AccountsView({ selectedDate, knownRunId = null, refreshHint = nu
     if (!hasActiveFilters) return STATUS_ORDER;
     return STATUS_ORDER.filter((status) => recordsByStatus[status].length > 0);
   }, [hasActiveFilters, recordsByStatus]);
+  const filteredColsClass = hasActiveFilters
+    ? `cols-${Math.min(3, Math.max(1, visibleStatuses.length))}`
+    : "";
 
   function toggleFavorite(phonePk: string) {
     setFavoritePhones((current) =>
@@ -382,6 +440,17 @@ export function AccountsView({ selectedDate, knownRunId = null, refreshHint = nu
                 ))}
               </select>
             </label>
+
+            <label>
+              Gaps/Insights
+              <select value={effectiveAnalysisFilter} onChange={(event) => setAnalysisFilter(event.target.value as "all" | "gaps_insights" | Severity)}>
+                {analysisFilterOptions.map((option) => (
+                  <option value={option.value} key={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
           </div>
 
           <div className="accounts-switch-row">
@@ -408,7 +477,7 @@ export function AccountsView({ selectedDate, knownRunId = null, refreshHint = nu
           ) : null}
 
           {!loading && !errorMessage && filteredRecords.length > 0 ? (
-            <div className={`accounts-kanban ${hasActiveFilters ? "is-filtered" : ""}`}>
+            <div className={`accounts-kanban ${hasActiveFilters ? `is-filtered ${filteredColsClass}` : ""}`}>
               {visibleStatuses.map((status) => {
                 const list = recordsByStatus[status];
                 return (
@@ -567,6 +636,21 @@ export function AccountsView({ selectedDate, knownRunId = null, refreshHint = nu
                     ))
                   ) : (
                     <span className="tag">sem etiqueta</span>
+                  )}
+                </div>
+              </div>
+
+              <div className="modal-section">
+                <h4>Produtos citados</h4>
+                <div className="account-tags account-product-tags">
+                  {(selectedRecord.products || []).length > 0 ? (
+                    selectedRecord.products.map((product) => (
+                      <span className="tag account-product-tag" key={`modal-${selectedRecord.phonePk}-product-${product}`}>
+                        {formatProductDisplayName(product)}
+                      </span>
+                    ))
+                  ) : (
+                    <span className="tag account-product-tag account-product-tag-empty">sem produtos mapeados</span>
                   )}
                 </div>
               </div>

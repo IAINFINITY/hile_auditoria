@@ -1,6 +1,5 @@
 ﻿import { useCallback, useEffect, useRef, useState } from "react";
 import type { MouseEvent } from "react";
-import { BsDiamond } from "react-icons/bs";
 import {
   FiAlertTriangle,
   FiBarChart2,
@@ -9,9 +8,12 @@ import {
   FiCheckCircle,
   FiChevronDown,
   FiChevronRight,
+  FiClipboard,
   FiClock,
   FiFileText,
+  FiHome,
   FiLayers,
+  FiPieChart,
   FiSettings,
   FiUsers,
   FiZap,
@@ -31,6 +33,7 @@ interface ShellNavigationProps {
   onOpenLogs: () => void;
   onNavigateAnalysis: (section: "analysis-overview" | "analysis-movimentacao" | "analysis-conteudo") => void;
   onNavigateClients: (section: "clients-filtros" | "clients-kanban") => void;
+  onNavigateProducts: (section: "products-overview" | "products-ranking" | "products-charts") => void;
   onNavigateLogs: (section: "logs-saude" | "logs-execucao" | "logs-recentes") => void;
   onNavigateSettings: (section: "settings-profile" | "settings-security" | "settings-preferences") => void;
   currentUser: {
@@ -61,6 +64,7 @@ export function ShellNavigation({
   onOpenLogs,
   onNavigateAnalysis,
   onNavigateClients,
+  onNavigateProducts,
   onNavigateLogs,
   onNavigateSettings,
   currentUser,
@@ -74,6 +78,7 @@ export function ShellNavigation({
     dashboard: true,
     analysis: false,
     clients: false,
+    products: false,
     logs: false,
     settings: false,
   });
@@ -134,11 +139,11 @@ export function ShellNavigation({
     return `side-sub-item ${activeSubNavKey === key ? "active" : ""}`;
   }
 
-  function toggleSection(section: "dashboard" | "analysis" | "clients" | "logs" | "settings") {
+  function toggleSection(section: "dashboard" | "analysis" | "clients" | "products" | "logs" | "settings") {
     setOpenSections((current) => ({ ...current, [section]: !current[section] }));
   }
 
-  function openSection(section: "dashboard" | "analysis" | "clients" | "logs" | "settings") {
+  function openSection(section: "dashboard" | "analysis" | "clients" | "products" | "logs" | "settings") {
     setOpenSections((current) => ({ ...current, [section]: true }));
   }
 
@@ -165,7 +170,7 @@ export function ShellNavigation({
               }}
             >
               <span className="side-item-icon" aria-hidden="true">
-                <BsDiamond />
+                <FiHome />
               </span>
               <span>Dashboard</span>
             </button>
@@ -214,7 +219,7 @@ export function ShellNavigation({
               }}
             >
               <span className="side-item-icon" aria-hidden="true">
-                <FiBarChart2 />
+                <FiPieChart />
               </span>
               <span>Análise Geral</span>
             </button>
@@ -285,12 +290,48 @@ export function ShellNavigation({
             </div>
           ) : null}
 
-          <button type="button" className={sideItemClass(activeView === "products")} onClick={onOpenProducts}>
-            <span className="side-item-icon" aria-hidden="true">
-              <FiBox />
-            </span>
-            <span>Produtos</span>
-          </button>
+          <div className={`side-item-row ${activeView === "products" ? "active" : ""}`}>
+            <button
+              type="button"
+              className={sideItemClass(activeView === "products")}
+              onClick={() => {
+                openSection("products");
+                onOpenProducts();
+              }}
+            >
+              <span className="side-item-icon" aria-hidden="true">
+                <FiBox />
+              </span>
+              <span>Produtos</span>
+            </button>
+            <button
+              type="button"
+              className="side-item-toggle"
+              aria-label={openSections.products ? "Recolher Produtos" : "Expandir Produtos"}
+              onClick={() => toggleSection("products")}
+            >
+              {openSections.products ? <FiChevronDown /> : <FiChevronRight />}
+            </button>
+          </div>
+          {openSections.products ? (
+            <div className="side-subnav">
+              <button type="button" className={subItemClass("products-overview")} onClick={() => onNavigateProducts("products-overview")}>
+                <span className="side-sub-dot" />
+                <span className="side-sub-icon"><FiLayers /></span>
+                Visão Geral
+              </button>
+              <button type="button" className={subItemClass("products-ranking")} onClick={() => onNavigateProducts("products-ranking")}>
+                <span className="side-sub-dot" />
+                <span className="side-sub-icon"><FiFileText /></span>
+                Ranking
+              </button>
+              <button type="button" className={subItemClass("products-charts")} onClick={() => onNavigateProducts("products-charts")}>
+                <span className="side-sub-dot" />
+                <span className="side-sub-icon"><FiBarChart2 /></span>
+                Gráficos
+              </button>
+            </div>
+          ) : null}
 
           <div className={`side-item-row ${activeView === "logs" ? "active" : ""}`}>
             <button
@@ -302,7 +343,7 @@ export function ShellNavigation({
               }}
             >
               <span className="side-item-icon" aria-hidden="true">
-                <FiLayers />
+                <FiClipboard />
               </span>
               <span>Logs</span>
             </button>
@@ -461,4 +502,11 @@ export function ShellNavigation({
     </>
   );
 }
+
+
+
+
+
+
+
 

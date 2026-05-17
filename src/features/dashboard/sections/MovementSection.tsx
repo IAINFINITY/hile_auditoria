@@ -4,6 +4,8 @@ import { DonutChart } from "../charts/DonutChart";
 import { GroupedHourlyChart } from "../charts/GroupedHourlyChart";
 import { severityColors, severityLabel } from "../shared/constants";
 
+const PIE_SEVERITIES: Severity[] = ["critical", "high", "medium", "low"];
+
 interface MovementSectionProps {
   trendSeries: Array<{ label: string; conversas: number; ia: number; usuario: number }>;
   severitySnapshot: Record<Severity, number>;
@@ -28,17 +30,29 @@ export function MovementSection({
     { label: "--", value: 0 } as { label: string; value: number },
   );
 
+  const pieSnapshot = useMemo(
+    () => ({
+      critical: severitySnapshot.critical || 0,
+      high: severitySnapshot.high || 0,
+      medium: severitySnapshot.medium || 0,
+      low: severitySnapshot.low || 0,
+      info: 0,
+    }),
+    [severitySnapshot.critical, severitySnapshot.high, severitySnapshot.medium, severitySnapshot.low],
+  );
+
   const gapTotal = useMemo(
-    () => Object.values(severitySnapshot).reduce((acc, value) => acc + value, 0),
+    () => PIE_SEVERITIES.reduce((acc, severity) => acc + (severitySnapshot[severity] || 0), 0),
     [severitySnapshot],
   );
 
   const gapRows = useMemo(() => {
-    const rows = (Object.entries(severitySnapshot) as Array<[Severity, number]>).map(([sev, count]) => {
+    const rows = PIE_SEVERITIES.map((sev) => {
+      const count = severitySnapshot[sev] || 0;
       const pct = gapTotal > 0 ? (count / gapTotal) * 100 : 0;
       return { sev, count, pct };
     });
-    return rows.sort((a, b) => b.count - a.count);
+    return rows;
   }, [gapTotal, severitySnapshot]);
 
   const groupedData = useMemo(() => trendSeries, [trendSeries]);
@@ -79,7 +93,7 @@ export function MovementSection({
           <div className="metrics-block-body movement-pie-wrap">
             <div>
               <div style={{ display: "grid", placeItems: "center" }}>
-                <DonutChart snapshot={severitySnapshot} size={280} centerLabel="gaps" />
+                <DonutChart snapshot={pieSnapshot} size={280} centerLabel="gaps" />
               </div>
             </div>
             <div className="severity-legend" id="donutLegend">

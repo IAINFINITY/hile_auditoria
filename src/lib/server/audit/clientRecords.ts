@@ -14,6 +14,7 @@ export interface ClientRecordDraft {
   labels: string[];
   conversationIds: number[];
   chatLinks: string[];
+  products: string[];
   openedAt: Date | null;
   closedAt: Date | null;
   status: string;
@@ -30,6 +31,7 @@ interface MutableClientRecord {
   labels: Set<string>;
   conversationIds: Set<number>;
   chatLinks: Set<string>;
+  products: Set<string>;
   openedAt: Date | null;
   closedAt: Date | null;
   status: string;
@@ -42,6 +44,14 @@ const severityOrder: Record<InsightSeverity, number> = {
   medium: 3,
   low: 2,
   info: 1,
+};
+
+const PRODUCT_ALIASES: Record<string, string[]> = {
+  Whey: ["whey", "uei", "wehy", "whey protein"],
+  Creatina: ["creatina", "creatine", "creatin", "creatna"],
+  "Pre-treino": ["pre treino", "pre-treino", "pretreino", "preworkout", "pre workout"],
+  Colageno: ["colageno", "colageno", "collagen"],
+  "Suplementos fitness": ["suplemento", "suplementos", "fitness"],
 };
 
 function normalizeDigits(value: unknown): string {
@@ -165,6 +175,53 @@ function mapStatus(record: MutableClientRecord): string {
   return "aberto";
 }
 
+function normalizeProductDisplay(value: unknown): string {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  const spaced = raw.replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim();
+  return toTitleCaseName(spaced);
+}
+
+function parseUserMessagesFromLogText(logText: string): string {
+  const lines = String(logText || "")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const texts: string[] = [];
+
+  for (const line of lines) {
+    const withTimestamp = line.match(
+      /^\[(.*?)\]\s*(?:\[[^\]]+\]\s*)?([A-Z_À-ÿ ]+?)(?:\s*\([^)]+\))?\s*[:\-]\s*(.*)$/i,
+    );
+    if (withTimestamp) {
+      const role = normalizeText(withTimestamp[2]);
+      if (/(^|[^a-z])(user|usuario|cliente|contact)([^a-z]|$)/.test(role)) {
+        texts.push(String(withTimestamp[3] || "").trim());
+      }
+      continue;
+    }
+
+    const withoutTimestamp = line.match(/^([A-Z_À-ÿ ]+?)(?:\s*\([^)]+\))?\s*[:\-]\s*(.*)$/i);
+    if (!withoutTimestamp) continue;
+    const role = normalizeText(withoutTimestamp[1]);
+    if (/(^|[^a-z])(user|usuario|cliente|contact)([^a-z]|$)/.test(role)) {
+      texts.push(String(withoutTimestamp[2] || "").trim());
+    }
+  }
+
+  return normalizeText(texts.join(" "));
+}
+
+function appendAliasProductsFromLog(products: Set<string>, logText: string) {
+  const userText = parseUserMessagesFromLogText(logText);
+  if (!userText) return;
+  for (const [canonicalName, aliases] of Object.entries(PRODUCT_ALIASES)) {
+    const matched = aliases.some((alias) => userText.includes(normalizeText(alias)));
+    if (!matched) continue;
+    products.add(canonicalName);
+  }
+}
+
 function createDraft(phonePk: string, contactName: string): MutableClientRecord {
   return {
     phonePk,
@@ -176,6 +233,7 @@ function createDraft(phonePk: string, contactName: string): MutableClientRecord 
     labels: new Set<string>(),
     conversationIds: new Set<number>(),
     chatLinks: new Set<string>(),
+    products: new Set<string>(),
     openedAt: null,
     closedAt: null,
     status: "aberto",
@@ -243,6 +301,17 @@ export function buildClientRecordsFromAnalyses(analyses: AnalysisItem[]): Client
       if (text) record.attentions.add(text);
     }
 
+    const productsRaw = Array.isArray(parsed.produtos_citados) ? parsed.produtos_citados : [];
+    for (const rawProduct of productsRaw) {
+      const productObj = rawProduct && typeof rawProduct === "object" ? (rawProduct as Record<string, unknown>) : {};
+      const text =
+        normalizeProductDisplay(productObj.nome_produto) ||
+        normalizeProductDisplay(productObj.termo_detectado) ||
+        normalizeProductDisplay(rawProduct);
+      if (text) record.products.add(text);
+    }
+    appendAliasProductsFromLog(record.products, logText);
+
     for (const rawConversationId of analysis.conversation_ids || []) {
       const conversationId = Number(rawConversationId || 0);
       if (conversationId > 0) record.conversationIds.add(conversationId);
@@ -280,6 +349,7 @@ export function buildClientRecordsFromAnalyses(analyses: AnalysisItem[]): Client
     labels: Array.from(record.labels),
     conversationIds: Array.from(record.conversationIds).sort((a, b) => a - b),
     chatLinks: Array.from(record.chatLinks),
+    products: Array.from(record.products).sort((a, b) => a.localeCompare(b, "pt-BR")),
     openedAt: record.openedAt,
     closedAt: record.closedAt,
     status: record.status,

@@ -1,6 +1,7 @@
 ﻿import { useEffect, useMemo, useState } from "react";
 import type { InsightItem, OverviewPayload } from "../../../types";
 import type { OperationalAlertItem } from "../shared/types";
+import { toTitleCaseName } from "../hooks/controller/common";
 
 interface GapsSectionProps {
   insightsReady: boolean;
@@ -134,6 +135,7 @@ export function GapsSection({
               <div className="gaps-grid gaps-grid-animated" key={`${filter}-${safePage}-${animationSeed}`}>
                 {pagedItems.map((item) => {
                   const url = buildConversationLink(baseUrl, accountId, inboxId, item.conversation_id);
+                  const contactName = toTitleCaseName(item.contact_name || "");
                   return (
                     <article className={`gap-item ${item.severity}`} key={item.id}>
                       <div className="gap-color-bar" />
@@ -152,9 +154,9 @@ export function GapsSection({
                         </div>
 
                         <div className="gap-contact">
-                          <strong>{item.contact_name}</strong>
+                          <strong>{contactName}</strong>
                           <span>• Conversa #{item.conversation_id}</span>
-                          <button type="button" className="link-btn" onClick={() => onOpenReportByContact(item.contact_name)}>
+                          <button type="button" className="link-btn" onClick={() => onOpenReportByContact(contactName)}>
                             Ver relatório desta pessoa
                           </button>
                           {url ? (
@@ -218,7 +220,7 @@ export function GapsSection({
                         <div className="report-card-content">
                           <h4>{alert.type === "desengajamento" ? "Risco de desengajamento" : "Pedido de consultor"}</h4>
                           <p>
-                            <strong>{alert.contactName}</strong> • conversa #{alert.conversationId || "-"}
+                            <strong>{toTitleCaseName(alert.contactName || "")}</strong> • conversa #{alert.conversationId || "-"}
                           </p>
                           <p>{alert.excerpt}</p>
                         </div>

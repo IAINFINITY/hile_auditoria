@@ -324,6 +324,7 @@ export interface ClientRecordItem {
   labels: string[];
   conversationIds: number[];
   chatLinks: string[];
+  products: string[];
   openedAt: string | null;
   closedAt: string | null;
   status: "aberto" | "atencao" | "resolvido" | string;

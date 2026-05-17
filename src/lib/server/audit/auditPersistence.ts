@@ -67,6 +67,22 @@ function normalizeSeverityLabel(value: unknown): string {
     .replace(/[\u0300-\u036f]/g, "");
 }
 
+function normalizeClientProductName(value: unknown): string {
+  const clean = String(value || "").replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim();
+  if (!clean) return "";
+  return clean.charAt(0).toUpperCase() + clean.slice(1).toLowerCase();
+}
+
+function normalizeClientProductList(values: unknown): string[] {
+  if (!Array.isArray(values)) return [];
+  const out = new Set<string>();
+  for (const value of values) {
+    const normalized = normalizeClientProductName(value);
+    if (normalized) out.add(normalized);
+  }
+  return Array.from(out);
+}
+
 function isCriticalSeverityLabel(value: unknown): boolean {
   const normalized = normalizeSeverityLabel(value);
   return normalized.startsWith("crit") || normalized === "critical";
@@ -83,6 +99,15 @@ function deriveRiskLevelFromParsed(parsed: Record<string, unknown>): "critical" 
   }
 
   return "non_critical";
+}
+
+function firstNonEmptyStringArray(
+  ...candidates: Array<string[] | null | undefined>
+): string[] {
+  for (const candidate of candidates) {
+    if (Array.isArray(candidate) && candidate.length > 0) return candidate;
+  }
+  return [];
 }
 
 type ParsedOperationalMessage = {
@@ -1412,6 +1437,7 @@ export async function listClientsByDate(date: string) {
       status: string;
       conversationIds: number[];
       chatLinks: string[];
+      products: string[];
       openedAt: Date | null;
       closedAt: Date | null;
     }
@@ -1427,8 +1453,15 @@ export async function listClientsByDate(date: string) {
       status: string;
       conversationIds: number[];
       chatLinks: string[];
+      products: string[];
       openedAt: Date | null;
       closedAt: Date | null;
+    }
+  >();
+  const reportFallbackByConversationId = new Map<
+    number,
+    {
+      products: string[];
     }
   >();
 
@@ -1447,6 +1480,7 @@ export async function listClientsByDate(date: string) {
       status: string;
       conversationIds: number[];
       chatLinks: string[];
+      products: string[];
     }
   >();
 
@@ -1460,6 +1494,7 @@ export async function listClientsByDate(date: string) {
       status: draft.status || "aberto",
       conversationIds: Array.isArray(draft.conversationIds) ? draft.conversationIds : [],
       chatLinks: Array.isArray(draft.chatLinks) ? draft.chatLinks : [],
+      products: Array.isArray(draft.products) ? draft.products : [],
       openedAt: draft.openedAt || null,
       closedAt: draft.closedAt || null,
     };
@@ -1468,6 +1503,14 @@ export async function listClientsByDate(date: string) {
     if (byPhoneKey) reportFallbackByPhone.set(byPhoneKey, payload);
     const byNameKey = normalizeMatchKey(payload.contactName);
     if (byNameKey) reportFallbackByName.set(byNameKey, payload);
+    for (const conversationId of payload.conversationIds || []) {
+      const id = Number(conversationId || 0);
+      if (!id) continue;
+      const current = reportFallbackByConversationId.get(id) || { products: [] };
+      reportFallbackByConversationId.set(id, {
+        products: Array.from(new Set([...(current.products || []), ...(payload.products || [])])),
+      });
+    }
   }
 
   for (const log of reportLogs) {
@@ -1496,6 +1539,7 @@ export async function listClientsByDate(date: string) {
       status: severity === "critical" || severity === "high" ? "atencao" : "aberto",
       conversationIds,
       chatLinks,
+      products: [],
     });
   }
 
@@ -1508,6 +1552,7 @@ export async function listClientsByDate(date: string) {
       severity: string;
       status: string;
       chatLinks: string[];
+      products: string[];
     }
   >();
   const analysisFallbackByName = new Map<
@@ -1519,6 +1564,7 @@ export async function listClientsByDate(date: string) {
       severity: string;
       status: string;
       chatLinks: string[];
+      products: string[];
     }
   >();
   const analysisFallbackByPhone = new Map<
@@ -1530,6 +1576,7 @@ export async function listClientsByDate(date: string) {
       severity: string;
       status: string;
       chatLinks: string[];
+      products: string[];
     }
   >();
 
@@ -1560,6 +1607,7 @@ export async function listClientsByDate(date: string) {
         severity: string;
         status: string;
         chatLinks: string[];
+        products: string[];
       }
     >,
     key: string,
@@ -1570,6 +1618,7 @@ export async function listClientsByDate(date: string) {
       severity: string;
       status: string;
       chatLinks: string[];
+      products: string[];
     },
   ) => {
     if (!key) return;
@@ -1585,6 +1634,7 @@ export async function listClientsByDate(date: string) {
       severity: mergedSeverity(current.severity, payload.severity),
       status: mergeStatus(current.status, payload.status),
       chatLinks: Array.from(new Set([...current.chatLinks, ...payload.chatLinks])),
+      products: Array.from(new Set([...(current.products || []), ...(payload.products || [])])),
     });
   };
 
@@ -1596,6 +1646,7 @@ export async function listClientsByDate(date: string) {
         summary: true,
         finalizationStatus: true,
         improvementsJson: true,
+        aiRawJson: true,
         gaps: {
           select: {
             name: true,
@@ -1636,6 +1687,7 @@ export async function listClientsByDate(date: string) {
 
       const gaps = new Set<string>();
       const attentions = new Set<string>();
+      const products = new Set<string>();
       const labels = new Set<string>(analysis.conversation?.labels || []);
       let severity = "info";
       let status = "aberto";
@@ -1688,6 +1740,19 @@ export async function listClientsByDate(date: string) {
         }
       }
 
+      const aiRaw = asRecord(analysis.aiRawJson);
+      const rawProducts = Array.isArray(aiRaw.produtos_citados) ? aiRaw.produtos_citados : [];
+      for (const rawProduct of rawProducts) {
+        const productObj = asRecord(rawProduct);
+        const productNameRaw = pickFirstText(productObj, ["nome_produto", "termo_detectado"]);
+        const normalizedProduct = String(productNameRaw || "")
+          .replace(/[_-]+/g, " ")
+          .replace(/\s+/g, " ")
+          .trim();
+        const displayProduct = toTitleCaseName(normalizedProduct);
+        if (displayProduct) products.add(displayProduct);
+      }
+
       const link = buildConversationLink(
         toChatwootAppBase("https://chat.iainfinity.com.br"),
         Number(contextRun.channel.chatwootAccountId || 0),
@@ -1702,6 +1767,7 @@ export async function listClientsByDate(date: string) {
         severity,
         status,
         chatLinks: link ? [link] : [],
+        products: Array.from(products),
       };
 
       analysisFallbackByConversationId.set(conversationId, payload);
@@ -1744,7 +1810,22 @@ export async function listClientsByDate(date: string) {
     const conversationIdsFromRecord = Array.isArray(item.conversationIds) ? item.conversationIds.filter(Boolean) : [];
     const chatLinksFromRecord = Array.isArray(item.chatLinks) ? item.chatLinks.filter(Boolean) : [];
     const conversationFallbackRows = conversationIdsFromRecord
-      .map((conversationId) => analysisFallbackByConversationId.get(Number(conversationId || 0)))
+      .map((conversationId) => {
+        const id = Number(conversationId || 0);
+        if (!id) return null;
+        const fromAnalysis = analysisFallbackByConversationId.get(id);
+        const fromReport = reportFallbackByConversationId.get(id);
+        if (!fromAnalysis && !fromReport) return null;
+        return {
+          gaps: fromAnalysis?.gaps || [],
+          attentions: fromAnalysis?.attentions || [],
+          labels: fromAnalysis?.labels || [],
+          severity: fromAnalysis?.severity || "info",
+          status: fromAnalysis?.status || "aberto",
+          chatLinks: fromAnalysis?.chatLinks || [],
+          products: fromAnalysis?.products?.length ? fromAnalysis.products : fromReport?.products || [],
+        };
+      })
       .filter(Boolean) as Array<{
       gaps: string[];
       attentions: string[];
@@ -1752,6 +1833,7 @@ export async function listClientsByDate(date: string) {
       severity: string;
       status: string;
       chatLinks: string[];
+      products: string[];
     }>;
     const conversationFallback = {
       gaps: Array.from(new Set(conversationFallbackRows.flatMap((row) => row.gaps))),
@@ -1760,31 +1842,47 @@ export async function listClientsByDate(date: string) {
       severities: conversationFallbackRows.map((row) => row.severity),
       statuses: conversationFallbackRows.map((row) => row.status),
       chatLinks: Array.from(new Set(conversationFallbackRows.flatMap((row) => row.chatLinks))),
+      products: Array.from(new Set(conversationFallbackRows.flatMap((row) => row.products || []))),
     };
-    const unifiedSeverityCandidates = [
-      item.severity,
-      fallback?.severity,
-      analysisFallbackByPhoneHit?.severity,
-      analysisFallbackByNameHit?.severity,
-      logFallback?.severity,
-      ...conversationFallback.severities,
-    ].filter(Boolean) as string[];
-    const unifiedSeverity = unifiedSeverityCandidates.reduce(
-      (best, current) => mergedSeverity(best, current),
-      "info",
+    // Regra principal: status/severidade devem refletir exatamente o resultado persistido da IA
+    // para a execução selecionada. Fallback só entra quando esse dado estiver ausente.
+    const normalizedItemSeverity = String(item.severity || "").trim().toLowerCase();
+    const hasAuthoritativeSeverity =
+      normalizedItemSeverity === "critical" ||
+      normalizedItemSeverity === "high" ||
+      normalizedItemSeverity === "medium" ||
+      normalizedItemSeverity === "low" ||
+      normalizedItemSeverity === "info";
+    const unifiedSeverity = (
+      hasAuthoritativeSeverity
+        ? item.severity
+        : [
+            fallback?.severity,
+            analysisFallbackByPhoneHit?.severity,
+            analysisFallbackByNameHit?.severity,
+            logFallback?.severity,
+            ...conversationFallback.severities,
+          ]
+            .filter(Boolean)
+            .reduce((best, current) => mergedSeverity(best, current), "info")
     ) as typeof item.severity;
-    const unifiedStatusCandidates = [
-      item.status,
-      fallback?.status,
-      analysisFallbackByPhoneHit?.status,
-      analysisFallbackByNameHit?.status,
-      logFallback?.status,
-      ...conversationFallback.statuses,
-    ].filter(Boolean) as string[];
-    const unifiedStatus = unifiedStatusCandidates.reduce(
-      (best, current) => mergeStatus(best, current),
-      "aberto",
-    );
+
+    const normalizedItemStatus = String(item.status || "").trim().toLowerCase();
+    const hasAuthoritativeStatus =
+      normalizedItemStatus === "aberto" ||
+      normalizedItemStatus === "atencao" ||
+      normalizedItemStatus === "resolvido";
+    const unifiedStatus = hasAuthoritativeStatus
+      ? item.status
+      : [
+          fallback?.status,
+          analysisFallbackByPhoneHit?.status,
+          analysisFallbackByNameHit?.status,
+          logFallback?.status,
+          ...conversationFallback.statuses,
+        ]
+          .filter(Boolean)
+          .reduce((best, current) => mergeStatus(best, current), "aberto");
 
     return {
     lifecycle: (() => {
@@ -1832,6 +1930,13 @@ export async function listClientsByDate(date: string) {
           logFallback?.labels ||
           conversationFallback.labels ||
           [],
+    products: normalizeClientProductList(firstNonEmptyStringArray(
+      fallback?.products,
+      analysisFallbackByPhoneHit?.products,
+      analysisFallbackByNameHit?.products,
+      logFallback?.products,
+      conversationFallback.products,
+    )),
     conversationIds:
       conversationIdsFromRecord.length > 0
         ? conversationIdsFromRecord
@@ -1890,6 +1995,7 @@ export async function listClientsByDate(date: string) {
           gaps: draft.gaps || [],
           attentions: draft.attentions || [],
           labels: draft.labels || [],
+          products: normalizeClientProductList(draft.products || []),
           conversationIds: draft.conversationIds || [],
           chatLinks: draft.chatLinks || [],
           openedAt: draft.openedAt ? draft.openedAt.toISOString() : null,
@@ -1934,6 +2040,7 @@ export async function listClientsByDate(date: string) {
         gaps: [],
         attentions: [],
         labels: state.currentLabels || [],
+        products: normalizeClientProductList([]),
         conversationIds: state.openConversationIds || [],
         chatLinks: (state.openConversationIds || [])
           .map((conversationId) =>
@@ -2015,6 +2122,7 @@ export async function listClientsByDate(date: string) {
       gaps: [],
       attentions: [],
       labels,
+      products: normalizeClientProductList([]),
       conversationIds,
       chatLinks: conversationIds
         .map((conversationId) =>

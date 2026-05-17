@@ -2,6 +2,7 @@
 import type { InsightItem } from "../../../types";
 import { Gauge } from "../charts/Gauge";
 import type { InsightFilter, RiskRow } from "../shared/types";
+import { toTitleCaseName } from "../hooks/controller/common";
 
 interface InsightsSectionProps {
   insightsReady: boolean;
@@ -219,7 +220,7 @@ export function InsightsSection({
                               <h3 className="insight-item-title">{item.title}</h3>
                               <p className="insight-item-desc">{item.summary}</p>
                               <div className="insight-item-meta">
-                                {item.contact_name} • conversa #{item.conversation_id}
+                                {toTitleCaseName(item.contact_name || "")} • conversa #{item.conversation_id}
                               </div>
                               <div className="gap-label-row">
                                 {(item.labels || []).length > 0 ? (
@@ -235,7 +236,7 @@ export function InsightsSection({
                               <button
                                 type="button"
                                 className="link-btn link-btn-spaced"
-                                onClick={() => onOpenReportByContact(item.contact_name)}
+                                onClick={() => onOpenReportByContact(toTitleCaseName(item.contact_name || ""))}
                               >
                                 Ver relatório desta pessoa
                               </button>

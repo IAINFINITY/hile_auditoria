@@ -30,7 +30,9 @@ import type {
 import {
   addDays,
   buildConversationLink,
+  parseJsonObject,
   parseHourlyRolesFromLogText,
+  toTitleCaseName,
   toChatwootAppBase,
   type ReportSeverityFilter,
 } from "./controller/common";
@@ -412,13 +414,64 @@ export function useDashboardController(options?: { enabled?: boolean; syncNavOnS
   }, [date, enabled, hasLoadedAvailableDates, isDateHydrated, isRunningOverview, isPeriodMode]);
 
   const informationalInsights = useMemo(() => {
+    const analyses = report?.raw_analysis?.analyses || [];
+    const contextual: InsightItem[] = [];
+
+    analyses.forEach((analysis, analysisIndex) => {
+      const parsed = parseJsonObject(String(analysis.analysis?.answer || ""));
+      const contextItems = Array.isArray(parsed.contexto_informativo)
+        ? parsed.contexto_informativo.map((item) => String(item || "").trim()).filter(Boolean)
+        : [];
+
+      const fallbackSummary = String(parsed.resumo || "").trim();
+      const lines = contextItems.length > 0 ? contextItems : fallbackSummary ? [fallbackSummary] : [];
+      if (lines.length === 0) return;
+
+      const contactName = toTitleCaseName(
+        analysis.contact?.name || analysis.contact?.identifier || analysis.contact_key || "Contato",
+      );
+      const conversationId = Number((analysis.conversation_ids || [0])[0] || analysisIndex + 1);
+      const firstState = analysis.conversation_operational?.[0]?.state;
+      const finalizationStatus =
+        String(firstState?.finalization_status || "").toLowerCase() === "finalizada" ? "finalizada" : "continuada";
+      const finalizationReason =
+        String(firstState?.finalization_reason || "").trim() ||
+        (finalizationStatus === "finalizada" ? "finalizada" : "continuada");
+      const labels = Array.isArray(firstState?.labels) ? firstState.labels.map((item) => String(item || "")) : [];
+
+      lines.forEach((line, lineIndex) => {
+        contextual.push({
+          id: `ctx-${analysis.contact_key || analysisIndex}-${lineIndex}`,
+          severity: "info",
+          title: "Contexto informativo",
+          summary: line,
+          conversation_id: conversationId > 0 ? conversationId : analysisIndex + 1,
+          contact_key: String(analysis.contact_key || `contact-${analysisIndex + 1}`),
+          contact_name: contactName || "Contato",
+          finalization_status: finalizationStatus,
+          finalization_reason: finalizationReason,
+          finalization_actor: firstState?.finalization_actor || null,
+          labels,
+          status: null,
+          unread_count: 0,
+          last_interaction_at_local: null,
+          trigger_after_1h_at_local: null,
+        });
+      });
+    });
+
+    if (contextual.length > 0) return contextual;
     return insights.filter((insight) => insight.severity === "info");
-  }, [insights]);
+  }, [insights, report?.raw_analysis?.analyses]);
 
   const sortedInsights = useMemo(() => {
     return [...insights]
       .filter((insight) => insight.severity !== "info")
       .sort((a, b) => severityOrder[b.severity] - severityOrder[a.severity]);
+  }, [insights]);
+
+  const allInsights = useMemo(() => {
+    return [...insights].sort((a, b) => severityOrder[b.severity] - severityOrder[a.severity]);
   }, [insights]);
 
   const improvementInsights = useMemo(() => {
@@ -615,11 +668,11 @@ export function useDashboardController(options?: { enabled?: boolean; syncNavOnS
 
     const unique = new Set<string>();
     for (const analysis of report.raw_analysis.analyses) {
-      const name = (analysis.contact?.name || analysis.contact?.identifier || analysis.contact_key || "").trim();
+      const name = toTitleCaseName(analysis.contact?.name || analysis.contact?.identifier || analysis.contact_key || "");
       if (name) unique.add(name);
     }
 
-    return Array.from(unique);
+    return Array.from(unique).sort((a, b) => a.localeCompare(b, "pt-BR"));
   }, [report]);
 
   const filteredFailures = useMemo(() => {
@@ -647,7 +700,7 @@ export function useDashboardController(options?: { enabled?: boolean; syncNavOnS
     const seen = new Set<string>();
 
     for (const analysis of report.raw_analysis.analyses) {
-      const contactName = (analysis.contact?.name || analysis.contact?.identifier || analysis.contact_key || "").trim();
+      const contactName = toTitleCaseName(analysis.contact?.name || analysis.contact?.identifier || analysis.contact_key || "");
       if (!contactName) continue;
       if (selectedReportContact && selectedReportContact !== contactName) continue;
 
@@ -751,13 +804,14 @@ export function useDashboardController(options?: { enabled?: boolean; syncNavOnS
             const current = statusData.current_contact;
             const safeTotal = current.total || total || 0;
             const signature = `${current.contact_key}-${current.sequence}-${safeTotal}`;
+            const formattedCurrentName = toTitleCaseName(current.contact_name || "");
             setRunCurrentContact(
-              `${current.contact_name} (${current.sequence}/${safeTotal > 0 ? safeTotal : "?"})`,
+              `${formattedCurrentName} (${current.sequence}/${safeTotal > 0 ? safeTotal : "?"})`,
             );
             if (signature !== lastCurrentContactKey) {
               lastCurrentContactKey = signature;
               pushRunStep(
-                `Analisando contato ${current.sequence}/${safeTotal > 0 ? safeTotal : "?"}: ${current.contact_name} (${current.contact_key}).`,
+                `Analisando contato ${current.sequence}/${safeTotal > 0 ? safeTotal : "?"}: ${formattedCurrentName} (${current.contact_key}).`,
               );
             }
           }
@@ -942,7 +996,7 @@ export function useDashboardController(options?: { enabled?: boolean; syncNavOnS
     totalInsightPages,
     setInsightsPage,
     filteredInsights,
-    allInsights: sortedInsights,
+    allInsights,
     informationalInsights,
     criticalGapInsights,
     visibleInsights,

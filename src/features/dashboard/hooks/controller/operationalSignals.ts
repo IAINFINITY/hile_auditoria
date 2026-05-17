@@ -1,5 +1,6 @@
 import type { AnalysisItem } from "../../../../types";
 import type { OperationalAlertItem, ProductDemandItem } from "../../shared/types";
+import { toTitleCaseName } from "./common";
 
 type ParsedMessage = {
   role: "USER" | "AGENT" | "SYSTEM";
@@ -202,10 +203,23 @@ export function buildClientResponseStats(analyses: AnalysisItem[]) {
 }
 
 export function extractProductDemand(analyses: AnalysisItem[]): ProductDemandItem[] {
-  const counters = new Map<string, { count: number; contacts: Set<string> }>();
+  const counters = new Map<
+    string,
+    { occurrenceKeys: Set<string>; contacts: Set<string>; contactNames: Set<string> }
+  >();
   for (const analysis of analyses || []) {
     const contactKey = String(analysis.contact_key || "").trim() || "contato";
-    const seenInAnalysis = new Set<string>();
+    const contactName =
+      toTitleCaseName(analysis.contact?.name || analysis.contact?.identifier || analysis.contact_key || "") ||
+      contactKey;
+    const conversationIds = Array.isArray(analysis.conversation_ids)
+      ? analysis.conversation_ids.map((value) => Number(value)).filter((value) => Number.isFinite(value) && value > 0)
+      : [];
+    const occurrenceBases =
+      conversationIds.length > 0
+        ? conversationIds.map((conversationId) => `${contactKey}::${conversationId}`)
+        : [`${contactKey}::analysis-${Number(analysis.analysis_index || 0)}`];
+    const seenProductsInAnalysis = new Set<string>();
     const parsed = tryParseJson(String(analysis.analysis?.answer || ""));
     const structuredProducts = Array.isArray(parsed?.produtos_citados)
       ? (parsed?.produtos_citados as Array<Record<string, unknown>>)
@@ -217,11 +231,18 @@ export function extractProductDemand(analyses: AnalysisItem[]): ProductDemandIte
       const display = candidate
         .replace(/_/g, " ")
         .replace(/\b\w/g, (match) => match.toUpperCase());
-      if (seenInAnalysis.has(display)) continue;
-      seenInAnalysis.add(display);
-      const current = counters.get(display) || { count: 0, contacts: new Set<string>() };
-      current.count += 1;
+      if (seenProductsInAnalysis.has(display)) continue;
+      seenProductsInAnalysis.add(display);
+      const current = counters.get(display) || {
+        occurrenceKeys: new Set<string>(),
+        contacts: new Set<string>(),
+        contactNames: new Set<string>(),
+      };
+      for (const occurrenceBase of occurrenceBases) {
+        current.occurrenceKeys.add(occurrenceBase);
+      }
       current.contacts.add(contactKey);
+      current.contactNames.add(contactName);
       counters.set(display, current);
     }
 
@@ -234,11 +255,18 @@ export function extractProductDemand(analyses: AnalysisItem[]): ProductDemandIte
     for (const [productName, aliases] of Object.entries(PRODUCT_ALIASES)) {
       const matched = aliases.some((alias) => userText.includes(normalizeText(alias)));
       if (!matched) continue;
-      if (seenInAnalysis.has(productName)) continue;
-      seenInAnalysis.add(productName);
-      const current = counters.get(productName) || { count: 0, contacts: new Set<string>() };
-      current.count += 1;
+      if (seenProductsInAnalysis.has(productName)) continue;
+      seenProductsInAnalysis.add(productName);
+      const current = counters.get(productName) || {
+        occurrenceKeys: new Set<string>(),
+        contacts: new Set<string>(),
+        contactNames: new Set<string>(),
+      };
+      for (const occurrenceBase of occurrenceBases) {
+        current.occurrenceKeys.add(occurrenceBase);
+      }
       current.contacts.add(contactKey);
+      current.contactNames.add(contactName);
       counters.set(productName, current);
     }
   }
@@ -246,8 +274,12 @@ export function extractProductDemand(analyses: AnalysisItem[]): ProductDemandIte
   return Array.from(counters.entries())
     .map(([name, value]) => ({
       name,
-      count: value.count,
+      count: value.occurrenceKeys.size,
       contacts: value.contacts.size,
+      contactNames: Array.from(value.contactNames)
+        .map((name) => toTitleCaseName(name))
+        .filter(Boolean)
+        .sort((a, b) => a.localeCompare(b, "pt-BR")),
     }))
     .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, "pt-BR"));
 }
@@ -261,7 +293,9 @@ export function extractOperationalAlerts(analyses: AnalysisItem[]): OperationalA
   let index = 0;
 
   for (const analysis of analyses || []) {
-    const contactName = String(analysis.contact?.name || analysis.contact?.identifier || analysis.contact_key || "Contato");
+    const contactName = toTitleCaseName(
+      analysis.contact?.name || analysis.contact?.identifier || analysis.contact_key || "Contato",
+    );
     const conversationId = Number((analysis.conversation_ids || [0])[0] || 0);
     const messages = parseLogMessages(String(analysis.log_text || ""));
 

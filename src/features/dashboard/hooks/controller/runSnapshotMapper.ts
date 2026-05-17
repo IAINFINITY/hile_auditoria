@@ -1,5 +1,14 @@
 ﻿import type { AnalysisItem, InsightItem, OverviewPayload, ReportByDateResponse, ReportPayload, Severity } from "../../../../types";
-import { asBoolean, asNumber, asRecord, asString, inferSeverityFromValue, normalizeTextForMatch, parseJsonObject } from "./common";
+import {
+  asBoolean,
+  asNumber,
+  asRecord,
+  asString,
+  inferSeverityFromValue,
+  normalizeTextForMatch,
+  parseJsonObject,
+  toTitleCaseName,
+} from "./common";
 
 export type DashboardRunSnapshot = {
   overview: OverviewPayload;
@@ -49,7 +58,7 @@ export function mapRunToDashboardSnapshot(run: ReportByDateResponse["run"]): Das
 
   for (const item of rawAnalyses) {
     const contact = asRecord(item.contact);
-    const contactName = asString(contact.name || contact.identifier || item.contact_key);
+    const contactName = toTitleCaseName(asString(contact.name || contact.identifier || item.contact_key));
     const contactIdentifier = asString(contact.identifier || "");
     const contactKey = asString(item.contact_key || contactIdentifier || contactName || "contato");
     const messageCountDay = asNumber(item.message_count_day, 0);
@@ -93,7 +102,7 @@ export function mapRunToDashboardSnapshot(run: ReportByDateResponse["run"]): Das
         const parsedAnswer = parseJsonObject(asRecord(item.analysis).answer);
         return {
           contact_key: String(item.contact_key || `contact-${index + 1}`),
-          contact_name: String(contact.name || contact.identifier || item.contact_key || `Contato ${index + 1}`),
+          contact_name: toTitleCaseName(String(contact.name || contact.identifier || item.contact_key || `Contato ${index + 1}`)),
           conversation_ids: Array.isArray(item.conversation_ids) ? item.conversation_ids : [],
           risk_level: extractMaxSeverityFromAnswer(parsedAnswer),
           summary: String(parsedAnswer.resumo || ""),
@@ -158,7 +167,7 @@ export function mapRunToDashboardSnapshot(run: ReportByDateResponse["run"]): Das
           status: null,
           labels: Array.isArray(log.labels) ? log.labels.map((v) => String(v)) : [],
           contact: {
-            name: asString(log.contact_name || log.contact_key || "") || null,
+            name: toTitleCaseName(asString(log.contact_name || log.contact_key || "")) || null,
             identifier: null,
           },
         });
@@ -201,7 +210,7 @@ export function mapRunToDashboardSnapshot(run: ReportByDateResponse["run"]): Das
       summary: String(log.summary || "Sem resumo disponível."),
       conversation_id: conversationId,
       contact_key: String(log.contact_key || `contact-${index + 1}`),
-      contact_name: String(log.contact_name || log.contact_key || "Contato"),
+      contact_name: toTitleCaseName(String(log.contact_name || log.contact_key || "Contato")),
       finalization_status:
         asString(
           (operationalByConversation.get(conversationId) || {}).finalization_status || log.finalization_status,
@@ -279,14 +288,14 @@ export function mapRunToDashboardSnapshot(run: ReportByDateResponse["run"]): Das
               : [];
 
           const contactRecord = asRecord(rawItem.contact);
-          const contactName = asString(
+          const contactName = toTitleCaseName(asString(
             contactRecord.name ||
               contactRecord.identifier ||
               rawItem.contact_key ||
               matchedLog?.contact_name ||
               matchedLog?.contact_key ||
               `Contato ${index + 1}`,
-          );
+          ));
 
           const answerRaw = asString(asRecord(rawItem.analysis).answer || "");
           const answerParsed = parseJsonObject(answerRaw);
@@ -359,7 +368,7 @@ export function mapRunToDashboardSnapshot(run: ReportByDateResponse["run"]): Das
           };
         })
       : logs.map((log, index) => {
-          const contactName = String(log.contact_name || log.contact_key || `Contato ${index + 1}`);
+          const contactName = toTitleCaseName(String(log.contact_name || log.contact_key || `Contato ${index + 1}`));
           const improvements = Array.isArray(log.improvements) ? log.improvements.map((v) => String(v)) : [];
           const nextSteps = Array.isArray(log.next_steps) ? log.next_steps.map((v) => String(v)) : [];
           const riskCritical = String(log.risk_level || "").toLowerCase() === "critical";

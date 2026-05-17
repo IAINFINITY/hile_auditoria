@@ -2,6 +2,7 @@
 import type { Severity } from "../../../types";
 import type { ReportHistoryItem, ReportPayload } from "../../../types";
 import { PaginationControls } from "./report/PaginationControls";
+import { toTitleCaseName } from "../hooks/controller/common";
 import {
   REPORT_SEVERITY_OPTIONS,
   extractStateLabels,
@@ -76,7 +77,9 @@ export function ReportSection({
         const toList = (value: unknown): string[] =>
           Array.isArray(value) ? value.map((item) => String(item)).filter(Boolean) : [];
 
-        const contactName = analysis.contact?.name || analysis.contact?.identifier || analysis.contact_key;
+        const contactName = toTitleCaseName(
+          analysis.contact?.name || analysis.contact?.identifier || analysis.contact_key || "Contato",
+        );
         const resumo = String(parsed.resumo || "Sem resumo estruturado.");
         const melhorias = toList(parsed.pontos_melhoria);
         const proximos = toList(parsed.proximos_passos);

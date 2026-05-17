@@ -48,6 +48,7 @@ export interface ProductDemandItem {
   name: string;
   count: number;
   contacts: number;
+  contactNames: string[];
 }
 
 export interface OperationalAlertItem {

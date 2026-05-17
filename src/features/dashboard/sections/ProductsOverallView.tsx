@@ -220,7 +220,7 @@ export function ProductsOverallView({ refreshHint = null }: ProductsOverallViewP
   }
 
   return (
-    <section className={`settings-shell reveal ${isSingleItem ? "products-overall-single" : ""}`} id="products-overall">
+    <section className={`settings-shell reveal ${isSingleItem ? "products-overall-single" : ""}`} id="products-overview">
       <div className="section-inner">
         <div className="section-header">
           <span className="section-num">01</span>
@@ -256,7 +256,7 @@ export function ProductsOverallView({ refreshHint = null }: ProductsOverallViewP
         </div>
       </article>
 
-      <article className={`settings-card ${showDim ? "data-dim" : ""}`}>
+      <article className={`settings-card ${showDim ? "data-dim" : ""}`} id="products-ranking">
         <div className="settings-card-head">Top Produtos</div>
         <div className="settings-card-body">
           {loading ? <p className="empty-state">Carregando produtos...</p> : null}
@@ -377,7 +377,7 @@ export function ProductsOverallView({ refreshHint = null }: ProductsOverallViewP
         </div>
       </article>
 
-      <section className={`products-overall-charts ${showDim ? "data-dim" : ""}`}>
+      <section className={`products-overall-charts ${showDim ? "data-dim" : ""}`} id="products-charts">
         <article className="settings-card">
           <div className="settings-card-body">
             <h3 className="products-overall-chart-title">Distribuição por Ocorrências</h3>

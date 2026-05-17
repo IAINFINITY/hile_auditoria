@@ -10,6 +10,24 @@ export function normalizeTextForMatch(value: unknown): string {
     .replace(/[\u0300-\u036f]/g, "");
 }
 
+export function toTitleCaseName(value: unknown): string {
+  const input = String(value || "").trim();
+  if (!input) return "";
+
+  return input
+    .split(/\s+/)
+    .map((word) =>
+      word
+        .split("-")
+        .map((part) => {
+          if (!part) return part;
+          return part.charAt(0).toUpperCase() + part.slice(1).toLowerCase();
+        })
+        .join("-"),
+    )
+    .join(" ");
+}
+
 export function inferSeverityFromValue(value: unknown, fallback: Severity = "info"): Severity {
   const text = normalizeTextForMatch(value);
   if (!text) return fallback;

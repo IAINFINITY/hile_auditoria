@@ -189,7 +189,7 @@ export default function Page() {
     if (activeView === "dashboard") setActiveSubNavKey("inicio");
     if (activeView === "clients") setActiveSubNavKey("clients-filtros");
     if (activeView === "analysis") setActiveSubNavKey("analysis-overview");
-    if (activeView === "products") setActiveSubNavKey("");
+    if (activeView === "products") setActiveSubNavKey("products-overview");
     if (activeView === "logs") setActiveSubNavKey("logs-saude");
     if (activeView === "settings") setActiveSubNavKey("settings-profile");
   }, [activeView]);
@@ -257,6 +257,15 @@ export default function Page() {
   function handleNavigateLogs(section: "logs-saude" | "logs-execucao" | "logs-recentes") {
     if (activeView !== "logs") {
       setActiveView("logs");
+      setTimeout(() => scrollToAnchoredSection(section), 0);
+      return;
+    }
+    scrollToAnchoredSection(section);
+  }
+
+  function handleNavigateProducts(section: "products-overview" | "products-ranking" | "products-charts") {
+    if (activeView !== "products") {
+      setActiveView("products");
       setTimeout(() => scrollToAnchoredSection(section), 0);
       return;
     }
@@ -405,6 +414,7 @@ export default function Page() {
   }
 
   function handleOpenProducts() {
+    setActiveSubNavKey("products-overview");
     setActiveView("products");
     requestAnimationFrame(() => {
       window.scrollTo({ top: 0, behavior: "auto" });
@@ -596,6 +606,7 @@ export default function Page() {
         onOpenLogs={handleOpenLogs}
         onNavigateAnalysis={handleNavigateAnalysis}
         onNavigateClients={handleNavigateClients}
+        onNavigateProducts={handleNavigateProducts}
         onNavigateLogs={handleNavigateLogs}
         onNavigateSettings={handleNavigateSettings}
         currentUser={currentUser || { name: "Usuário", email: "usuario@hile.com.br", role: "Operador" }}
@@ -701,7 +712,7 @@ export default function Page() {
                 </div>
               </div>
 
-              <section className="analysis-content-shell">
+              <section className="analysis-content-shell reveal">
                 <article className="settings-card">
                   <div className="settings-card-head">Como interpretar esta análise</div>
                   <div className="settings-card-body">
@@ -744,6 +755,7 @@ export default function Page() {
                   items={controller.productDemand}
                   selectedDate={controller.date}
                   informationalInsights={controller.informationalInsights}
+                  contextInsights={controller.allInsights}
                   showHeader={false}
                 />
               </div>

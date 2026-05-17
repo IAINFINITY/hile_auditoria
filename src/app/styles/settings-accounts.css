@@ -352,8 +352,20 @@
 }
 
 .accounts-kanban.is-filtered{
-  grid-template-columns:repeat(auto-fit,minmax(320px,420px));
+  grid-template-columns:repeat(3,minmax(0,1fr));
   justify-content:flex-start;
+}
+
+.accounts-kanban.is-filtered.cols-1{
+  grid-template-columns:minmax(0,1fr);
+}
+
+.accounts-kanban.is-filtered.cols-2{
+  grid-template-columns:repeat(2,minmax(0,1fr));
+}
+
+.accounts-kanban.is-filtered.cols-3{
+  grid-template-columns:repeat(3,minmax(0,1fr));
 }
 
 .accounts-kanban-col{
@@ -616,6 +628,47 @@
   align-items:center;
   flex-wrap:wrap;
   gap:6px;
+}
+
+.account-product-tags{
+  gap:8px;
+}
+
+.account-product-tag{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  padding:7px 12px;
+  border-radius:999px;
+  border:1px solid #9ec7ee;
+  background:linear-gradient(180deg, #f5fbff 0%, #ebf5ff 100%);
+  color:#0f4579;
+  font-weight:700;
+  letter-spacing:.01em;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.75);
+}
+
+.account-product-tag::before{
+  content:"";
+  width:7px;
+  height:7px;
+  border-radius:999px;
+  background:var(--azul);
+  box-shadow:0 0 0 3px rgba(16,107,182,.12);
+  flex-shrink:0;
+}
+
+.account-product-tag-empty{
+  border-style:dashed;
+  border-color:#bfd7ee;
+  color:#50739a;
+  background:#f5f9fd;
+  font-weight:600;
+}
+
+.account-product-tag-empty::before{
+  background:#8fb2d6;
+  box-shadow:none;
 }
 
 .account-points-grid{
