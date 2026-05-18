@@ -17,6 +17,48 @@ import {
   type SeverityFilter,
 } from "./report/utils";
 
+function normalizePhaseText(value: unknown): string {
+  return String(value || "")
+    .toLowerCase()
+    .trim()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
+function resolveClientPhase(parsed: Record<string, unknown>, fallbackCorpus: string): "inicial" | "intermediario" | "avancado" {
+  const explicit = normalizePhaseText(
+    parsed.fase_cliente || parsed.perfil_cliente || parsed.tipo_cliente || parsed.classificacao_cliente || "",
+  );
+  if (explicit.includes("avanc")) return "avancado";
+  if (explicit.includes("intermedi")) return "intermediario";
+  if (explicit.includes("inicial")) return "inicial";
+
+  const corpus = normalizePhaseText(fallbackCorpus);
+  if (
+    /\b(ja tenho marca|marca rodando|empresa rodando|ja terceiriz|otimizar producao|aumentar escala|fornecedor atual|fabricante atual)\b/.test(
+      corpus,
+    )
+  ) {
+    return "avancado";
+  }
+  if (/\b(cnpj|instagram|site|e-commerce|ecommerce|marketplace|marca propria|minha marca)\b/.test(corpus)) {
+    return "intermediario";
+  }
+  return "inicial";
+}
+
+function phaseLabel(value: "inicial" | "intermediario" | "avancado"): string {
+  if (value === "avancado") return "Avançado";
+  if (value === "intermediario") return "Intermediário";
+  return "Inicial";
+}
+
+function phaseClass(value: "inicial" | "intermediario" | "avancado"): string {
+  if (value === "avancado") return "phase-avancado";
+  if (value === "intermediario") return "phase-intermediario";
+  return "phase-inicial";
+}
+
 interface ReportSectionProps {
   criticalGapInsights: Array<{
     id: string;
@@ -119,10 +161,21 @@ export function ReportSection({
         const evidencia = evidenceLines.length > 0 ? evidenceLines.join(" | ") : "Sem trecho de evidência disponível.";
         const labels =
           extractStateLabels(state).length > 0 ? extractStateLabels(state) : parseLabelsFromLogText(String(analysis.log_text || ""));
+        const phase = resolveClientPhase(
+          parsed,
+          [
+            resumo,
+            ...melhorias,
+            ...proximos,
+            evidencia,
+            String(analysis.log_text || ""),
+          ].join(" "),
+        );
 
         return {
           key: `${analysis.contact_key}-${analysis.analysis_index || 0}`,
           contactName,
+          phase,
           situacao,
           contexto: resumo,
           evidencia,
@@ -189,7 +242,7 @@ export function ReportSection({
   }
 
   async function handleDownloadTxt() {
-    if (isDownloadingTxt) return;
+    if (isDownloadingTxt || !hasReportData) return;
     setIsDownloadingTxt(true);
     try {
       const response = await fetch(`/api/report-day/export-txt?date=${encodeURIComponent(selectedDate)}`, {
@@ -233,7 +286,13 @@ export function ReportSection({
             <span>Relatório consolidado</span>
             <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
               <span>Gerado em: {generatedAtLabel}</span>
-              <button type="button" className="btn btn-sm" onClick={() => void handleDownloadTxt()} disabled={isDownloadingTxt}>
+              <button
+                type="button"
+                className="btn btn-sm"
+                onClick={() => void handleDownloadTxt()}
+                disabled={isDownloadingTxt || !hasReportData}
+                title={!hasReportData ? "Gere ou carregue um relatório para habilitar a exportação TXT." : undefined}
+              >
                 {isDownloadingTxt ? "Baixando..." : "Baixar TXT do dia"}
               </button>
             </span>
@@ -367,6 +426,10 @@ export function ReportSection({
                                   : item.severity === "low"
                                     ? "Baixo"
                                     : "Informativo"}
+                          </p>
+                          <p>
+                            <strong>Fase:</strong>{" "}
+                            <span className={`client-phase-badge ${phaseClass(item.phase)}`}>{phaseLabel(item.phase)}</span>
                           </p>
                           <p>
                             <strong>Contexto:</strong> {item.contexto}

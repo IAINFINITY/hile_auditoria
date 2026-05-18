@@ -15,6 +15,7 @@ export interface ReportItem {
 export interface ContactContextItem {
   key: string;
   contactName: string;
+  phase: "inicial" | "intermediario" | "avancado";
   situacao: string;
   contexto: string;
   evidencia: string;

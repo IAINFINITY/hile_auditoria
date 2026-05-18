@@ -57,6 +57,26 @@ const DISENGAGEMENT_KEYWORDS = [
   "falar mal",
 ];
 
+const HILE_DISSATISFACTION_KEYWORDS = [
+  "hile",
+  "empresa",
+  "vocês",
+  "voces",
+  "marca",
+];
+
+const STRONG_DISSATISFACTION_KEYWORDS = [
+  "pessimo",
+  "péssimo",
+  "horrivel",
+  "horrível",
+  "nunca mais",
+  "vou procurar outra",
+  "falar mal",
+  "nao gostei",
+  "não gostei",
+];
+
 function normalizeText(value: string): string {
   return String(value || "")
     .toLowerCase()
@@ -288,6 +308,16 @@ function includesAny(normalizedText: string, keywords: string[]): boolean {
   return keywords.some((keyword) => normalizedText.includes(normalizeText(keyword)));
 }
 
+function classifyDissatisfactionCategory(text: string): "insatisfacao_hile" | "insatisfacao_atendimento" {
+  if (includesAny(text, HILE_DISSATISFACTION_KEYWORDS)) return "insatisfacao_hile";
+  return "insatisfacao_atendimento";
+}
+
+function classifyDissatisfactionSeverity(text: string): "critical" | "high" {
+  if (includesAny(text, STRONG_DISSATISFACTION_KEYWORDS)) return "critical";
+  return "high";
+}
+
 export function extractOperationalAlerts(analyses: AnalysisItem[]): OperationalAlertItem[] {
   const items: OperationalAlertItem[] = [];
   let index = 0;
@@ -309,19 +339,27 @@ export function extractOperationalAlerts(analyses: AnalysisItem[]): OperationalA
         items.push({
           id: `alert-consultor-${index}`,
           type: "consultor",
+          category: "pedido_consultor",
+          severity: "medium",
           contactName,
           conversationId,
           excerpt: msg.content,
+          occurredAt: msg.timestamp ? msg.timestamp.toISOString() : null,
         });
       }
       if (includesAny(text, DISENGAGEMENT_KEYWORDS)) {
+        const category = classifyDissatisfactionCategory(text);
+        const severity = classifyDissatisfactionSeverity(text);
         index += 1;
         items.push({
           id: `alert-desengajamento-${index}`,
           type: "desengajamento",
+          category,
+          severity,
           contactName,
           conversationId,
           excerpt: msg.content,
+          occurredAt: msg.timestamp ? msg.timestamp.toISOString() : null,
         });
       }
     }

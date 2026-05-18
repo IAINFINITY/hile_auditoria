@@ -1,4 +1,5 @@
 export type Severity = "critical" | "high" | "medium" | "low" | "info";
+export type ClientPhase = "inicial" | "intermediario" | "avancado";
 
 export interface AccountInfo {
   id: number;
@@ -325,6 +326,8 @@ export interface ClientRecordItem {
   conversationIds: number[];
   chatLinks: string[];
   products: string[];
+  clientPhase?: ClientPhase | null;
+  clientPhaseReason?: string | null;
   openedAt: string | null;
   closedAt: string | null;
   status: "aberto" | "atencao" | "resolvido" | string;

@@ -91,6 +91,7 @@
   color:var(--navy);
   padding:0 12px;
   font-size:var(--fs-small);
+  border-radius:10px;
 }
 
 .settings-select{
@@ -101,6 +102,7 @@
   padding:0 10px;
   font-size:var(--fs-small);
   cursor:pointer;
+  border-radius:10px;
 }
 
 .settings-save-row{
@@ -513,6 +515,36 @@
 .k-card-meta-sep{
   color:#7d96b2;
   user-select:none;
+}
+
+.client-phase-badge{
+  display:inline-flex;
+  align-items:center;
+  padding:2px 8px;
+  border-radius:999px;
+  border:1px solid transparent;
+  font-size:11px;
+  font-weight:700;
+  letter-spacing:.01em;
+  line-height:1.25;
+}
+
+.client-phase-badge.phase-inicial{
+  color:#184e87;
+  border-color:rgba(24,78,135,.28);
+  background:rgba(16,107,182,.11);
+}
+
+.client-phase-badge.phase-intermediario{
+  color:#8a4d00;
+  border-color:rgba(217,119,6,.33);
+  background:rgba(217,119,6,.13);
+}
+
+.client-phase-badge.phase-avancado{
+  color:#0b5f3a;
+  border-color:rgba(22,163,74,.32);
+  background:rgba(22,163,74,.13);
 }
 
 .account-actions{

@@ -54,9 +54,12 @@ export interface ProductDemandItem {
 export interface OperationalAlertItem {
   id: string;
   type: "consultor" | "desengajamento";
+  category?: "insatisfacao_hile" | "insatisfacao_atendimento" | "pedido_consultor" | "outro";
+  severity?: "critical" | "high" | "medium" | "low" | "info";
   contactName: string;
   conversationId: number;
   excerpt: string;
+  occurredAt?: string | null;
 }
 
 export interface DashboardController {

@@ -1,7 +1,7 @@
 ﻿import { useEffect, useMemo, useRef, useState } from "react";
 import { FiExternalLink, FiMapPin, FiSearch, FiStar } from "react-icons/fi";
 import { apiGet } from "@/lib/api";
-import type { ClientRecordItem, ClientsByDateResponse, Severity } from "../../../types";
+import type { ClientPhase, ClientRecordItem, ClientsByDateResponse, Severity } from "../../../types";
 import { labelClass } from "./report/utils";
 
 type AccountStatus = "aberto" | "atencao" | "resolvido";
@@ -15,7 +15,7 @@ interface AccountsViewProps {
 const STATUS_ORDER: AccountStatus[] = ["aberto", "atencao", "resolvido"];
 const CLIENTS_REVALIDATE_MS = 5 * 60 * 1000;
 const CLIENTS_REVALIDATE_TODAY_MS = 60 * 1000;
-const CLIENTS_CACHE_VERSION = "v6";
+const CLIENTS_CACHE_VERSION = "v7";
 
 function normalizeFilterText(value: unknown): string {
   return String(value || "")
@@ -45,6 +45,27 @@ function statusLabel(status: AccountStatus): string {
   if (status === "resolvido") return "Fora da IA";
   if (status === "atencao") return "Atenção";
   return "Em acompanhamento";
+}
+
+function normalizeClientPhase(value: unknown): ClientPhase {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (normalized === "avancado") return "avancado";
+  if (normalized === "intermediario") return "intermediario";
+  return "inicial";
+}
+
+function clientPhaseLabel(value: unknown): string {
+  const phase = normalizeClientPhase(value);
+  if (phase === "avancado") return "Avançado";
+  if (phase === "intermediario") return "Intermediário";
+  return "Inicial";
+}
+
+function clientPhaseClass(value: unknown): string {
+  const phase = normalizeClientPhase(value);
+  if (phase === "avancado") return "phase-avancado";
+  if (phase === "intermediario") return "phase-intermediario";
+  return "phase-inicial";
 }
 
 function timelineEventLabel(eventType: string): string {
@@ -106,6 +127,7 @@ export function AccountsView({ selectedDate, knownRunId = null, refreshHint = nu
   const [statusFilter, setStatusFilter] = useState<"all" | AccountStatus>("all");
   const [labelFilter, setLabelFilter] = useState<string>("all");
   const [analysisFilter, setAnalysisFilter] = useState<"all" | "gaps_insights" | Severity>("all");
+  const [phaseFilter, setPhaseFilter] = useState<"all" | ClientPhase>("all");
   const [favoritesOnly, setFavoritesOnly] = useState(false);
   const [pinnedOnly, setPinnedOnly] = useState(false);
   const [favoritePhones, setFavoritePhones] = useState<string[]>([]);
@@ -312,9 +334,11 @@ export function AccountsView({ selectedDate, knownRunId = null, refreshHint = nu
         (effectiveAnalysisFilter === "medium" && record.severity === "medium") ||
         (effectiveAnalysisFilter === "low" && record.severity === "low") ||
         (effectiveAnalysisFilter === "info" && record.severity === "info");
+      const phase = normalizeClientPhase(record.clientPhase);
+      const byPhase = phaseFilter === "all" || phase === phaseFilter;
       const byFavorite = !favoritesOnly || favoritePhones.includes(record.phonePk);
       const byPinned = !pinnedOnly || pinnedPhones.includes(record.phonePk);
-      return byText && byStatus && byLabel && byAnalysis && byFavorite && byPinned;
+      return byText && byStatus && byLabel && byAnalysis && byPhase && byFavorite && byPinned;
     });
 
     return list.sort((a, b) => {
@@ -324,7 +348,7 @@ export function AccountsView({ selectedDate, knownRunId = null, refreshHint = nu
       if (favDiff !== 0) return favDiff;
       return String(a.contactName || "").localeCompare(String(b.contactName || ""), "pt-BR");
     });
-  }, [effectiveAnalysisFilter, favoritePhones, favoritesOnly, labelFilter, pinnedOnly, pinnedPhones, query, records, statusFilter]);
+  }, [effectiveAnalysisFilter, favoritePhones, favoritesOnly, labelFilter, phaseFilter, pinnedOnly, pinnedPhones, query, records, statusFilter]);
 
   const recordsByStatus = useMemo(() => {
     const grouped: Record<AccountStatus, ClientRecordItem[]> = {
@@ -347,9 +371,10 @@ export function AccountsView({ selectedDate, knownRunId = null, refreshHint = nu
       statusFilter !== "all" ||
       labelFilter !== "all" ||
       effectiveAnalysisFilter !== "all" ||
+      phaseFilter !== "all" ||
       favoritesOnly ||
       pinnedOnly,
-    [effectiveAnalysisFilter, favoritesOnly, labelFilter, pinnedOnly, query, statusFilter],
+    [effectiveAnalysisFilter, favoritesOnly, labelFilter, phaseFilter, pinnedOnly, query, statusFilter],
   );
   const shouldDimKanban = filteredRecords.length === 0;
 
@@ -402,6 +427,9 @@ export function AccountsView({ selectedDate, knownRunId = null, refreshHint = nu
             <strong>Fora da IA:</strong> conversa com etiqueta de saída do fluxo da IA, como{" "}
             <code>lead_agendado</code> ou <code>pausar_ia</code>.
           </p>
+          <p>
+            <strong>Fase do cliente:</strong> inicial (ideia sem estrutura), intermediário (já tem CNPJ/presença de marca) e avançado (já opera marca e busca otimização de terceirização com a Hilê).
+          </p>
         </div>
       </article>
 
@@ -449,6 +477,16 @@ export function AccountsView({ selectedDate, knownRunId = null, refreshHint = nu
                     {option.label}
                   </option>
                 ))}
+              </select>
+            </label>
+
+            <label>
+              Fase do cliente
+              <select value={phaseFilter} onChange={(event) => setPhaseFilter(event.target.value as "all" | ClientPhase)}>
+                <option value="all">Todas</option>
+                <option value="inicial">Inicial</option>
+                <option value="intermediario">Intermediário</option>
+                <option value="avancado">Avançado</option>
               </select>
             </label>
           </div>
@@ -512,6 +550,10 @@ export function AccountsView({ selectedDate, knownRunId = null, refreshHint = nu
 
                               <p className="k-card-meta">
                                 <span>{severityLabel(record.severity)}</span>
+                                <span className="k-card-meta-sep">·</span>
+                                <span className={`client-phase-badge ${clientPhaseClass(record.clientPhase)}`}>
+                                  {clientPhaseLabel(record.clientPhase)}
+                                </span>
                                 <span className="k-card-meta-sep">·</span>
                                 <span>{record.companyName || "Empresa não informada"}</span>
                               </p>
@@ -597,6 +639,12 @@ export function AccountsView({ selectedDate, knownRunId = null, refreshHint = nu
                 <span>{severityLabel(selectedRecord.severity)}</span>
               </div>
               <div className="modal-row">
+                <strong>Fase do cliente</strong>
+                <span className={`client-phase-badge ${clientPhaseClass(selectedRecord.clientPhase)}`}>
+                  {clientPhaseLabel(selectedRecord.clientPhase)}
+                </span>
+              </div>
+              <div className="modal-row">
                 <strong>Abertura</strong>
                 <span>{toDateTimeBr(openedAt)}</span>
               </div>
@@ -653,6 +701,11 @@ export function AccountsView({ selectedDate, knownRunId = null, refreshHint = nu
                     <span className="tag account-product-tag account-product-tag-empty">sem produtos mapeados</span>
                   )}
                 </div>
+              </div>
+
+              <div className="modal-section">
+                <h4>Classificação de fase</h4>
+                <p>{selectedRecord.clientPhaseReason || "Classificação baseada em sinais operacionais da conversa."}</p>
               </div>
 
               <div className="modal-section">

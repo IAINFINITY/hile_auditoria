@@ -6,6 +6,7 @@ import {
   FiBell,
   FiBox,
   FiCheckCircle,
+  FiFrown,
   FiChevronDown,
   FiChevronRight,
   FiClipboard,
@@ -21,7 +22,7 @@ import {
 import type { NotificationState } from "../hooks/useNotifications";
 
 interface ShellNavigationProps {
-  activeView: "dashboard" | "clients" | "analysis" | "products" | "logs" | "settings";
+  activeView: "dashboard" | "clients" | "analysis" | "dissatisfaction" | "products" | "logs" | "settings";
   activeSubNavKey?: string;
   navClass: (section: string) => string;
   onNavigate: (section: string) => void;
@@ -29,9 +30,11 @@ interface ShellNavigationProps {
   onOpenDashboard: () => void;
   onOpenClients: () => void;
   onOpenAnalysis: () => void;
+  onOpenDissatisfaction: () => void;
   onOpenProducts: () => void;
   onOpenLogs: () => void;
   onNavigateAnalysis: (section: "analysis-overview" | "analysis-movimentacao" | "analysis-conteudo") => void;
+  onNavigateDissatisfaction: (section: "dissatisfaction-overview" | "dissatisfaction-filters" | "dissatisfaction-list") => void;
   onNavigateClients: (section: "clients-filtros" | "clients-kanban") => void;
   onNavigateProducts: (section: "products-overview" | "products-ranking" | "products-charts") => void;
   onNavigateLogs: (section: "logs-saude" | "logs-execucao" | "logs-recentes") => void;
@@ -60,9 +63,11 @@ export function ShellNavigation({
   onOpenDashboard,
   onOpenClients,
   onOpenAnalysis,
+  onOpenDissatisfaction,
   onOpenProducts,
   onOpenLogs,
   onNavigateAnalysis,
+  onNavigateDissatisfaction,
   onNavigateClients,
   onNavigateProducts,
   onNavigateLogs,
@@ -77,6 +82,7 @@ export function ShellNavigation({
   const [openSections, setOpenSections] = useState({
     dashboard: true,
     analysis: false,
+    dissatisfaction: false,
     clients: false,
     products: false,
     logs: false,
@@ -124,6 +130,8 @@ export function ShellNavigation({
         ? "Clientes"
         : activeView === "analysis"
           ? "Análise Geral do Dia"
+          : activeView === "dissatisfaction"
+            ? "Insatisfação"
           : activeView === "products"
             ? "Produtos (Geral)"
             : activeView === "logs"
@@ -139,11 +147,11 @@ export function ShellNavigation({
     return `side-sub-item ${activeSubNavKey === key ? "active" : ""}`;
   }
 
-  function toggleSection(section: "dashboard" | "analysis" | "clients" | "products" | "logs" | "settings") {
+  function toggleSection(section: "dashboard" | "analysis" | "dissatisfaction" | "clients" | "products" | "logs" | "settings") {
     setOpenSections((current) => ({ ...current, [section]: !current[section] }));
   }
 
-  function openSection(section: "dashboard" | "analysis" | "clients" | "products" | "logs" | "settings") {
+  function openSection(section: "dashboard" | "analysis" | "dissatisfaction" | "clients" | "products" | "logs" | "settings") {
     setOpenSections((current) => ({ ...current, [section]: true }));
   }
 
@@ -248,6 +256,49 @@ export function ShellNavigation({
                 <span className="side-sub-dot" />
                 <span className="side-sub-icon"><FiFileText /></span>
                 Produtos e Contexto
+              </button>
+            </div>
+          ) : null}
+
+          <div className={`side-item-row ${activeView === "dissatisfaction" ? "active" : ""}`}>
+            <button
+              type="button"
+              className={sideItemClass(activeView === "dissatisfaction")}
+              onClick={() => {
+                openSection("dissatisfaction");
+                onOpenDissatisfaction();
+              }}
+            >
+              <span className="side-item-icon" aria-hidden="true">
+                <FiFrown />
+              </span>
+              <span>Insatisfação</span>
+            </button>
+            <button
+              type="button"
+              className="side-item-toggle"
+              aria-label={openSections.dissatisfaction ? "Recolher Insatisfação" : "Expandir Insatisfação"}
+              onClick={() => toggleSection("dissatisfaction")}
+            >
+              {openSections.dissatisfaction ? <FiChevronDown /> : <FiChevronRight />}
+            </button>
+          </div>
+          {openSections.dissatisfaction ? (
+            <div className="side-subnav">
+              <button type="button" className={subItemClass("dissatisfaction-overview")} onClick={() => onNavigateDissatisfaction("dissatisfaction-overview")}>
+                <span className="side-sub-dot" />
+                <span className="side-sub-icon"><FiLayers /></span>
+                Panorama
+              </button>
+              <button type="button" className={subItemClass("dissatisfaction-filters")} onClick={() => onNavigateDissatisfaction("dissatisfaction-filters")}>
+                <span className="side-sub-dot" />
+                <span className="side-sub-icon"><FiBarChart2 /></span>
+                Filtros
+              </button>
+              <button type="button" className={subItemClass("dissatisfaction-list")} onClick={() => onNavigateDissatisfaction("dissatisfaction-list")}>
+                <span className="side-sub-dot" />
+                <span className="side-sub-icon"><FiFileText /></span>
+                Ocorrências
               </button>
             </div>
           ) : null}

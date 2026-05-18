@@ -9,6 +9,7 @@ import { AppFooter } from "@/features/dashboard/sections/AppFooter";
 import { GapsSection } from "@/features/dashboard/sections/GapsSection";
 import { InsightsSection } from "@/features/dashboard/sections/InsightsSection";
 import { AccountsView } from "@/features/dashboard/sections/AccountsView";
+import { DissatisfactionView } from "@/features/dashboard/sections/DissatisfactionView";
 import { LogsView } from "@/features/dashboard/sections/LogsView";
 import { MetricsSection } from "@/features/dashboard/sections/MetricsSection";
 import { MovementSection } from "@/features/dashboard/sections/MovementSection";
@@ -19,7 +20,7 @@ import { SettingsView } from "@/features/dashboard/sections/SettingsView";
 import { ShellNavigation } from "@/features/dashboard/sections/ShellNavigation";
 import { supabaseBrowser } from "@/lib/supabase/browser";
 
-type AppView = "dashboard" | "clients" | "analysis" | "products" | "logs" | "settings";
+type AppView = "dashboard" | "clients" | "analysis" | "dissatisfaction" | "products" | "logs" | "settings";
 
 interface AuthStatusPayload {
   authenticated: boolean;
@@ -35,7 +36,17 @@ export default function Page() {
   const [activeView, setActiveView] = useState<AppView>(() => {
     if (typeof window !== "undefined") {
       const saved = sessionStorage.getItem("hile_active_view");
-      if (saved === "dashboard" || saved === "clients" || saved === "analysis" || saved === "products" || saved === "logs" || saved === "settings") return saved;
+      if (
+        saved === "dashboard" ||
+        saved === "clients" ||
+        saved === "analysis" ||
+        saved === "dissatisfaction" ||
+        saved === "products" ||
+        saved === "logs" ||
+        saved === "settings"
+      ) {
+        return saved;
+      }
     }
     return "dashboard";
   });
@@ -189,6 +200,7 @@ export default function Page() {
     if (activeView === "dashboard") setActiveSubNavKey("inicio");
     if (activeView === "clients") setActiveSubNavKey("clients-filtros");
     if (activeView === "analysis") setActiveSubNavKey("analysis-overview");
+    if (activeView === "dissatisfaction") setActiveSubNavKey("dissatisfaction-overview");
     if (activeView === "products") setActiveSubNavKey("products-overview");
     if (activeView === "logs") setActiveSubNavKey("logs-saude");
     if (activeView === "settings") setActiveSubNavKey("settings-profile");
@@ -266,6 +278,15 @@ export default function Page() {
   function handleNavigateProducts(section: "products-overview" | "products-ranking" | "products-charts") {
     if (activeView !== "products") {
       setActiveView("products");
+      setTimeout(() => scrollToAnchoredSection(section), 0);
+      return;
+    }
+    scrollToAnchoredSection(section);
+  }
+
+  function handleNavigateDissatisfaction(section: "dissatisfaction-overview" | "dissatisfaction-filters" | "dissatisfaction-list") {
+    if (activeView !== "dissatisfaction") {
+      setActiveView("dissatisfaction");
       setTimeout(() => scrollToAnchoredSection(section), 0);
       return;
     }
@@ -416,6 +437,14 @@ export default function Page() {
   function handleOpenProducts() {
     setActiveSubNavKey("products-overview");
     setActiveView("products");
+    requestAnimationFrame(() => {
+      window.scrollTo({ top: 0, behavior: "auto" });
+    });
+  }
+
+  function handleOpenDissatisfaction() {
+    setActiveSubNavKey("dissatisfaction-overview");
+    setActiveView("dissatisfaction");
     requestAnimationFrame(() => {
       window.scrollTo({ top: 0, behavior: "auto" });
     });
@@ -602,9 +631,11 @@ export default function Page() {
         onOpenDashboard={handleOpenDashboard}
         onOpenClients={handleOpenClients}
         onOpenAnalysis={handleOpenAnalysis}
+        onOpenDissatisfaction={handleOpenDissatisfaction}
         onOpenProducts={handleOpenProducts}
         onOpenLogs={handleOpenLogs}
         onNavigateAnalysis={handleNavigateAnalysis}
+        onNavigateDissatisfaction={handleNavigateDissatisfaction}
         onNavigateClients={handleNavigateClients}
         onNavigateProducts={handleNavigateProducts}
         onNavigateLogs={handleNavigateLogs}
@@ -759,6 +790,14 @@ export default function Page() {
                   showHeader={false}
                 />
               </div>
+            </div>
+          ) : activeView === "dissatisfaction" ? (
+            <div className="settings-animated" key={`dissatisfaction-${viewAnimationKey}`}>
+              <DissatisfactionView
+                selectedDate={controller.date}
+                alerts={controller.operationalAlerts}
+                onOpenReportByContact={controller.focusReportByContact}
+              />
             </div>
           ) : activeView === "products" ? (
             <div className="settings-animated" key={`products-${viewAnimationKey}`}>

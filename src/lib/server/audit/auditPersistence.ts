@@ -83,6 +83,92 @@ function normalizeClientProductList(values: unknown): string[] {
   return Array.from(out);
 }
 
+function normalizePhaseText(value: unknown): string {
+  return String(value || "")
+    .toLowerCase()
+    .trim()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
+function mapExplicitClientPhase(value: unknown): "inicial" | "intermediario" | "avancado" | null {
+  const normalized = normalizePhaseText(value);
+  if (!normalized) return null;
+  if (normalized.includes("avanc")) return "avancado";
+  if (normalized.includes("intermedi")) return "intermediario";
+  if (normalized.includes("inicial")) return "inicial";
+  return null;
+}
+
+function deriveClientPhaseFromSignals(params: {
+  explicitPhase?: unknown;
+  explicitReason?: unknown;
+  cnpj?: unknown;
+  companyName?: unknown;
+  products?: unknown;
+  labels?: unknown;
+  textSignals?: Array<unknown>;
+}): { phase: "inicial" | "intermediario" | "avancado"; reason: string } {
+  const explicit = mapExplicitClientPhase(params.explicitPhase);
+  const explicitReason = String(params.explicitReason || "").trim();
+  if (explicit) {
+    return {
+      phase: explicit,
+      reason: explicitReason || "Classificação informada diretamente pela análise da IA.",
+    };
+  }
+
+  const cnpjDigits = String(params.cnpj || "").replace(/\D+/g, "");
+  const hasCnpj = cnpjDigits.length >= 14;
+  const hasCompany = String(params.companyName || "").trim().length > 0;
+  const products = Array.isArray(params.products) ? params.products.map((item) => String(item || "").trim()).filter(Boolean) : [];
+  const labels = Array.isArray(params.labels) ? params.labels.map((item) => normalizePhaseText(item)) : [];
+  const textSignals = (params.textSignals || [])
+    .map((item) => normalizePhaseText(item))
+    .filter(Boolean)
+    .join(" ");
+  const productSignals = normalizePhaseText(products.join(" "));
+  const labelsSignals = labels.join(" ");
+  const corpus = `${textSignals} ${productSignals} ${labelsSignals}`.trim();
+
+  const hasBrandSignals =
+    /\b(instagram|site|loja|e-?commerce|marketplace|marca propria|marca propria|minha marca)\b/.test(corpus);
+  const hasInitialSignals =
+    /\b(nao tenho cnpj|sem cnpj|so tenho a ideia|apenas ideia|estou comecando|nunca terceiriz|primeira marca)\b/.test(
+      corpus,
+    );
+  const hasAdvancedSignals =
+    /\b(ja tenho marca|marca rodando|empresa rodando|ja terceiriz|otimizar producao|aumentar escala|fornecedor atual|fabricante atual)\b/.test(
+      corpus,
+    );
+
+  if (hasAdvancedSignals && (hasCnpj || hasCompany || hasBrandSignals)) {
+    return {
+      phase: "avancado",
+      reason: "Cliente já opera marca/empresa e busca otimizar a terceirização da produção.",
+    };
+  }
+
+  if (hasCnpj || hasCompany || hasBrandSignals) {
+    return {
+      phase: "intermediario",
+      reason: "Cliente já possui estrutura inicial de marca/empresa (CNPJ, presença digital ou operação em andamento).",
+    };
+  }
+
+  if (hasInitialSignals) {
+    return {
+      phase: "inicial",
+      reason: "Cliente ainda está em fase de ideia inicial e sem estrutura formal consolidada.",
+    };
+  }
+
+  return {
+    phase: "inicial",
+    reason: "Sem evidências de estrutura formal ativa; classificado como fase inicial por padrão.",
+  };
+}
+
 function isCriticalSeverityLabel(value: unknown): boolean {
   const normalized = normalizeSeverityLabel(value);
   return normalized.startsWith("crit") || normalized === "critical";
@@ -1438,6 +1524,8 @@ export async function listClientsByDate(date: string) {
       conversationIds: number[];
       chatLinks: string[];
       products: string[];
+      clientPhase: "inicial" | "intermediario" | "avancado";
+      clientPhaseReason: string;
       openedAt: Date | null;
       closedAt: Date | null;
     }
@@ -1454,6 +1542,8 @@ export async function listClientsByDate(date: string) {
       conversationIds: number[];
       chatLinks: string[];
       products: string[];
+      clientPhase: "inicial" | "intermediario" | "avancado";
+      clientPhaseReason: string;
       openedAt: Date | null;
       closedAt: Date | null;
     }
@@ -1462,6 +1552,8 @@ export async function listClientsByDate(date: string) {
     number,
     {
       products: string[];
+      clientPhase: "inicial" | "intermediario" | "avancado";
+      clientPhaseReason: string;
     }
   >();
 
@@ -1481,10 +1573,19 @@ export async function listClientsByDate(date: string) {
       conversationIds: number[];
       chatLinks: string[];
       products: string[];
+      clientPhase: "inicial" | "intermediario" | "avancado";
+      clientPhaseReason: string;
     }
   >();
 
   for (const draft of reportDrafts) {
+    const draftPhase = deriveClientPhaseFromSignals({
+      cnpj: draft.cnpj,
+      companyName: draft.companyName,
+      labels: draft.labels,
+      products: draft.products,
+      textSignals: [...(draft.gaps || []), ...(draft.attentions || [])],
+    });
     const payload = {
       gaps: Array.isArray(draft.gaps) ? draft.gaps : [],
       attentions: Array.isArray(draft.attentions) ? draft.attentions : [],
@@ -1495,6 +1596,8 @@ export async function listClientsByDate(date: string) {
       conversationIds: Array.isArray(draft.conversationIds) ? draft.conversationIds : [],
       chatLinks: Array.isArray(draft.chatLinks) ? draft.chatLinks : [],
       products: Array.isArray(draft.products) ? draft.products : [],
+      clientPhase: draftPhase.phase,
+      clientPhaseReason: draftPhase.reason,
       openedAt: draft.openedAt || null,
       closedAt: draft.closedAt || null,
     };
@@ -1506,9 +1609,15 @@ export async function listClientsByDate(date: string) {
     for (const conversationId of payload.conversationIds || []) {
       const id = Number(conversationId || 0);
       if (!id) continue;
-      const current = reportFallbackByConversationId.get(id) || { products: [] };
+      const current = reportFallbackByConversationId.get(id) || {
+        products: [],
+        clientPhase: payload.clientPhase,
+        clientPhaseReason: payload.clientPhaseReason,
+      };
       reportFallbackByConversationId.set(id, {
         products: Array.from(new Set([...(current.products || []), ...(payload.products || [])])),
+        clientPhase: current.clientPhase || payload.clientPhase,
+        clientPhaseReason: current.clientPhaseReason || payload.clientPhaseReason,
       });
     }
   }
@@ -1530,6 +1639,13 @@ export async function listClientsByDate(date: string) {
       ? log.chatwoot_links.map((item) => String(item || "").trim()).filter(Boolean)
       : [];
     const gaps = summary && severity === "critical" ? [summary] : [];
+    const phaseFromLog = deriveClientPhaseFromSignals({
+      cnpj: "",
+      companyName: "",
+      products: [],
+      labels: [],
+      textSignals: [summary, ...improvements],
+    });
 
     reportLogFallbackByName.set(nameKey, {
       gaps,
@@ -1540,6 +1656,8 @@ export async function listClientsByDate(date: string) {
       conversationIds,
       chatLinks,
       products: [],
+      clientPhase: phaseFromLog.phase,
+      clientPhaseReason: phaseFromLog.reason,
     });
   }
 
@@ -1553,6 +1671,8 @@ export async function listClientsByDate(date: string) {
       status: string;
       chatLinks: string[];
       products: string[];
+      clientPhase: "inicial" | "intermediario" | "avancado";
+      clientPhaseReason: string;
     }
   >();
   const analysisFallbackByName = new Map<
@@ -1565,6 +1685,8 @@ export async function listClientsByDate(date: string) {
       status: string;
       chatLinks: string[];
       products: string[];
+      clientPhase: "inicial" | "intermediario" | "avancado";
+      clientPhaseReason: string;
     }
   >();
   const analysisFallbackByPhone = new Map<
@@ -1577,6 +1699,8 @@ export async function listClientsByDate(date: string) {
       status: string;
       chatLinks: string[];
       products: string[];
+      clientPhase: "inicial" | "intermediario" | "avancado";
+      clientPhaseReason: string;
     }
   >();
 
@@ -1608,6 +1732,8 @@ export async function listClientsByDate(date: string) {
         status: string;
         chatLinks: string[];
         products: string[];
+        clientPhase: "inicial" | "intermediario" | "avancado";
+        clientPhaseReason: string;
       }
     >,
     key: string,
@@ -1619,6 +1745,8 @@ export async function listClientsByDate(date: string) {
       status: string;
       chatLinks: string[];
       products: string[];
+      clientPhase: "inicial" | "intermediario" | "avancado";
+      clientPhaseReason: string;
     },
   ) => {
     if (!key) return;
@@ -1635,6 +1763,8 @@ export async function listClientsByDate(date: string) {
       status: mergeStatus(current.status, payload.status),
       chatLinks: Array.from(new Set([...current.chatLinks, ...payload.chatLinks])),
       products: Array.from(new Set([...(current.products || []), ...(payload.products || [])])),
+      clientPhase: current.clientPhase || payload.clientPhase,
+      clientPhaseReason: current.clientPhaseReason || payload.clientPhaseReason,
     });
   };
 
@@ -1753,6 +1883,32 @@ export async function listClientsByDate(date: string) {
         if (displayProduct) products.add(displayProduct);
       }
 
+      const explicitPhase = pickFirstText(aiRaw, [
+        "fase_cliente",
+        "perfil_cliente",
+        "tipo_cliente",
+        "classificacao_cliente",
+        "customer_phase",
+      ]);
+      const explicitPhaseReason = pickFirstText(aiRaw, [
+        "fase_cliente_motivo",
+        "perfil_cliente_motivo",
+        "justificativa_fase_cliente",
+        "customer_phase_reason",
+      ]);
+      const phaseSignalsFromContext = Array.isArray(aiRaw.contexto_informativo)
+        ? aiRaw.contexto_informativo.map((item) => String(item || ""))
+        : [];
+      const phase = deriveClientPhaseFromSignals({
+        explicitPhase,
+        explicitReason: explicitPhaseReason,
+        cnpj: "",
+        companyName: "",
+        products: Array.from(products),
+        labels: Array.from(labels),
+        textSignals: [summary, ...improvements, ...Array.from(gaps), ...Array.from(attentions), ...phaseSignalsFromContext],
+      });
+
       const link = buildConversationLink(
         toChatwootAppBase("https://chat.iainfinity.com.br"),
         Number(contextRun.channel.chatwootAccountId || 0),
@@ -1768,6 +1924,8 @@ export async function listClientsByDate(date: string) {
         status,
         chatLinks: link ? [link] : [],
         products: Array.from(products),
+        clientPhase: phase.phase,
+        clientPhaseReason: phase.reason,
       };
 
       analysisFallbackByConversationId.set(conversationId, payload);
@@ -1824,6 +1982,11 @@ export async function listClientsByDate(date: string) {
           status: fromAnalysis?.status || "aberto",
           chatLinks: fromAnalysis?.chatLinks || [],
           products: fromAnalysis?.products?.length ? fromAnalysis.products : fromReport?.products || [],
+          clientPhase: fromAnalysis?.clientPhase || fromReport?.clientPhase || "inicial",
+          clientPhaseReason:
+            fromAnalysis?.clientPhaseReason ||
+            fromReport?.clientPhaseReason ||
+            "Sem evidências de estrutura formal ativa; classificado como fase inicial por padrão.",
         };
       })
       .filter(Boolean) as Array<{
@@ -1834,6 +1997,8 @@ export async function listClientsByDate(date: string) {
       status: string;
       chatLinks: string[];
       products: string[];
+      clientPhase: "inicial" | "intermediario" | "avancado";
+      clientPhaseReason: string;
     }>;
     const conversationFallback = {
       gaps: Array.from(new Set(conversationFallbackRows.flatMap((row) => row.gaps))),
@@ -1843,6 +2008,8 @@ export async function listClientsByDate(date: string) {
       statuses: conversationFallbackRows.map((row) => row.status),
       chatLinks: Array.from(new Set(conversationFallbackRows.flatMap((row) => row.chatLinks))),
       products: Array.from(new Set(conversationFallbackRows.flatMap((row) => row.products || []))),
+      phases: conversationFallbackRows.map((row) => row.clientPhase),
+      phaseReasons: conversationFallbackRows.map((row) => row.clientPhaseReason),
     };
     // Regra principal: status/severidade devem refletir exatamente o resultado persistido da IA
     // para a execução selecionada. Fallback só entra quando esse dado estiver ausente.
@@ -1883,6 +2050,61 @@ export async function listClientsByDate(date: string) {
         ]
           .filter(Boolean)
           .reduce((best, current) => mergeStatus(best, current), "aberto");
+
+    const phaseCandidates = [
+      fallback?.clientPhase,
+      analysisFallbackByPhoneHit?.clientPhase,
+      analysisFallbackByNameHit?.clientPhase,
+      logFallback?.clientPhase,
+      ...conversationFallback.phases,
+    ];
+    const phaseReasonCandidates = [
+      fallback?.clientPhaseReason,
+      analysisFallbackByPhoneHit?.clientPhaseReason,
+      analysisFallbackByNameHit?.clientPhaseReason,
+      logFallback?.clientPhaseReason,
+      ...conversationFallback.phaseReasons,
+    ];
+    const inferredPhase = deriveClientPhaseFromSignals({
+      explicitPhase: phaseCandidates.find(Boolean) || null,
+      explicitReason: phaseReasonCandidates.find(Boolean) || null,
+      cnpj: item.cnpj || "",
+      companyName: item.companyName || "",
+      products: firstNonEmptyStringArray(
+        fallback?.products,
+        analysisFallbackByPhoneHit?.products,
+        analysisFallbackByNameHit?.products,
+        logFallback?.products,
+        conversationFallback.products,
+      ),
+      labels:
+        labelsFromRecord.length > 0
+          ? labelsFromRecord
+          : fallback?.labels ||
+            analysisFallbackByPhoneHit?.labels ||
+            analysisFallbackByNameHit?.labels ||
+            logFallback?.labels ||
+            conversationFallback.labels ||
+            [],
+      textSignals: [
+        ...(gapsFromRecord.length > 0
+          ? gapsFromRecord
+          : fallback?.gaps ||
+            analysisFallbackByPhoneHit?.gaps ||
+            analysisFallbackByNameHit?.gaps ||
+            logFallback?.gaps ||
+            conversationFallback.gaps ||
+            []),
+        ...(attentionsFromRecord.length > 0
+          ? attentionsFromRecord
+          : fallback?.attentions ||
+            analysisFallbackByPhoneHit?.attentions ||
+            analysisFallbackByNameHit?.attentions ||
+            logFallback?.attentions ||
+            conversationFallback.attentions ||
+            []),
+      ],
+    });
 
     return {
     lifecycle: (() => {
@@ -1937,6 +2159,8 @@ export async function listClientsByDate(date: string) {
       logFallback?.products,
       conversationFallback.products,
     )),
+    clientPhase: inferredPhase.phase,
+    clientPhaseReason: inferredPhase.reason,
     conversationIds:
       conversationIdsFromRecord.length > 0
         ? conversationIdsFromRecord
@@ -1975,6 +2199,13 @@ export async function listClientsByDate(date: string) {
       source: "report_fallback",
       items: reportDrafts.map((draft) => {
         const state = stateByPhone.get(draft.phonePk);
+        const phase = deriveClientPhaseFromSignals({
+          cnpj: draft.cnpj,
+          companyName: draft.companyName,
+          products: draft.products || [],
+          labels: draft.labels || [],
+          textSignals: [...(draft.gaps || []), ...(draft.attentions || [])],
+        });
         return {
           lifecycle: state
             ? {
@@ -2002,6 +2233,8 @@ export async function listClientsByDate(date: string) {
           closedAt: draft.closedAt ? draft.closedAt.toISOString() : null,
           status: draft.status || "aberto",
           severity: draft.severity || "info",
+          clientPhase: phase.phase,
+          clientPhaseReason: phase.reason,
         };
       }),
     };
@@ -2022,7 +2255,17 @@ export async function listClientsByDate(date: string) {
       runId: runForDate?.id || contextRun.id,
       generatedAt: runForDate?.startedAt.toISOString() || contextRun.startedAt.toISOString(),
       source: "client_states",
-      items: statesFallback.map((state) => ({
+      items: statesFallback.map((state) => {
+        const phase = deriveClientPhaseFromSignals({
+          cnpj: state.cnpj,
+          companyName: state.companyName,
+          products: [],
+          labels: state.currentLabels || [],
+          textSignals: [],
+        });
+        return {
+        clientPhase: phase.phase,
+        clientPhaseReason: phase.reason,
         lifecycle: {
           firstSeenAt: state.firstSeenAt.toISOString(),
           lastSeenAt: state.lastSeenAt.toISOString(),
@@ -2056,7 +2299,8 @@ export async function listClientsByDate(date: string) {
         closedAt: state.resolvedAt ? state.resolvedAt.toISOString() : null,
         status: state.currentStatus,
         severity: state.currentSeverity,
-      })),
+      };
+      }),
     };
   }
 
@@ -2111,6 +2355,13 @@ export async function listClientsByDate(date: string) {
     const openedAt = createdDates.length > 0 ? new Date(Math.min(...createdDates.map((item) => item.getTime()))) : null;
     const closedAt = resolvedDates.length > 0 ? new Date(Math.max(...resolvedDates.map((item) => item.getTime()))) : null;
     const status = closedAt ? "resolvido" : "aberto";
+    const phase = deriveClientPhaseFromSignals({
+      cnpj: "",
+      companyName: "",
+      products: [],
+      labels,
+      textSignals: [],
+    });
 
     return {
       lifecycle: null,
@@ -2138,6 +2389,8 @@ export async function listClientsByDate(date: string) {
       closedAt: closedAt ? closedAt.toISOString() : null,
       status,
       severity: "info",
+      clientPhase: phase.phase,
+      clientPhaseReason: phase.reason,
     };
   });
 
