@@ -37,8 +37,25 @@ const CONSULTOR_KEYWORDS = [
   "consultor",
   "atendente",
   "vendedor",
+  "especialista",
+  "supervisor",
+  "gerente",
   "humano",
+  "atendimento humano",
+  "atendimento personalizado",
   "pessoa real",
+  "pessoa",
+  "quero falar com atendente",
+  "quero falar com consultor",
+  "quero falar com humano",
+  "quero falar com pessoa",
+  "passa para consultor",
+  "passa para atendente",
+  "me transfere",
+  "me transferir",
+  "transferir para consultor",
+  "chamar consultor",
+  "chama consultor",
   "falar com alguem",
   "falar com alguém",
   "quero atendimento humano",
@@ -46,23 +63,65 @@ const CONSULTOR_KEYWORDS = [
 
 const DISENGAGEMENT_KEYWORDS = [
   "atrasando",
+  "atraso",
+  "demorando",
   "demora",
+  "demorou",
+  "demorado",
+  "lento",
+  "lentidao",
+  "enrolando",
+  "enrolacao",
   "ruim",
+  "horrivel",
+  "horrível",
   "péssimo",
   "pessimo",
+  "fraco",
+  "desorganizado",
+  "nao resolve",
+  "não resolve",
+  "nao ajudou",
+  "não ajudou",
+  "nao respondeu",
+  "não respondeu",
+  "sem resposta",
+  "sem retorno",
   "nao gostei",
   "não gostei",
+  "nao confio",
+  "não confio",
   "desisti",
+  "cansei",
+  "decepcionado",
+  "decepcionada",
+  "insatisfeito",
+  "insatisfeita",
+  "insatisfacao",
+  "insatisfação",
   "vou procurar outra",
+  "vou procurar outro",
+  "vou procurar concorrente",
+  "vou para concorrencia",
+  "vou para concorrência",
+  "outra empresa",
+  "outra marca",
+  "toda empresa",
+  "vocês atrasam",
+  "voces atrasam",
   "falar mal",
 ];
 
 const HILE_DISSATISFACTION_KEYWORDS = [
   "hile",
   "empresa",
+  "atendimento de voces",
+  "atendimento de vocês",
   "vocês",
   "voces",
   "marca",
+  "servico",
+  "serviço",
 ];
 
 const STRONG_DISSATISFACTION_KEYWORDS = [
@@ -70,8 +129,20 @@ const STRONG_DISSATISFACTION_KEYWORDS = [
   "péssimo",
   "horrivel",
   "horrível",
+  "inadmissivel",
+  "inadmissível",
+  "absurdo",
+  "decepcionado",
+  "decepcionada",
+  "insatisfeito",
+  "insatisfeita",
   "nunca mais",
   "vou procurar outra",
+  "vou procurar concorrente",
+  "vou para concorrencia",
+  "vou para concorrência",
+  "toda empresa",
+  "sem resposta",
   "falar mal",
   "nao gostei",
   "não gostei",
@@ -318,6 +389,26 @@ function classifyDissatisfactionSeverity(text: string): "critical" | "high" {
   return "high";
 }
 
+function parseTimestampFromReference(value: unknown): string | null {
+  const raw = String(value || "").trim();
+  if (!raw) return null;
+  const bracketIso = raw.match(/\[(\d{4}-\d{2}-\d{2}T[^\]]+)\]/);
+  if (bracketIso?.[1]) {
+    const date = new Date(bracketIso[1]);
+    if (!Number.isNaN(date.getTime())) return date.toISOString();
+  }
+  return null;
+}
+
+function pushAlertIfUnique(target: OperationalAlertItem[], next: OperationalAlertItem) {
+  const fingerprint = `${next.type}|${next.conversationId}|${normalizeText(next.excerpt)}|${next.occurredAt || ""}`;
+  const alreadyExists = target.some((item) => {
+    const current = `${item.type}|${item.conversationId}|${normalizeText(item.excerpt)}|${item.occurredAt || ""}`;
+    return current === fingerprint;
+  });
+  if (!alreadyExists) target.push(next);
+}
+
 export function extractOperationalAlerts(analyses: AnalysisItem[]): OperationalAlertItem[] {
   const items: OperationalAlertItem[] = [];
   let index = 0;
@@ -328,6 +419,7 @@ export function extractOperationalAlerts(analyses: AnalysisItem[]): OperationalA
     );
     const conversationId = Number((analysis.conversation_ids || [0])[0] || 0);
     const messages = parseLogMessages(String(analysis.log_text || ""));
+    const parsed = tryParseJson(String(analysis.analysis?.answer || ""));
 
     for (const msg of messages) {
       if (msg.role !== "USER") continue;
@@ -336,7 +428,7 @@ export function extractOperationalAlerts(analyses: AnalysisItem[]): OperationalA
 
       if (includesAny(text, CONSULTOR_KEYWORDS)) {
         index += 1;
-        items.push({
+        pushAlertIfUnique(items, {
           id: `alert-consultor-${index}`,
           type: "consultor",
           category: "pedido_consultor",
@@ -351,7 +443,7 @@ export function extractOperationalAlerts(analyses: AnalysisItem[]): OperationalA
         const category = classifyDissatisfactionCategory(text);
         const severity = classifyDissatisfactionSeverity(text);
         index += 1;
-        items.push({
+        pushAlertIfUnique(items, {
           id: `alert-desengajamento-${index}`,
           type: "desengajamento",
           category,
@@ -363,6 +455,54 @@ export function extractOperationalAlerts(analyses: AnalysisItem[]): OperationalA
         });
       }
     }
+
+    const structuredSignalsRaw = Array.isArray(parsed?.sinais_atencao)
+      ? parsed.sinais_atencao
+      : Array.isArray(parsed?.new_attention_signals)
+        ? parsed.new_attention_signals
+        : [];
+    const structuredSignals = structuredSignalsRaw.map((entry) => (entry && typeof entry === "object" ? (entry as Record<string, unknown>) : null)).filter(Boolean) as Record<string, unknown>[];
+
+    for (const signal of structuredSignals) {
+      const signalType = normalizeText(String(signal.tipo || signal.type || ""));
+      const description = String(signal.descricao || signal.description || "").trim();
+      const reference = String(signal.mensagem_referencia || signal.message_reference || "").trim();
+      const excerpt = reference || description;
+      if (!excerpt) continue;
+      const occurredAt = parseTimestampFromReference(signal.mensagem_referencia || signal.message_reference);
+
+      if (signalType.includes("consultor")) {
+        index += 1;
+        pushAlertIfUnique(items, {
+          id: `alert-consultor-structured-${index}`,
+          type: "consultor",
+          category: "pedido_consultor",
+          severity: "medium",
+          contactName,
+          conversationId,
+          excerpt,
+          occurredAt,
+        });
+        continue;
+      }
+
+      if (signalType.includes("desengaj")) {
+        const normalizedText = normalizeText(`${description} ${reference}`);
+        const category = classifyDissatisfactionCategory(normalizedText);
+        const severity = classifyDissatisfactionSeverity(normalizedText);
+        index += 1;
+        pushAlertIfUnique(items, {
+          id: `alert-desengajamento-structured-${index}`,
+          type: "desengajamento",
+          category,
+          severity,
+          contactName,
+          conversationId,
+          excerpt,
+          occurredAt,
+        });
+      }
+    }
   }
 
   return items;
@@ -371,6 +511,16 @@ export function extractOperationalAlerts(analyses: AnalysisItem[]): OperationalA
 export function classifyGapPhase(text: string): string {
   const normalized = normalizeText(text);
   if (!normalized) return "Operacional";
+  if (
+    normalized.includes("match_categorizacao_perfil") ||
+    normalized.includes("match") ||
+    normalized.includes("categorizacao") ||
+    normalized.includes("categorizacao de perfil") ||
+    normalized.includes("perfil do cliente") ||
+    normalized.includes("compatibilidade")
+  ) {
+    return "Match/Categorização de perfil";
+  }
   if (normalized.includes("coleta") || normalized.includes("formulario") || normalized.includes("dados")) return "Coleta de informação";
   if (normalized.includes("interesse") || normalized.includes("objetivo") || normalized.includes("produto")) return "Identificação de interesse";
   if (normalized.includes("empresa") || normalized.includes("hile")) return "Apresentação da empresa";

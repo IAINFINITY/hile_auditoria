@@ -81,6 +81,20 @@ export function extractEnteredToday(conversations, date, toYmd) {
   });
 }
 
+export function extractActiveOnDay(conversations, date, toYmd) {
+  return conversations.filter((item) => {
+    const candidates = [
+      Number(item?.last_activity_at || 0),
+      Number(item?.updated_at || 0),
+      Number(item?.timestamp || 0),
+      Number(item?.created_at || 0),
+    ].filter((value) => Number.isFinite(value) && value > 0);
+
+    if (candidates.length === 0) return false;
+    return candidates.some((value) => toYmd(value) === date);
+  });
+}
+
 export function compactAnalysis(raw) {
   return {
     answer: raw?.answer || null,

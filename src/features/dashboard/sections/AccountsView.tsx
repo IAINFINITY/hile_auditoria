@@ -142,15 +142,23 @@ export function AccountsView({ selectedDate, knownRunId = null, refreshHint = nu
   const fetchMetaKey = `hile_clients_fetch_meta_${CLIENTS_CACHE_VERSION}_${selectedDate}`;
 
   useEffect(() => {
+    let raf = 0;
     try {
       const savedFavorites = localStorage.getItem("hile_accounts_favorites");
       const savedPinned = localStorage.getItem("hile_accounts_pinned");
-      setFavoritePhones(savedFavorites ? JSON.parse(savedFavorites) : []);
-      setPinnedPhones(savedPinned ? JSON.parse(savedPinned) : []);
+      const nextFavorites = savedFavorites ? JSON.parse(savedFavorites) : [];
+      const nextPinned = savedPinned ? JSON.parse(savedPinned) : [];
+      raf = requestAnimationFrame(() => {
+        setFavoritePhones(Array.isArray(nextFavorites) ? nextFavorites : []);
+        setPinnedPhones(Array.isArray(nextPinned) ? nextPinned : []);
+      });
     } catch {
-      setFavoritePhones([]);
-      setPinnedPhones([]);
+      raf = requestAnimationFrame(() => {
+        setFavoritePhones([]);
+        setPinnedPhones([]);
+      });
     }
+    return () => cancelAnimationFrame(raf);
   }, []);
 
   useEffect(() => {
@@ -162,6 +170,7 @@ export function AccountsView({ selectedDate, knownRunId = null, refreshHint = nu
   }, [pinnedPhones]);
 
   useEffect(() => {
+    let raf = 0;
     try {
       const cachedRaw = localStorage.getItem(cacheKey);
       if (!cachedRaw) return;
@@ -170,12 +179,17 @@ export function AccountsView({ selectedDate, knownRunId = null, refreshHint = nu
         records: ClientRecordItem[];
       };
       if (Array.isArray(cached.records)) {
-        setRecords(cached.records);
-        setRunId(cached.runId || null);
+        const nextRecords = cached.records;
+        const nextRunId = cached.runId || null;
+        raf = requestAnimationFrame(() => {
+          setRecords(nextRecords);
+          setRunId(nextRunId);
+        });
       }
     } catch {
       // cache inválido
     }
+    return () => cancelAnimationFrame(raf);
   }, [cacheKey]);
 
   useEffect(() => {

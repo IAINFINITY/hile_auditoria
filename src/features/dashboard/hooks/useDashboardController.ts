@@ -1,7 +1,6 @@
 ﻿import { useEffect, useMemo, useRef, useState } from "react";
 import { apiGet, apiPost } from "../../../lib/api";
 import type {
-  AnalysisItem,
   AvailableDatesResponse,
   FailureItem,
   InsightItem,
@@ -68,7 +67,7 @@ export function useDashboardController(options?: { enabled?: boolean; syncNavOnS
   const [insights, setInsights] = useState<InsightItem[]>([]);
   const [apiConfig, setApiConfig] = useState<ApiConfigPayload | null>(null);
   const [insightsReady, setInsightsReady] = useState<boolean>(false);
-  const [insightFilter, setInsightFilter] = useState<InsightFilter>("all");
+  const [insightFilter, setInsightFilterState] = useState<InsightFilter>("all");
   const [insightsPage, setInsightsPage] = useState<number>(1);
   const [showTrend, setShowTrend] = useState<boolean>(false);
   const [activeNav, setActiveNav] = useState<string>("gaps");
@@ -83,13 +82,11 @@ export function useDashboardController(options?: { enabled?: boolean; syncNavOnS
   ]);
   const [runProgress, setRunProgress] = useState<number>(0);
   const [runCurrentContact, setRunCurrentContact] = useState<string | null>(null);
-  const [runStartedAt, setRunStartedAt] = useState<number | null>(null);
   const [currentRunId, setCurrentRunId] = useState<string | null>(null);
   const [reportHistory, setReportHistory] = useState<ReportHistoryResponse["items"]>([]);
   const [availableReportDates, setAvailableReportDates] = useState<string[]>([]);
   const [hasLoadedAvailableDates, setHasLoadedAvailableDates] = useState<boolean>(false);
   const [isLoadingDateReport, setIsLoadingDateReport] = useState<boolean>(false);
-  const [lastValidDate, setLastValidDate] = useState<string>(maxDate);
   const lastLoadedDateRef = useRef<string | null>(null);
   const missingReportDatesRef = useRef<Set<string>>(new Set());
   const isBusy = loading !== null;
@@ -104,7 +101,11 @@ export function useDashboardController(options?: { enabled?: boolean; syncNavOnS
       setPeriodPreset("today");
     }
     setDateState(safe);
-    setLastValidDate(safe);
+  }
+
+  function setInsightFilter(value: InsightFilter) {
+    setInsightFilterState(value);
+    setInsightsPage(1);
   }
 
   const isPeriodMode = periodPreset === "week" || periodPreset === "month" || periodPreset === "year";
@@ -216,19 +217,22 @@ export function useDashboardController(options?: { enabled?: boolean; syncNavOnS
 
   useEffect(() => {
     if (!enabled) return;
+    let raf = 0;
+    let nextDate = maxDate;
     try {
       const savedDate = String(localStorage.getItem(SELECTED_DATE_STORAGE_KEY) || "").trim();
       if (savedDate) {
         const normalized = normalizeDateInput(savedDate, maxDate);
-        const safe = clampDateInput(normalized, minDate, maxDate);
-        setDateState(safe);
-        setLastValidDate(safe);
+        nextDate = clampDateInput(normalized, minDate, maxDate);
       }
     } catch {
       // noop
-    } finally {
-      setIsDateHydrated(true);
     }
+    raf = requestAnimationFrame(() => {
+      setDateState(nextDate);
+      setIsDateHydrated(true);
+    });
+    return () => cancelAnimationFrame(raf);
   }, [enabled, maxDate, minDate]);
 
   useEffect(() => {
@@ -270,9 +274,6 @@ export function useDashboardController(options?: { enabled?: boolean; syncNavOnS
           [...missingReportDatesRef.current].filter((item) => !dates.includes(item)),
         );
         setHasLoadedAvailableDates(true);
-        if (dates.includes(date)) {
-          setLastValidDate(date);
-        }
         if (periodPreset === "week" || periodPreset === "month" || periodPreset === "year") {
           loadedPeriodDatesRef.current = null;
           loadPeriodData(periodPreset, dates);
@@ -340,10 +341,6 @@ export function useDashboardController(options?: { enabled?: boolean; syncNavOnS
       window.removeEventListener("resize", handler);
     };
   }, [enabled, syncNavOnScroll]);
-
-  useEffect(() => {
-    setInsightsPage(1);
-  }, [insightFilter]);
 
   useEffect(() => {
     if (!enabled) return;
@@ -744,7 +741,6 @@ export function useDashboardController(options?: { enabled?: boolean; syncNavOnS
     setRunTimeline(["Iniciando overview do dia..."]);
     updateRunProgress(1);
     setRunCurrentContact(null);
-    setRunStartedAt(Date.now());
     setCurrentRunId(null);
     setInsightsReady(false);
     setShowTrend(false);
@@ -912,7 +908,6 @@ export function useDashboardController(options?: { enabled?: boolean; syncNavOnS
       }
       pushRunStep(`Overview finalizado em ${elapsed}s.`);
       setRunProgress(100);
-      setRunStartedAt(null);
       setCurrentRunId(null);
       apiGet<ReportHistoryResponse>("/api/report-day/history?limit=8")
         .then((data) => setReportHistory(Array.isArray(data?.items) ? data.items : []))
@@ -934,7 +929,6 @@ export function useDashboardController(options?: { enabled?: boolean; syncNavOnS
       pushRunStep(`Parou com erro: ${message}`);
       setRunCurrentContact(null);
       setCurrentRunId(null);
-      setRunStartedAt(null);
     } finally {
       setLoading(null);
     }

@@ -17,6 +17,26 @@ function extractEnteredToday(conversations, date, toYmd) {
   });
 }
 
+function extractActiveOnDay(conversations, date, toYmd) {
+  return conversations.filter((item) => {
+    const toUnixSecondsSafe = (value) => {
+      const n = Number(value || 0);
+      if (!n || !Number.isFinite(n)) return 0;
+      return n > 1e12 ? Math.floor(n / 1000) : Math.floor(n);
+    };
+
+    const candidates = [
+      toUnixSecondsSafe(item?.last_activity_at),
+      toUnixSecondsSafe(item?.updated_at),
+      toUnixSecondsSafe(item?.timestamp),
+      toUnixSecondsSafe(item?.created_at),
+    ].filter((value) => value > 0);
+
+    if (candidates.length === 0) return false;
+    return candidates.some((value) => toYmd(value) === date);
+  });
+}
+
 function compactAnalysis(raw) {
   const workflowOutputs = raw?.data?.outputs || null;
   const outputText =
@@ -148,6 +168,7 @@ export {
   buildSourceFingerprint,
   cleanNameCandidate,
   compactAnalysis,
+  extractActiveOnDay,
   extractEnteredToday,
   extractNameFromFormMessages,
   getContactKey,

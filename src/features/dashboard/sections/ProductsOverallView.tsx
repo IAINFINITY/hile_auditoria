@@ -49,32 +49,33 @@ function describeArc(cx: number, cy: number, r: number, startAngle: number, endA
   return `M ${start.x} ${start.y} A ${r} ${r} 0 ${largeArcFlag} 0 ${end.x} ${end.y}`;
 }
 
+function readProductsOverallCache(cacheKey: string): ProductsOverallResponse | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const cachedRaw = localStorage.getItem(cacheKey);
+    if (!cachedRaw) return null;
+    const cached = JSON.parse(cachedRaw) as ProductsOverallResponse;
+    if (!cached || !Array.isArray(cached.items)) return null;
+    return {
+      items: cached.items,
+      totalRuns: Number(cached.totalRuns || 0),
+    };
+  } catch {
+    return null;
+  }
+}
+
 export function ProductsOverallView({ refreshHint = null }: ProductsOverallViewProps) {
   const cacheKey = `hile_products_overall_cache_${PRODUCTS_OVERALL_CACHE_VERSION}`;
   const fetchMetaKey = `hile_products_overall_fetch_meta_${PRODUCTS_OVERALL_CACHE_VERSION}`;
   const handledRefreshHintRef = useRef<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const initialCache = readProductsOverallCache(cacheKey);
+  const [loading, setLoading] = useState(!initialCache);
   const [error, setError] = useState("");
-  const [data, setData] = useState<ProductsOverallResponse>({ items: [], totalRuns: 0 });
+  const [data, setData] = useState<ProductsOverallResponse>(initialCache || { items: [], totalRuns: 0 });
   const [query, setQuery] = useState("");
   const [sortMode, setSortMode] = useState<SortMode>("count");
   const [page, setPage] = useState(1);
-
-  useEffect(() => {
-    try {
-      const cachedRaw = localStorage.getItem(cacheKey);
-      if (!cachedRaw) return;
-      const cached = JSON.parse(cachedRaw) as ProductsOverallResponse;
-      if (!cached || !Array.isArray(cached.items)) return;
-      setData({
-        items: cached.items,
-        totalRuns: Number(cached.totalRuns || 0),
-      });
-      setLoading(false);
-    } catch {
-      // cache invalido
-    }
-  }, [cacheKey]);
 
   useEffect(() => {
     let cancelled = false;
@@ -156,14 +157,6 @@ export function ProductsOverallView({ refreshHint = null }: ProductsOverallViewP
 
   const totalPages = Math.max(1, Math.ceil(sortedAndFiltered.length / PER_PAGE));
   const safePage = Math.min(page, totalPages);
-
-  useEffect(() => {
-    setPage(1);
-  }, [query, sortMode]);
-
-  useEffect(() => {
-    if (page > totalPages) setPage(totalPages);
-  }, [page, totalPages]);
 
   const pagedItems = useMemo(() => {
     const start = (safePage - 1) * PER_PAGE;
@@ -299,13 +292,19 @@ export function ProductsOverallView({ refreshHint = null }: ProductsOverallViewP
             <input
               type="text"
               value={query}
-              onChange={(event) => setQuery(event.target.value)}
+              onChange={(event) => {
+                setQuery(event.target.value);
+                setPage(1);
+              }}
               className="products-overall-search"
               placeholder="Buscar produto..."
             />
             <select
               value={sortMode}
-              onChange={(event) => setSortMode(event.target.value as SortMode)}
+              onChange={(event) => {
+                setSortMode(event.target.value as SortMode);
+                setPage(1);
+              }}
               className="products-overall-sort"
             >
               <option value="count">Ordenar por: Ocorrências</option>

@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from "react";
+﻿import { useMemo, useState } from "react";
 import type { InsightItem, OverviewPayload } from "../../../types";
 import type { OperationalAlertItem } from "../shared/types";
 import { toTitleCaseName } from "../hooks/controller/common";
@@ -67,9 +67,7 @@ export function GapsSection({
     return criticalGapInsights.filter((item) => item.severity === filter);
   }, [criticalGapInsights, filter]);
 
-  useEffect(() => {
-    setPage(1);
-  }, [filter, criticalGapInsights.length]);
+
 
   const totalPages = useMemo(() => Math.max(1, Math.ceil(filtered.length / perPage)), [filtered.length]);
   const safePage = Math.min(page, totalPages);
@@ -91,6 +89,7 @@ export function GapsSection({
 
   function handleFilterChange(next: GapFilter) {
     setFilter(next);
+    setPage(1);
     setAnimationSeed((value) => value + 1);
   }
 

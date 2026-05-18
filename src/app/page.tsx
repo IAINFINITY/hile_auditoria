@@ -51,7 +51,6 @@ export default function Page() {
     return "dashboard";
   });
   const [stage, setStage] = useState<"boot" | "splash" | "login" | "app">("boot");
-  const [viewAnimationKey, setViewAnimationKey] = useState(0);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -136,10 +135,13 @@ export default function Page() {
 
   useEffect(() => {
     let cancelled = false;
+    let splashTimer: number | null = null;
     const shouldShowSplash = window.sessionStorage.getItem("hile_splash_seen") !== "1";
     if (shouldShowSplash) {
       window.sessionStorage.setItem("hile_splash_seen", "1");
-      setStage("splash");
+      splashTimer = window.setTimeout(() => {
+        if (!cancelled) setStage("splash");
+      }, 0);
     }
     const delayMs = shouldShowSplash ? 2300 : 0;
     const timer = window.setTimeout(() => {
@@ -186,25 +188,29 @@ export default function Page() {
 
     return () => {
       cancelled = true;
+      if (splashTimer) window.clearTimeout(splashTimer);
       window.clearTimeout(timer);
     };
   }, []);
 
   useEffect(() => {
     try { sessionStorage.setItem("hile_active_view", activeView); } catch { /* noop */ }
-    if (stage !== "app") return;
-    setViewAnimationKey((value) => value + 1);
-  }, [activeView, stage]);
+  }, [activeView]);
 
   useEffect(() => {
-    if (activeView === "dashboard") setActiveSubNavKey("inicio");
-    if (activeView === "clients") setActiveSubNavKey("clients-filtros");
-    if (activeView === "analysis") setActiveSubNavKey("analysis-overview");
-    if (activeView === "dissatisfaction") setActiveSubNavKey("dissatisfaction-overview");
-    if (activeView === "products") setActiveSubNavKey("products-overview");
-    if (activeView === "logs") setActiveSubNavKey("logs-saude");
-    if (activeView === "settings") setActiveSubNavKey("settings-profile");
-  }, [activeView]);
+    const nextKey =
+      activeView === "dashboard" ? "inicio" :
+      activeView === "clients" ? "clients-filtros" :
+      activeView === "analysis" ? "analysis-overview" :
+      activeView === "dissatisfaction" ? "dissatisfaction-overview" :
+      activeView === "products" ? "products-overview" :
+      activeView === "logs" ? "logs-saude" :
+      "settings-profile";
+
+    if (activeSubNavKey === nextKey) return;
+    const raf = requestAnimationFrame(() => setActiveSubNavKey(nextKey));
+    return () => cancelAnimationFrame(raf);
+  }, [activeSubNavKey, activeView]);
 
   useEffect(() => {
     if (stage !== "app") return;
@@ -216,13 +222,21 @@ export default function Page() {
   }, [activeView, stage]);
 
   useEffect(() => {
-    if (stage !== "app" || !controller.isRunningOverview) return;
+    if (stage !== "app" || !controller.isRunningOverview) {
+      window.onbeforeunload = null;
+      return;
+    }
     const handler = (event: BeforeUnloadEvent) => {
       event.preventDefault();
       event.returnValue = "";
+      return "";
     };
+    window.onbeforeunload = handler;
     window.addEventListener("beforeunload", handler);
-    return () => window.removeEventListener("beforeunload", handler);
+    return () => {
+      window.onbeforeunload = null;
+      window.removeEventListener("beforeunload", handler);
+    };
   }, [controller.isRunningOverview, stage]);
 
   async function handleConfirmRun() {
@@ -650,7 +664,7 @@ export default function Page() {
       <main className="main-content-shell">
         <div className="main-view-slot">
           {activeView === "dashboard" ? (
-          <div className="dashboard-animated" key={`dashboard-${viewAnimationKey}`}>
+          <div className="dashboard-animated" key="dashboard-view">
             <MetricsSection
               date={controller.date}
               setDate={controller.setDate}
@@ -709,7 +723,7 @@ export default function Page() {
             />
           </div>
           ) : activeView === "clients" ? (
-            <div className="settings-animated" key={`clients-${viewAnimationKey}`}>
+            <div className="settings-animated" key="clients-view">
               <AccountsView
                 selectedDate={clientsSnapshotDate}
                 knownRunId={selectedDateKnownRunId}
@@ -717,7 +731,7 @@ export default function Page() {
               />
             </div>
           ) : activeView === "logs" ? (
-            <div className="settings-animated" key={`logs-${viewAnimationKey}`}>
+            <div className="settings-animated" key="logs-view">
               <LogsView
                 systemCheck={controller.systemCheck}
                 reportHistory={controller.reportHistory}
@@ -730,7 +744,7 @@ export default function Page() {
               />
             </div>
           ) : activeView === "analysis" ? (
-            <div className="settings-animated" key={`analysis-${viewAnimationKey}`}>
+            <div className="settings-animated" key="analysis-view">
               <div className="section reveal" id="analysis-overview">
                 <div className="section-inner">
                   <div className="section-header">
@@ -792,7 +806,7 @@ export default function Page() {
               </div>
             </div>
           ) : activeView === "dissatisfaction" ? (
-            <div className="settings-animated" key={`dissatisfaction-${viewAnimationKey}`}>
+            <div className="settings-animated" key="dissatisfaction-view">
               <DissatisfactionView
                 selectedDate={controller.date}
                 alerts={controller.operationalAlerts}
@@ -800,11 +814,11 @@ export default function Page() {
               />
             </div>
           ) : activeView === "products" ? (
-            <div className="settings-animated" key={`products-${viewAnimationKey}`}>
+            <div className="settings-animated" key="products-view">
               <ProductsOverallView refreshHint={controller.lastRunAt} />
             </div>
           ) : (
-            <div className="settings-animated" key={`settings-${viewAnimationKey}`}>
+            <div className="settings-animated" key="settings-view">
               <SettingsView
                 currentUser={currentUser || { name: "Usuário", email: "usuario@hile.com.br", role: "Operador" }}
                 onUpdateProfile={handleUpdateProfile}

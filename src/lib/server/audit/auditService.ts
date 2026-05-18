@@ -12,6 +12,7 @@ import {
   buildContactLogs,
   buildSourceFingerprint,
   compactAnalysis,
+  extractActiveOnDay,
   extractEnteredToday,
   extractNameFromFormMessages,
   getContactKey,
@@ -186,9 +187,17 @@ export async function buildDailyConversationLogs({ config, date }) {
   );
 
   const enteredToday = extractEnteredToday(scopedToInbox, date, toYmd);
+  const activeToday = extractActiveOnDay(scopedToInbox, date, toYmd);
+  const selectedConversations = unique(
+    [...enteredToday, ...activeToday]
+      .map((conversation) => Number(conversation?.id || 0))
+      .filter((id) => id > 0),
+  )
+    .map((id) => scopedToInbox.find((conversation) => Number(conversation?.id || 0) === id))
+    .filter(Boolean);
   const detailed = [];
 
-  for (const conversation of enteredToday) {
+  for (const conversation of selectedConversations) {
     const conversationId = Number(conversation?.id || 0);
     if (!conversationId) continue;
 
@@ -212,7 +221,10 @@ export async function buildDailyConversationLogs({ config, date }) {
 
     detailed.push(normalized);
   }
-  console.log(`[preview-day] conversas do dia ${date}: ${detailed.length}.`);
+  const carryOverCount = Math.max(0, detailed.length - enteredToday.length);
+  console.log(
+    `[preview-day] conversas do dia ${date}: ${detailed.length} (entraram no dia: ${enteredToday.length}; ativas de dias anteriores: ${carryOverCount}).`,
+  );
 
   const uniqueContacts = unique(detailed.map((item) => item.contact?.id || item.contact?.identifier));
   const contactLogs = buildContactLogs(detailed);
@@ -223,7 +235,7 @@ export async function buildDailyConversationLogs({ config, date }) {
     account: target.account,
     inbox: target.inbox,
     total_conversations_in_inbox_scan: allConversations.length,
-    conversations_entered_today: detailed.length,
+    conversations_entered_today: enteredToday.length,
     unique_contacts_today: uniqueContacts.length,
     logs_by_conversation: detailed,
     contact_logs: contactLogs,
