@@ -1794,6 +1794,8 @@ export async function listClientsByDate(date: string) {
       clientPhaseReason: string;
     }
   >();
+  const reportFinalizationActorByConversationId = new Map<number, string>();
+  const reportFinalizationActorByName = new Map<string, string>();
 
   for (const draft of reportDrafts) {
     const draftPhase = deriveClientPhaseFromSignals({
@@ -1843,6 +1845,10 @@ export async function listClientsByDate(date: string) {
     const name = toTitleCaseName(String(log.contact_name || "").trim());
     const nameKey = normalizeMatchKey(name);
     if (!nameKey) continue;
+    const finalizationActor = String(log.finalization_actor || "").trim();
+    if (finalizationActor) {
+      reportFinalizationActorByName.set(nameKey, finalizationActor);
+    }
 
     const severity = normalizeSeverityText(log.risk_level);
     const summary = String(log.summary || "").trim();
@@ -1852,6 +1858,13 @@ export async function listClientsByDate(date: string) {
     const conversationIds = Array.isArray(log.conversation_ids)
       ? log.conversation_ids.map((item) => Number(item || 0)).filter((id) => id > 0)
       : [];
+    if (finalizationActor) {
+      for (const conversationId of conversationIds) {
+        if (conversationId > 0 && !reportFinalizationActorByConversationId.has(conversationId)) {
+          reportFinalizationActorByConversationId.set(conversationId, finalizationActor);
+        }
+      }
+    }
     const chatLinks = Array.isArray(log.chatwoot_links)
       ? log.chatwoot_links.map((item) => String(item || "").trim()).filter(Boolean)
       : [];
@@ -2390,6 +2403,12 @@ export async function listClientsByDate(date: string) {
         ? conversationIdsFromRecord
         : fallback?.conversationIds || logFallback?.conversationIds || [];
     const resolvedContactName = toTitleCaseName(item.contactName || fallback?.contactName || "");
+    const finalizationActor =
+      resolvedConversationIds
+        .map((conversationId) => reportFinalizationActorByConversationId.get(Number(conversationId || 0)) || "")
+        .find(Boolean) ||
+      reportFinalizationActorByName.get(normalizeMatchKey(resolvedContactName)) ||
+      null;
     const pendingContext = pickPendingContext(resolvedContactName, resolvedConversationIds);
     const classification = classifyPipelineBlock({
       status: unifiedStatus,
@@ -2418,6 +2437,7 @@ export async function listClientsByDate(date: string) {
     timeline: timelineByPhone.get(item.phonePk) || [],
     phonePk: item.phonePk,
     contactName: resolvedContactName,
+    finalizationActor,
     companyName: item.companyName || "",
     cnpj: item.cnpj || "",
     gaps: unifiedGaps,
@@ -2481,6 +2501,12 @@ export async function listClientsByDate(date: string) {
           textSignals: [...(draft.gaps || []), ...(draft.attentions || [])],
         });
         const pendingContext = pickPendingContext(String(draft.contactName || ""), draft.conversationIds || []);
+        const finalizationActor =
+          (draft.conversationIds || [])
+            .map((conversationId) => reportFinalizationActorByConversationId.get(Number(conversationId || 0)) || "")
+            .find(Boolean) ||
+          reportFinalizationActorByName.get(normalizeMatchKey(String(draft.contactName || ""))) ||
+          null;
         const classification = classifyPipelineBlock({
           status: draft.status || "aberto",
           severity: draft.severity || "info",
@@ -2505,6 +2531,7 @@ export async function listClientsByDate(date: string) {
           timeline: timelineByPhone.get(draft.phonePk) || [],
           phonePk: draft.phonePk,
           contactName: toTitleCaseName(draft.contactName || ""),
+          finalizationActor,
           companyName: draft.companyName || "",
           cnpj: draft.cnpj || "",
           gaps: draft.gaps || [],
@@ -2578,6 +2605,7 @@ export async function listClientsByDate(date: string) {
         timeline: timelineByPhone.get(state.phonePk) || [],
         phonePk: state.phonePk,
         contactName: toTitleCaseName(state.contactName || ""),
+        finalizationActor: null,
         companyName: state.companyName || "",
         cnpj: state.cnpj || "",
         gaps: [],
@@ -2684,6 +2712,7 @@ export async function listClientsByDate(date: string) {
       timeline: timelineByPhone.get(phonePk) || [],
       phonePk,
       contactName: toTitleCaseName(String(contact.name || "").trim()),
+      finalizationActor: null,
       companyName: "",
       cnpj: "",
       gaps: [],

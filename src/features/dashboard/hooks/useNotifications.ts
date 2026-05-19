@@ -2,12 +2,18 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { apiGet } from "@/lib/api";
-import type { ReportHistoryResponse, ClientsByDateResponse } from "../../../types";
+import type { NotificationSummaryResponse } from "../../../types";
+
+export interface NotificationEvent {
+  id: string;
+  kind: "report" | "log" | "client";
+  title: string;
+  at: string;
+  targetView: "logs" | "clients";
+}
 
 export interface NotificationState {
-  newReport: boolean;
-  newLog: boolean;
-  newClient: boolean;
+  events: NotificationEvent[];
   total: number;
 }
 
@@ -21,34 +27,33 @@ interface UseNotificationsOptions {
 }
 
 const POLL_MS = 30_000;
+const EMPTY_STATE: NotificationState = {
+  events: [],
+  total: 0,
+};
+
+function pushEvent(prev: NotificationState, event: NotificationEvent): NotificationState {
+  if (prev.events.some((item) => item.id === event.id)) return prev;
+  const nextEvents = [event, ...prev.events].slice(0, 25);
+  return { events: nextEvents, total: nextEvents.length };
+}
 
 export function useNotifications(options: UseNotificationsOptions) {
-  const [state, setState] = useState<NotificationState>({ newReport: false, newLog: false, newClient: false, total: 0 });
+  const [state, setState] = useState<NotificationState>(EMPTY_STATE);
   const lastSeenRunSignatureRef = useRef<string | null>(null);
-  const knownClientPksRef = useRef<Set<string> | null>(null);
-  const lastRunCompletedCountRef = useRef<number | null>(null);
+  const lastSeenClientSignatureRef = useRef<string | null>(null);
+  const lastDateRef = useRef<string | null>(null);
 
   const clear = useCallback(() => {
-    setState({ newReport: false, newLog: false, newClient: false, total: 0 });
+    setState(EMPTY_STATE);
   }, []);
 
   useEffect(() => {
-    if (!options.enabled) return;
-    const completedCount = Number(options.runCompletedCount || 0);
-    if (lastRunCompletedCountRef.current === null) {
-      lastRunCompletedCountRef.current = completedCount;
-      return;
-    }
-    if (completedCount > lastRunCompletedCountRef.current) {
-      setState((prev) => {
-        const nextReport = prev.newReport || options.notifyReport;
-        const nextLog = prev.newLog || options.notifyLog;
-        const total = (nextReport ? 1 : 0) + (nextLog ? 1 : 0) + (prev.newClient ? 1 : 0);
-        return { ...prev, newReport: nextReport, newLog: nextLog, total };
-      });
-    }
-    lastRunCompletedCountRef.current = completedCount;
-  }, [options.enabled, options.notifyLog, options.notifyReport, options.runCompletedCount]);
+    if (lastDateRef.current === options.currentDate) return;
+    lastDateRef.current = options.currentDate;
+    lastSeenRunSignatureRef.current = null;
+    lastSeenClientSignatureRef.current = null;
+  }, [options.currentDate]);
 
   useEffect(() => {
     if (!options.enabled) return;
@@ -56,57 +61,61 @@ export function useNotifications(options: UseNotificationsOptions) {
 
     const check = async () => {
       try {
-        const [historyRes, clientsRes] = await Promise.allSettled([
-          apiGet<ReportHistoryResponse>("/api/report-day/history?limit=5"),
-          apiGet<ClientsByDateResponse>(`/api/clients?date=${options.currentDate}`),
-        ]);
+        const summary = await apiGet<NotificationSummaryResponse>(
+          `/api/notifications/summary?date=${encodeURIComponent(options.currentDate)}`,
+        );
 
         if (cancelled) return;
-
-        if (historyRes.status === "fulfilled") {
-          const items = historyRes.value.items || [];
-          const latestRun = items.find((i) => i.status === "completed") || null;
-
-          if (latestRun) {
-            const runSignature = `${latestRun.id}:${latestRun.finished_at || latestRun.started_at || ""}`;
-            if (lastSeenRunSignatureRef.current === null) {
-              lastSeenRunSignatureRef.current = runSignature;
-            } else {
-              const hasChanged = runSignature !== lastSeenRunSignatureRef.current;
-              if (hasChanged) {
-                setState((prev) => {
-                  const nr = prev.newReport || options.notifyReport;
-                  const nl = prev.newLog || options.notifyLog;
-                  const nc = prev.newClient;
-                  return {
-                    newReport: nr,
-                    newLog: nl,
-                    newClient: nc,
-                    total: (nr ? 1 : 0) + (nl ? 1 : 0) + (nc ? 1 : 0),
-                  };
-                });
-                lastSeenRunSignatureRef.current = runSignature;
-              }
+        const latestRun = summary.latest_completed_run;
+        if (latestRun) {
+          const runSignature = `${latestRun.id}:${latestRun.finished_at || latestRun.started_at || ""}`;
+          if (lastSeenRunSignatureRef.current === null) {
+            lastSeenRunSignatureRef.current = runSignature;
+          } else if (runSignature !== lastSeenRunSignatureRef.current) {
+            const eventAt = latestRun.finished_at || latestRun.started_at || new Date().toISOString();
+            if (options.notifyReport) {
+              setState((prev) =>
+                pushEvent(prev, {
+                  id: `run:${runSignature}:report`,
+                  kind: "report",
+                  title: "Relatório executado / finalizado",
+                  at: eventAt,
+                  targetView: "logs",
+                }),
+              );
             }
+            if (options.notifyLog) {
+              setState((prev) =>
+                pushEvent(prev, {
+                  id: `run:${runSignature}:log`,
+                  kind: "log",
+                  title: "Log novo",
+                  at: eventAt,
+                  targetView: "logs",
+                }),
+              );
+            }
+            lastSeenRunSignatureRef.current = runSignature;
           }
         }
 
-        if (clientsRes.status === "fulfilled") {
-          const items = clientsRes.value.items || [];
-          const currentPks = new Set(items.map((c) => c.phonePk));
-          if (knownClientPksRef.current === null) {
-            knownClientPksRef.current = currentPks;
-          } else {
-            let hasNew = false;
-            for (const pk of currentPks) {
-              if (!knownClientPksRef.current.has(pk)) { hasNew = true; break; }
-            }
-            if (hasNew) {
-              knownClientPksRef.current = currentPks;
-              setState((prev) => {
-                const nc = options.notifyClient;
-                return { ...prev, newClient: nc, total: prev.total + (nc ? 1 : 0) };
-              });
+        const clientSignature = String(summary.clients_snapshot?.signature || "").trim() || null;
+        if (clientSignature) {
+          if (lastSeenClientSignatureRef.current === null) {
+            lastSeenClientSignatureRef.current = clientSignature;
+          } else if (clientSignature !== lastSeenClientSignatureRef.current) {
+            lastSeenClientSignatureRef.current = clientSignature;
+            if (options.notifyClient) {
+              const eventAt = summary.clients_snapshot?.last_updated_at || new Date().toISOString();
+              setState((prev) =>
+                pushEvent(prev, {
+                  id: `client:${clientSignature}`,
+                  kind: "client",
+                  title: "Cliente novo",
+                  at: eventAt,
+                  targetView: "clients",
+                }),
+              );
             }
           }
         }
@@ -121,7 +130,7 @@ export function useNotifications(options: UseNotificationsOptions) {
       cancelled = true;
       window.clearInterval(interval);
     };
-  }, [options.enabled, options.notifyReport, options.notifyLog, options.notifyClient, options.currentDate]);
+  }, [options.currentDate, options.enabled, options.notifyClient, options.notifyLog, options.notifyReport, options.runCompletedCount]);
 
   return { state, clear };
 }

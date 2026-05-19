@@ -1,6 +1,7 @@
 ﻿"use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import Image from "next/image";
 import { FiEye, FiEyeOff, FiLock, FiMail } from "react-icons/fi";
 import { useDashboardController } from "@/features/dashboard/hooks/useDashboardController";
 import { useRevealOnScroll } from "@/features/dashboard/hooks/useRevealOnScroll";
@@ -87,7 +88,7 @@ export default function Page() {
         client: localStorage.getItem("hile_settings_notify_client") !== "false",
       };
     } catch { return { report: true, log: true, client: true }; }
-  }, [stage]);
+  }, []);
 
   const { state: notificationState, clear: clearNotifications } = useNotifications({
     enabled: stage === "app",
@@ -582,7 +583,7 @@ export default function Page() {
     return (
       <div className="splash-screen">
         <div className="splash-logo">
-          <img src="/logo_hile1.png" alt="Hilê" />
+          <Image src="/logo_hile1.png" alt="Hilê" width={280} height={96} priority />
         </div>
         <div className="splash-copy">
           <h1>
@@ -607,7 +608,7 @@ export default function Page() {
 
         <form className="login-card login-card-advanced" onSubmit={handleLogin}>
           <div className="login-card-header">
-            <img className="login-brand-logo" src="/logo_hile1.png" alt="Hilê" />
+            <Image className="login-brand-logo" src="/logo_hile1.png" alt="Hilê" width={280} height={96} priority />
             <h1>
               PAINEL <span>DE AUDITORIA</span>
             </h1>

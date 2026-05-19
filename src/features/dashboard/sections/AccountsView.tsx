@@ -613,6 +613,12 @@ export function AccountsView({ selectedDate, knownRunId = null, refreshHint = nu
                                 <span>{responsibleLabel(record.responsibleBucket || record.responsibleLabel || "ia")}</span>
                                 <span className="k-card-meta-sep">·</span>
                                 <span>{record.companyName || "Empresa não informada"}</span>
+                                {record.status === "resolvido" && record.finalizationActor ? (
+                                  <>
+                                    <span className="k-card-meta-sep">·</span>
+                                    <span>Finalizada por {record.finalizationActor}</span>
+                                  </>
+                                ) : null}
                               </p>
 
                               <div className="account-tags">
@@ -717,6 +723,10 @@ export function AccountsView({ selectedDate, knownRunId = null, refreshHint = nu
               <div className="modal-row">
                 <strong>Fechamento</strong>
                 <span>{closedAt ? toDateTimeBr(closedAt) : "-"}</span>
+              </div>
+              <div className="modal-row">
+                <strong>Finalizada por</strong>
+                <span>{selectedRecord.finalizationActor || "-"}</span>
               </div>
                   </>
                 );

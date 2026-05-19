@@ -1,5 +1,6 @@
 ﻿import { useCallback, useEffect, useRef, useState } from "react";
 import type { MouseEvent } from "react";
+import Image from "next/image";
 import {
   FiAlertTriangle,
   FiBarChart2,
@@ -83,6 +84,13 @@ export function ShellNavigation({
   onClearNotifications,
   onOpenView,
 }: ShellNavigationProps) {
+  function formatNotifyTime(isoText: string | null | undefined): string | null {
+    if (!isoText) return null;
+    const date = new Date(isoText);
+    if (Number.isNaN(date.getTime())) return null;
+    return date.toLocaleString("pt-BR", { timeZone: "America/Fortaleza" });
+  }
+
   const [notifyOpen, setNotifyOpen] = useState(false);
   const [openSections, setOpenSections] = useState({
     dashboard: true,
@@ -170,7 +178,7 @@ export function ShellNavigation({
       <aside className="app-sidebar">
         <button type="button" className="side-brand" onClick={onOpenDashboard}>
           <span className="side-brand-logo">
-            <img src="/faviconV2.png" alt="Hilê" />
+            <Image src="/faviconV2.png" alt="Hilê" width={28} height={28} />
           </span>
           <span className="side-brand-text">
             Hilê <span className="side-brand-text-expand">Auditoria</span>
@@ -573,24 +581,44 @@ export function ShellNavigation({
                   </div>
                 ) : (
                   <div style={{ display: "grid" }}>
-                    {notificationState.newReport && (
-                      <button type="button" onClick={() => handleNotifyItemClick("logs")} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", border: 0, background: "transparent", cursor: "pointer", textAlign: "left", fontSize: "var(--fs-small)", color: "var(--navy)", borderBottom: "1px solid var(--line)" }}>
-                        <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--azul)", flexShrink: 0 }} />
-                        <span>Relatório executado / finalizado</span>
+                    {notificationState.events.map((event, index) => (
+                      <button
+                        key={event.id}
+                        type="button"
+                        onClick={() => handleNotifyItemClick(event.targetView)}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 10,
+                          padding: "10px 14px",
+                          border: 0,
+                          background: "transparent",
+                          cursor: "pointer",
+                          textAlign: "left",
+                          fontSize: "var(--fs-small)",
+                          color: "var(--navy)",
+                          borderBottom: index < notificationState.events.length - 1 ? "1px solid var(--line)" : 0,
+                        }}
+                      >
+                        <span
+                          style={{
+                            width: 8,
+                            height: 8,
+                            borderRadius: "50%",
+                            background: event.kind === "client" ? "var(--ok)" : "var(--azul)",
+                            flexShrink: 0,
+                          }}
+                        />
+                        <span>
+                          {event.title}
+                          {formatNotifyTime(event.at) ? (
+                            <small style={{ display: "block", color: "var(--muted)" }}>
+                              {formatNotifyTime(event.at)}
+                            </small>
+                          ) : null}
+                        </span>
                       </button>
-                    )}
-                    {notificationState.newLog && (
-                      <button type="button" onClick={() => handleNotifyItemClick("logs")} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", border: 0, background: "transparent", cursor: "pointer", textAlign: "left", fontSize: "var(--fs-small)", color: "var(--navy)", borderBottom: "1px solid var(--line)" }}>
-                        <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--azul)", flexShrink: 0 }} />
-                        <span>Log novo</span>
-                      </button>
-                    )}
-                    {notificationState.newClient && (
-                      <button type="button" onClick={() => handleNotifyItemClick("clients")} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", border: 0, background: "transparent", cursor: "pointer", textAlign: "left", fontSize: "var(--fs-small)", color: "var(--navy)" }}>
-                        <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--azul)", flexShrink: 0 }} />
-                        <span>Cliente novo</span>
-                      </button>
-                    )}
+                    ))}
                   </div>
                 )}
                 {notificationState.total > 0 && (
@@ -606,6 +634,8 @@ export function ShellNavigation({
     </>
   );
 }
+
+
 
 
 

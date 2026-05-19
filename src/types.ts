@@ -350,6 +350,7 @@ export interface ReportByDateResponse {
 }
 
 export interface ClientRecordItem {
+  finalizationActor?: string | null;
   responsibleBucket?: "ia" | "suellen" | "samuel" | string;
   responsibleLabel?: string | null;
   responsibleMessageCount?: number | null;
@@ -406,4 +407,19 @@ export interface ClientsByDateResponse {
   runId: string | null;
   generatedAt: string | null;
   items: ClientRecordItem[];
+}
+
+export interface NotificationSummaryResponse {
+  date: string;
+  latest_completed_run: {
+    id: string;
+    started_at: string;
+    finished_at: string | null;
+  } | null;
+  clients_snapshot: {
+    run_id: string | null;
+    total: number;
+    last_updated_at: string | null;
+    signature: string | null;
+  };
 }

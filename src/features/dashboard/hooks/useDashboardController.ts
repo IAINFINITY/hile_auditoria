@@ -46,13 +46,14 @@ import {
   extractProductDemand,
 } from "./controller/operationalSignals";
 
+const SECTION_IDS = ["gaps", "insights", "relatorio"] as const;
+const NAVBAR_HEIGHT = 68;
+
 export function useDashboardController(options?: { enabled?: boolean; syncNavOnScroll?: boolean }): DashboardController {
   const enabled = options?.enabled ?? true;
   const syncNavOnScroll = options?.syncNavOnScroll ?? true;
   const SELECTED_DATE_STORAGE_KEY = "hile_selected_date_v1";
   const PROGRESS_STEPS = 6;
-  const SECTION_IDS = ["gaps", "insights", "relatorio"] as const;
-  const NAVBAR_HEIGHT = 68;
   const minDate = "2024-01-01";
   const maxDate = toDateInputValue();
   const [date, setDateState] = useState<string>(maxDate);
@@ -258,9 +259,7 @@ export function useDashboardController(options?: { enabled?: boolean; syncNavOnS
       .then((data) => {
         const items = Array.isArray(data?.items) ? data.items : [];
         setReportHistory(items);
-        if (!lastRunAt && items[0]?.started_at) {
-          setLastRunAt(items[0].started_at);
-        }
+        setLastRunAt((current) => current || items[0]?.started_at || current);
       })
       .catch(() => setReportHistory([]));
   }, [enabled]);
@@ -288,7 +287,7 @@ export function useDashboardController(options?: { enabled?: boolean; syncNavOnS
           loadPeriodData(periodPreset, []);
         }
       });
-  }, [enabled]);
+  }, [enabled, periodPreset]);
 
   useEffect(() => {
     activeNavRef.current = activeNav;
@@ -1190,6 +1189,14 @@ export function useDashboardController(options?: { enabled?: boolean; syncNavOnS
     focusReportByContact,
   };
 }
+
+
+
+
+
+
+
+
 
 
 
