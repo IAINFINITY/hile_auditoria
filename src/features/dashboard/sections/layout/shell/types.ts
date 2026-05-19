@@ -41,6 +41,8 @@ export interface ShellNavigationProps {
   notificationState: NotificationState;
   onClearNotifications: () => void;
   onOpenView: (view: "clients" | "logs") => void;
+  sidebarCollapsed: boolean;
+  onToggleSidebar: () => void;
 }
 
 export type ShellOpenSections = Record<ShellSectionKey, boolean>;

@@ -84,7 +84,7 @@ export function ShellSidebar({
     onNavigate(section);
   }
 
-  const attendantsOpen = openSections.attendants || activeView === "attendants";
+  const attendantsOpen = openSections.attendants;
 
   return (
     <aside className="app-sidebar">

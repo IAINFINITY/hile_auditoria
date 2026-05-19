@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { FiCheckCircle, FiClock, FiXCircle } from "react-icons/fi";
 import type { ReportHistoryItem, SystemCheckResponse } from "../../../../types";
 
@@ -32,6 +32,18 @@ function durationSec(start: string, end: string | null): string {
   return `${min}m ${seg}s`;
 }
 
+function durationSecondsValue(start: string, end: string | null): number | null {
+  if (!end) return null;
+  const s = new Date(start).getTime();
+  const e = new Date(end).getTime();
+  if (Number.isNaN(s) || Number.isNaN(e)) return null;
+  return Math.max(0, Math.round((e - s) / 1000));
+}
+
+function riskLabel(value: "critical" | "non_critical" | null | undefined): string {
+  return value === "critical" ? "Crítico" : "Não crítico";
+}
+
 export function LogsView({
   systemCheck,
   reportHistory,
@@ -42,6 +54,8 @@ export function LogsView({
   runCurrentContact,
   runTimeline,
 }: LogsViewProps) {
+  const [copiedRunId, setCopiedRunId] = useState<string | null>(null);
+
   const runsByDate = useMemo(() => {
     const map = new Map<string, ReportHistoryItem[]>();
     for (const run of reportHistory) {
@@ -55,6 +69,16 @@ export function LogsView({
   const hasRecentRuns = runsByDate.length > 0;
   const dimExec = !isRunningOverview;
   const dimRecent = !hasRecentRuns;
+
+  async function copyRunId(value: string) {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopiedRunId(value);
+      window.setTimeout(() => setCopiedRunId((current) => (current === value ? null : current)), 1600);
+    } catch {
+      setCopiedRunId(null);
+    }
+  }
 
   return (
     <div className="settings-shell">
@@ -90,7 +114,14 @@ export function LogsView({
             <p className="empty-state">Nenhuma execução em andamento no momento.</p>
           ) : (
             <>
-              <p><strong>Run:</strong> {currentRunId ? currentRunId : "em criação..."}</p>
+              <p>
+                <strong>Run:</strong> {currentRunId ? currentRunId : "em criação..."}{" "}
+                {currentRunId ? (
+                  <button type="button" className="link-btn" onClick={() => void copyRunId(currentRunId)}>
+                    {copiedRunId === currentRunId ? "copiado" : "copiar"}
+                  </button>
+                ) : null}
+              </p>
               <p><strong>Contato atual:</strong> {runCurrentContact || "preparando execução..."}</p>
               <p><strong>Progresso:</strong> {runProgress}%</p>
               <div className="orq-progress-track" role="progressbar" aria-valuenow={runProgress} aria-valuemin={0} aria-valuemax={100}>
@@ -128,7 +159,7 @@ export function LogsView({
                 <div className="logs-list" style={{ marginBottom: 10 }}>
                   {runs.map((run) => (
                     <article className="log-item" key={run.id} style={{ display: "grid", gap: 4 }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                         {run.status === "completed" ? (
                           <FiCheckCircle style={{ width: 14, height: 14, color: "var(--low)", flexShrink: 0 }} />
                         ) : run.status === "failed" ? (
@@ -139,8 +170,11 @@ export function LogsView({
                         <strong style={{ fontSize: "var(--fs-small)", color: "var(--navy)", textTransform: "capitalize" }}>
                           {run.status}
                         </strong>
-                        <span style={{ fontSize: "var(--fs-tiny)", color: "var(--azul)", fontFamily: "var(--font-mono)" }}>
+                        <span style={{ fontSize: "var(--fs-tiny)", color: "var(--azul)", fontFamily: "var(--font-mono)", display: "inline-flex", alignItems: "center", gap: 8 }}>
                           {run.id.slice(0, 8)}
+                          <button type="button" className="link-btn" onClick={() => void copyRunId(run.id)}>
+                            {copiedRunId === run.id ? "copiado" : "copiar"}
+                          </button>
                         </span>
                         {run.has_report && (
                           <span style={{ fontSize: "var(--fs-tiny)", color: "var(--low)", fontWeight: 600 }}>c/ relatório</span>
@@ -150,10 +184,53 @@ export function LogsView({
                         <span>Início: {fmtBr(run.started_at)}</span>
                         <span>Término: {fmtBr(run.finished_at)}</span>
                         <span>Duração: {durationSec(run.started_at, run.finished_at)}</span>
+                        <span>
+                          Média por contato:{" "}
+                          {(() => {
+                            const seconds = durationSecondsValue(run.started_at, run.finished_at);
+                            if (seconds === null || run.processed <= 0) return "-";
+                            return `${Math.max(1, Math.round(seconds / run.processed))}s`;
+                          })()}
+                        </span>
                         <span>Conversas: {run.processed}/{run.total_conversations}</span>
                         <span>Sucesso: {run.success_count}</span>
                         <span>Falhas: {run.failure_count}</span>
                       </div>
+
+                      {(run.report_json?.logs?.length || 0) > 0 ? (
+                        <div style={{ marginTop: 4, borderTop: "1px dashed var(--line)", paddingTop: 8 }}>
+                          <p style={{ margin: 0, fontSize: "var(--fs-tiny)", color: "var(--muted)" }}>
+                            Contatos desta execução ({run.report_json?.logs?.length})
+                          </p>
+                          <div style={{ display: "grid", gap: 6, marginTop: 6 }}>
+                            {run.report_json!.logs!.slice(0, 8).map((log) => (
+                              <div
+                                key={`${run.id}-${log.contact_key}`}
+                                style={{
+                                  border: "1px solid var(--line)",
+                                  borderRadius: 8,
+                                  padding: "6px 8px",
+                                  display: "grid",
+                                  gap: 3,
+                                }}
+                              >
+                                <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                                  <strong style={{ color: "var(--navy)" }}>{log.contact_name || log.contact_key}</strong>
+                                  <span style={{ fontSize: "var(--fs-tiny)", color: log.risk_level === "critical" ? "var(--critical)" : "var(--azul-line)" }}>
+                                    {riskLabel(log.risk_level)}
+                                  </span>
+                                  <span style={{ fontSize: "var(--fs-tiny)", color: "var(--muted)" }}>
+                                    {log.finalization_status || "sem status final"}
+                                  </span>
+                                </div>
+                                <p style={{ margin: 0, fontSize: "var(--fs-tiny)", color: "var(--muted)" }}>
+                                  Conversas: {log.conversation_ids?.length || 0}  Links: {log.chatwoot_links?.length || 0}
+                                </p>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ) : null}
                     </article>
                   ))}
                 </div>
@@ -162,8 +239,6 @@ export function LogsView({
           )}
         </div>
       </article>
-
     </div>
   );
 }
-

@@ -4,6 +4,19 @@
   animation:fadeIn .5s ease;
 }
 
+.app-shell.sidebar-collapsed .app-sidebar{
+  transform:translateX(-100%);
+  pointer-events:none;
+}
+
+.app-shell.sidebar-collapsed .app-topbar{
+  left:0;
+}
+
+.app-shell.sidebar-collapsed .main-content-shell{
+  margin-left:0;
+}
+
 .app-sidebar{
   position:fixed;
   inset:0 auto 0 0;
@@ -312,6 +325,29 @@
   gap:8px;
   color:var(--muted);
   font-size:var(--fs-tiny);
+}
+
+.topbar-sidebar-toggle{
+  width:30px;
+  height:30px;
+  border:1px solid var(--line);
+  background:var(--branco);
+  color:var(--azul);
+  border-radius:8px;
+  display:grid;
+  place-items:center;
+  cursor:pointer;
+  margin-right:2px;
+}
+
+.topbar-sidebar-toggle:hover{
+  border-color:var(--azul-line);
+  background:var(--azul-soft);
+}
+
+.topbar-sidebar-toggle svg{
+  width:15px;
+  height:15px;
 }
 
 .topbar-breadcrumb .sep{

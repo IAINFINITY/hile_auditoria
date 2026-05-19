@@ -10,16 +10,21 @@ export function AppFooter({ loginMode = false }: AppFooterProps) {
       <div className="brand-footer-left">Dev by <strong>IA Infinity</strong></div>
       <div className="brand-footer-center">© 2026 Hilê - Fábrica de suplementos alimentares</div>
       <div className="brand-footer-right brand-footer-socials">
-        <a href="https://www.facebook.com" target="_blank" rel="noreferrer" aria-label="Facebook">
+        <a href="https://www.facebook.com/hile.terceirizados" target="_blank" rel="noreferrer" aria-label="Facebook">
           <FaFacebookF />
         </a>
-        <a href="https://x.com" target="_blank" rel="noreferrer" aria-label="Twitter">
+        <a href="https://twitter.com/hileterceiriza?s=09" target="_blank" rel="noreferrer" aria-label="Twitter">
           <FaXTwitter />
         </a>
         <a href="https://www.instagram.com/hileterceirizacao/" target="_blank" rel="noreferrer" aria-label="Instagram">
           <FaInstagram />
         </a>
-        <a href="https://www.linkedin.com" target="_blank" rel="noreferrer" aria-label="LinkedIn">
+        <a
+          href="https://www.linkedin.com/company/hile-terceirizacao/?viewAsMember=true"
+          target="_blank"
+          rel="noreferrer"
+          aria-label="LinkedIn"
+        >
           <FaLinkedinIn />
         </a>
       </div>

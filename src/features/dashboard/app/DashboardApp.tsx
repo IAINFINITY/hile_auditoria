@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { useDashboardController } from "@/features/dashboard/hooks/useDashboardController";
 import { useNotifications } from "@/features/dashboard/hooks/useNotifications";
 import { useRevealOnScroll } from "@/features/dashboard/hooks/useRevealOnScroll";
@@ -15,6 +15,27 @@ import { SplashScreen } from "./components/SplashScreen";
 import type { AppView, AuthStatusPayload } from "./types";
 
 export function DashboardApp() {
+  const clearStaleAuthStorage = useCallback(() => {
+    try {
+      for (let i = localStorage.length - 1; i >= 0; i -= 1) {
+        const key = localStorage.key(i);
+        if (!key) continue;
+        if (key.startsWith("sb-") || key.includes("supabase")) {
+          localStorage.removeItem(key);
+        }
+      }
+      for (let i = sessionStorage.length - 1; i >= 0; i -= 1) {
+        const key = sessionStorage.key(i);
+        if (!key) continue;
+        if (key.startsWith("sb-") || key.includes("supabase")) {
+          sessionStorage.removeItem(key);
+        }
+      }
+    } catch {
+      // noop
+    }
+  }, []);
+
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [activeView, setActiveView] = useState<AppView>(() => {
     if (typeof window !== "undefined") {
@@ -44,6 +65,14 @@ export function DashboardApp() {
   const [showForgotPasswordModal, setShowForgotPasswordModal] = useState(false);
   const [showLogoutConfirmModal, setShowLogoutConfirmModal] = useState(false);
   const [activeSubNavKey, setActiveSubNavKey] = useState<string>("inicio");
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    if (typeof window === "undefined") return false;
+    try {
+      return localStorage.getItem("hile_sidebar_collapsed") === "true";
+    } catch {
+      return false;
+    }
+  });
   const [analysisScope, setAnalysisScope] = useState<"day" | "overall">("day");
   const [dissatisfactionScope, setDissatisfactionScope] = useState<"day" | "overall">("day");
   const [currentUser, setCurrentUser] = useState<{ name: string; email: string; role: string } | null>(null);
@@ -127,9 +156,18 @@ export function DashboardApp() {
     const delayMs = shouldShowSplash ? 2300 : 0;
     const timer = window.setTimeout(() => {
       void (async () => {
-        const {
-          data: { session },
-        } = await supabaseBrowser.auth.getSession();
+        const { data, error } = await supabaseBrowser.auth.getSession();
+        if (error) {
+          const normalized = String(error.message || "").toLowerCase();
+          if (normalized.includes("refresh token")) {
+            clearStaleAuthStorage();
+            await supabaseBrowser.auth.signOut({ scope: "local" });
+          }
+          if (!cancelled) setStage("login");
+          return;
+        }
+
+        const session = data?.session ?? null;
         const persistSession = localStorage.getItem("hile_remember") === "true";
         const tabSession = sessionStorage.getItem("hile_tab_session") === "true";
 
@@ -170,7 +208,7 @@ export function DashboardApp() {
       if (splashTimer) window.clearTimeout(splashTimer);
       window.clearTimeout(timer);
     };
-  }, []);
+  }, [clearStaleAuthStorage]);
 
   useEffect(() => {
     try {
@@ -179,6 +217,14 @@ export function DashboardApp() {
       // noop
     }
   }, [activeView]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("hile_sidebar_collapsed", sidebarCollapsed ? "true" : "false");
+    } catch {
+      // noop
+    }
+  }, [sidebarCollapsed]);
 
   useEffect(() => {
     const nextKey =
@@ -496,7 +542,7 @@ export function DashboardApp() {
   }
 
   return (
-    <div className="app-shell">
+    <div className={`app-shell${sidebarCollapsed ? " sidebar-collapsed" : ""}`}>
       <ShellNavigation
         activeView={activeView}
         activeSubNavKey={activeSubNavKey}
@@ -536,6 +582,8 @@ export function DashboardApp() {
         notificationState={notificationState}
         onClearNotifications={clearNotifications}
         onOpenView={(view) => openViewAndScrollTop(view)}
+        sidebarCollapsed={sidebarCollapsed}
+        onToggleSidebar={() => setSidebarCollapsed((value) => !value)}
       />
 
       <main className="main-content-shell">

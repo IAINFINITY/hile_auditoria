@@ -16,6 +16,14 @@ function severityLabel(value: Severity): string {
   return "Informativo";
 }
 
+function severityColor(value: Severity): string {
+  if (value === "critical") return "var(--critical)";
+  if (value === "high") return "var(--high)";
+  if (value === "medium") return "var(--medium)";
+  if (value === "low") return "var(--low)";
+  return "var(--info)";
+}
+
 export function AnalysisOverallView({ refreshHint }: AnalysisOverallViewProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -117,7 +125,7 @@ export function AnalysisOverallView({ refreshHint }: AnalysisOverallViewProps) {
             <div className="severity-legend">
               {(Object.keys(severitySnapshot) as Severity[]).map((severity) => (
                 <div className="severity-legend-item" key={severity}>
-                  <span className="severity-legend-dot" />
+                  <span className="severity-legend-dot" style={{ background: severityColor(severity) }} />
                   {severityLabel(severity)}
                   <span className="severity-legend-count">{severitySnapshot[severity] || 0}</span>
                 </div>

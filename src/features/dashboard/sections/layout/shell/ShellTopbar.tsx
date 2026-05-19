@@ -1,4 +1,4 @@
-import { FiBell } from "react-icons/fi";
+﻿import { FiBell, FiMenu } from "react-icons/fi";
 import type { NotificationState } from "@/features/dashboard/hooks/useNotifications";
 import { formatNotifyTime } from "./helpers";
 
@@ -10,6 +10,8 @@ interface ShellTopbarProps {
   onClearAndClose: () => void;
   onNotifyItemClick: (view: "clients" | "logs") => void;
   notifyRef: React.RefObject<HTMLDivElement | null>;
+  sidebarCollapsed: boolean;
+  onToggleSidebar: () => void;
 }
 
 export function ShellTopbar({
@@ -20,17 +22,27 @@ export function ShellTopbar({
   onClearAndClose,
   onNotifyItemClick,
   notifyRef,
+  sidebarCollapsed,
+  onToggleSidebar,
 }: ShellTopbarProps) {
   return (
     <header className="app-topbar">
       <div className="topbar-breadcrumb">
+        <button
+          type="button"
+          className="topbar-sidebar-toggle"
+          aria-label={sidebarCollapsed ? "Mostrar sidebar" : "Ocultar sidebar"}
+          onClick={onToggleSidebar}
+        >
+          <FiMenu aria-hidden="true" />
+        </button>
         <span>Dashboard</span>
-        <span className="sep">›</span>
+        <span className="sep">&gt;</span>
         <strong>{currentBreadcrumb}</strong>
       </div>
       <div className="topbar-actions">
         <div ref={notifyRef} style={{ position: "relative" }}>
-          <button type="button" className="topbar-notify" aria-label="Notificações" onClick={onToggleNotify}>
+          <button type="button" className="topbar-notify" aria-label="Notificacoes" onClick={onToggleNotify}>
             <FiBell className="topbar-notify-icon" aria-hidden="true" />
             {notificationState.total > 0 ? <span className="topbar-notify-badge">{notificationState.total}</span> : null}
           </button>
@@ -57,11 +69,11 @@ export function ShellTopbar({
                   color: "var(--navy)",
                 }}
               >
-                Notificações
+                Notificacoes
               </div>
               {notificationState.total === 0 ? (
                 <div style={{ padding: "16px 14px", fontSize: "var(--fs-small)", color: "var(--muted)" }}>
-                  Nenhuma notificação nova.
+                  Nenhuma notificacao nova.
                 </div>
               ) : (
                 <div style={{ display: "grid" }}>
@@ -119,7 +131,7 @@ export function ShellTopbar({
                     textAlign: "center",
                   }}
                 >
-                  Limpar notificações
+                  Limpar notificacoes
                 </button>
               ) : null}
             </div>

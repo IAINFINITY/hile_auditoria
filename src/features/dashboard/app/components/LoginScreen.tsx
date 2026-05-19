@@ -137,7 +137,7 @@ export function LoginScreen({
         <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="forgotPasswordModalTitle">
           <div className="modal-card">
             <h3 id="forgotPasswordModalTitle">Funcionalidade em desenvolvimento</h3>
-            <p>O fluxo de recupera??o de senha ainda est? em desenvolvimento neste projeto.</p>
+            <p>O fluxo de recuperação de senha ainda está em desenvolvimento neste projeto.</p>
             <div className="modal-actions">
               <button className="btn btn-primary btn-sm" onClick={onCloseForgotPasswordModal}>
                 Entendi

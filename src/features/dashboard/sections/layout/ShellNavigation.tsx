@@ -40,6 +40,8 @@ export function ShellNavigation({
   notificationState,
   onClearNotifications,
   onOpenView,
+  sidebarCollapsed,
+  onToggleSidebar,
 }: ShellNavigationProps) {
   const [notifyOpen, setNotifyOpen] = useState(false);
   const [openSections, setOpenSections] = useState<ShellOpenSections>(DEFAULT_OPEN_SECTIONS);
@@ -120,6 +122,8 @@ export function ShellNavigation({
         onClearAndClose={handleClearAndClose}
         onNotifyItemClick={handleNotifyItemClick}
         notifyRef={notifyRef}
+        sidebarCollapsed={sidebarCollapsed}
+        onToggleSidebar={onToggleSidebar}
       />
     </>
   );

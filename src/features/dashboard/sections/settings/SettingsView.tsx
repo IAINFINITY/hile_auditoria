@@ -18,6 +18,8 @@ const LS_PROFILE_ROLE = "hile_settings_profile_role";
 const LS_NOTIFY_REPORT = "hile_settings_notify_report";
 const LS_NOTIFY_LOG = "hile_settings_notify_log";
 const LS_NOTIFY_CLIENT = "hile_settings_notify_client";
+const PASSWORD_MAX_LENGTH = 64;
+const PASSWORD_COUNTER_WARN_AT = 12;
 
 function loadStr(key: string, fallback = ""): string {
   try { return localStorage.getItem(key) || fallback; } catch { return fallback; }
@@ -115,6 +117,9 @@ export function SettingsView({ currentUser, onUpdateProfile }: SettingsViewProps
   }, [notifyReport, notifyLog, notifyClient]);
 
   const securityValid = currentPassword.length > 0 && newPassword.length > 0 && confirmPassword.length > 0 && newPassword === confirmPassword && strength.score >= 1;
+  const remainingCurrent = PASSWORD_MAX_LENGTH - currentPassword.length;
+  const remainingNew = PASSWORD_MAX_LENGTH - newPassword.length;
+  const remainingConfirm = PASSWORD_MAX_LENGTH - confirmPassword.length;
 
   return (
     <div className="settings-shell">
@@ -185,7 +190,13 @@ export function SettingsView({ currentUser, onUpdateProfile }: SettingsViewProps
               value={currentPassword}
               onChange={(e) => setCurrentPassword(e.target.value)}
               placeholder="••••••••"
+              maxLength={PASSWORD_MAX_LENGTH}
             />
+            {remainingCurrent <= PASSWORD_COUNTER_WARN_AT ? (
+              <span style={{ fontSize: "var(--fs-tiny)", color: remainingCurrent <= 5 ? "var(--critical)" : "var(--muted)" }}>
+                {currentPassword.length}/{PASSWORD_MAX_LENGTH}
+              </span>
+            ) : null}
           </div>
           <div className="settings-field">
             <label>Nova senha</label>
@@ -194,10 +205,16 @@ export function SettingsView({ currentUser, onUpdateProfile }: SettingsViewProps
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}
               placeholder="Mínimo 8 caracteres"
+              maxLength={PASSWORD_MAX_LENGTH}
             />
             <span style={{ fontSize: "var(--fs-tiny)", color: "var(--muted)", marginTop: 2 }}>
-              Insira uma senha forte
+              Insira uma senha forte (máximo de {PASSWORD_MAX_LENGTH} caracteres)
             </span>
+            {remainingNew <= PASSWORD_COUNTER_WARN_AT ? (
+              <span style={{ fontSize: "var(--fs-tiny)", color: remainingNew <= 5 ? "var(--critical)" : "var(--muted)" }}>
+                {newPassword.length}/{PASSWORD_MAX_LENGTH}
+              </span>
+            ) : null}
           </div>
           {newPassword.length > 0 && (
             <div style={{ display: "grid", gap: 6 }}>
@@ -239,7 +256,13 @@ export function SettingsView({ currentUser, onUpdateProfile }: SettingsViewProps
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
               placeholder="Repita a nova senha"
+              maxLength={PASSWORD_MAX_LENGTH}
             />
+            {remainingConfirm <= PASSWORD_COUNTER_WARN_AT ? (
+              <span style={{ fontSize: "var(--fs-tiny)", color: remainingConfirm <= 5 ? "var(--critical)" : "var(--muted)" }}>
+                {confirmPassword.length}/{PASSWORD_MAX_LENGTH}
+              </span>
+            ) : null}
           </div>
           <div className="settings-save-row">
             <button className="btn btn-primary btn-sm" onClick={handleSaveSecurity} disabled={!securityValid}>
