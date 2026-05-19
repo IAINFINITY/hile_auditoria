@@ -1,8 +1,8 @@
-﻿import { useMemo, useState } from "react";
-import type { InsightItem } from "../../../types";
-import { Gauge } from "../charts/Gauge";
-import type { InsightFilter, RiskRow } from "../shared/types";
-import { toTitleCaseName } from "../hooks/controller/common";
+import { useMemo, useState } from "react";
+import type { InsightItem } from "../../../../types";
+import { Gauge } from "../../charts/Gauge";
+import type { InsightFilter, RiskRow } from "../../shared/types";
+import { toTitleCaseName } from "../../hooks/controller/common";
 
 interface InsightsSectionProps {
   insightsReady: boolean;
@@ -277,3 +277,4 @@ export function InsightsSection({
     </div>
   );
 }
+

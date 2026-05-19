@@ -1,4 +1,4 @@
-﻿export interface GroupedHourPoint {
+export interface GroupedHourPoint {
   label: string;
   conversas: number;
   ia: number;

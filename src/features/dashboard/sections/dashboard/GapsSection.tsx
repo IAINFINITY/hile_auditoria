@@ -1,7 +1,7 @@
-﻿import { useMemo, useState } from "react";
-import type { InsightItem, OverviewPayload } from "../../../types";
-import type { OperationalAlertItem } from "../shared/types";
-import { toTitleCaseName } from "../hooks/controller/common";
+import { useMemo, useState } from "react";
+import type { InsightItem, OverviewPayload } from "../../../../types";
+import type { OperationalAlertItem } from "../../shared/types";
+import { toTitleCaseName } from "../../hooks/controller/common";
 
 interface GapsSectionProps {
   insightsReady: boolean;
@@ -235,3 +235,4 @@ export function GapsSection({
     </div>
   );
 }
+

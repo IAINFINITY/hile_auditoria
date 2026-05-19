@@ -1,4 +1,4 @@
-﻿import { formatDateTimeInTimezone } from "../dateUtils";
+import { formatDateTimeInTimezone } from "../dateUtils";
 import { getContactKey } from "./contactHelpers";
 
 const FINALIZATION_LABELS = ["lead_agendado", "pausar_ia"];

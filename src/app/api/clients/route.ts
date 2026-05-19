@@ -1,4 +1,4 @@
-﻿import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { listClientsByDate } from "@/lib/server/audit/auditPersistence";
 import { getAppConfig, parseDateInput, requireAuthorizedApiAccess } from "@/lib/server/apiUtils";
 

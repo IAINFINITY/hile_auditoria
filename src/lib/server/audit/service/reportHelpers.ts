@@ -1,4 +1,4 @@
-﻿function tryParseJson(text) {
+function tryParseJson(text) {
   if (!text) return null;
 
   const trimmed = String(text).trim();

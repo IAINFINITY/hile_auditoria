@@ -1,4 +1,4 @@
-﻿import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { buildDailyReport } from "@/lib/server/audit/auditService";
 import {
   getAppConfig,

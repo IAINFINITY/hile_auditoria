@@ -1,4 +1,4 @@
-﻿.settings-shell{
+.settings-shell{
   width:min(var(--shell-max), calc(100% - var(--shell-gutter) * 2));
   margin:0 auto;
   padding:calc(var(--nav-h) + 22px) 0 40px;

@@ -1,4 +1,4 @@
-﻿import { readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import type { AppConfig } from "./types";
 
 function parseValue(rawValue: string): string | number | boolean {

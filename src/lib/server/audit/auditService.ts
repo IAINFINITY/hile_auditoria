@@ -1,4 +1,4 @@
-﻿import { createChatwootClient } from "./chatwootClient";
+import { createChatwootClient } from "./chatwootClient";
 import { createDifyClient } from "./difyClient";
 import { attachDay, normalizeConversationLog, renderLogForPrompt } from "./chatMapper";
 import {

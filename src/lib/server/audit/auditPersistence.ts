@@ -1,4 +1,4 @@
-﻿import { Prisma, RunStatus } from "@prisma/client";
+import { Prisma, RunStatus } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import type { AppConfig } from "./types";
 import type { ReportPayload } from "@/types";

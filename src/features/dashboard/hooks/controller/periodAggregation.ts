@@ -12,45 +12,90 @@ function sumFields(snapshots: DashboardRunSnapshot[], extract: (s: DashboardRunS
   return snapshots.reduce((acc, s) => acc + Math.max(0, extract(s)), 0);
 }
 
+function toEpoch(value: string | null | undefined): number {
+  const text = String(value || "").trim();
+  if (!text) return 0;
+
+  // ISO / RFC-like formats
+  const direct = new Date(text);
+  if (!Number.isNaN(direct.getTime())) return direct.getTime();
+
+  // pt-BR common formats: dd/mm/yyyy, hh:mm:ss or dd/mm/yyyy hh:mm:ss
+  const match = text.match(
+    /^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:[,\s]+(\d{1,2}):(\d{2})(?::(\d{2}))?)?$/,
+  );
+  if (match) {
+    const day = Number(match[1] || 0);
+    const month = Number(match[2] || 0);
+    const year = Number(match[3] || 0);
+    const hour = Number(match[4] || 0);
+    const minute = Number(match[5] || 0);
+    const second = Number(match[6] || 0);
+    const parsed = new Date(year, month - 1, day, hour, minute, second);
+    if (!Number.isNaN(parsed.getTime())) return parsed.getTime();
+  }
+
+  return 0;
+}
+
 function mergeInsights(snapshots: DashboardRunSnapshot[]): InsightItem[] {
-  const byContact = new Map<string, InsightItem>();
+  const byContact = new Map<string, { insight: InsightItem; epoch: number }>();
   for (const snapshot of snapshots) {
+    const snapshotEpoch = Math.max(toEpoch(snapshot.overview.generated_at), toEpoch(snapshot.report?.date || ""));
     for (const insight of snapshot.insights) {
       const key = insight.contact_key;
+      const insightEpoch = Math.max(
+        toEpoch(insight.last_interaction_at_local),
+        toEpoch(insight.trigger_after_1h_at_local),
+        snapshotEpoch,
+      );
       const existing = byContact.get(key);
       if (!existing) {
-        byContact.set(key, insight);
+        byContact.set(key, { insight, epoch: insightEpoch });
       } else {
-        const existingTime = existing.last_interaction_at_local || "";
-        const incomingTime = insight.last_interaction_at_local || "";
-        if (incomingTime >= existingTime) {
-          byContact.set(key, insight);
+        if (insightEpoch >= existing.epoch) {
+          byContact.set(key, { insight, epoch: insightEpoch });
         }
       }
     }
   }
-  return Array.from(byContact.values());
+  return Array.from(byContact.values()).map((item) => item.insight);
 }
 
 function mergeOperational(snapshots: DashboardRunSnapshot[]): OverviewPayload["conversation_operational"] {
-  const byConvId = new Map<number, OverviewPayload["conversation_operational"][number]>();
+  const byConvId = new Map<number, { row: OverviewPayload["conversation_operational"][number]; epoch: number }>();
   for (const snapshot of snapshots) {
+    const snapshotEpoch = Math.max(toEpoch(snapshot.overview.generated_at), toEpoch(snapshot.report?.date || ""));
     for (const op of snapshot.overview.conversation_operational) {
-      byConvId.set(op.conversation_id, op);
+      const opEpoch = Math.max(
+        toEpoch(op.last_interaction_at_local),
+        toEpoch(op.trigger_after_1h_at_local),
+        snapshotEpoch,
+      );
+      const existing = byConvId.get(op.conversation_id);
+      if (!existing || opEpoch >= existing.epoch) {
+        byConvId.set(op.conversation_id, { row: op, epoch: opEpoch });
+      }
     }
   }
-  return Array.from(byConvId.values());
+  return Array.from(byConvId.values()).map((item) => item.row);
 }
 
 function mergeAnalyses(snapshots: DashboardRunSnapshot[]): AnalysisItem[] {
-  const byContactKey = new Map<string, AnalysisItem>();
+  const byContactKey = new Map<string, { analysis: AnalysisItem; epoch: number }>();
   for (const snapshot of snapshots) {
+    const snapshotEpoch = Math.max(toEpoch(snapshot.overview.generated_at), toEpoch(snapshot.report?.date || ""));
     const analyses = snapshot.report?.raw_analysis?.analyses || [];
     for (const analysis of analyses) {
-      byContactKey.set(analysis.contact_key, analysis);
+      const key = String(analysis.contact_key || "").trim();
+      if (!key) continue;
+      const existing = byContactKey.get(key);
+      if (!existing || snapshotEpoch >= existing.epoch) {
+        byContactKey.set(key, { analysis, epoch: snapshotEpoch });
+      }
     }
   }
-  return Array.from(byContactKey.values());
+  return Array.from(byContactKey.values()).map((item) => item.analysis);
 }
 
 function mergeFailures(snapshots: DashboardRunSnapshot[]): FailureItem[] {

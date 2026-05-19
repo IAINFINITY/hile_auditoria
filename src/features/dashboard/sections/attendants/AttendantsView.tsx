@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { apiGet } from "@/lib/api";
-import type { AttendantPerformanceSummary } from "../shared/types";
+import type { AttendantPerformanceSummary } from "../../shared/types";
 
 interface AttendantsViewProps {
   selectedDate: string;
@@ -216,3 +216,4 @@ export function AttendantsView({ selectedDate, summary, refreshHint = null }: At
     </section>
   );
 }
+

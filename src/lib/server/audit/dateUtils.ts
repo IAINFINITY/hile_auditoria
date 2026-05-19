@@ -49,7 +49,7 @@ export function formatDateTimeInTimezone(unixSeconds: number | null, timeZone: s
 
 export function assertYmd(value: string): void {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(String(value || ""))) {
-    throw new Error("Data invalida. Use o formato YYYY-MM-DD.");
+    throw new Error("Data inválida. Use o formato YYYY-MM-DD.");
   }
 }
 

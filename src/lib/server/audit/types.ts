@@ -1,4 +1,4 @@
-﻿export interface ChatwootConfig {
+export interface ChatwootConfig {
   baseUrl: string;
   apiToken: string;
   accountId: number | null;

@@ -74,7 +74,7 @@ function textFromMessage(message: any): string {
     return `[anexo] ${attachments.length} arquivo(s)`;
   }
 
-  return "[mensagem sem conteudo textual]";
+  return "[mensagem sem conteúdo textual]";
 }
 
 function normalizeMessage(message: any): NormalizedMessage {

@@ -26,11 +26,11 @@ function toDateRange(date: string, preset: ExportPreset): { from: string; to: st
 
 function buildTxtFromRun(run: NonNullable<Awaited<ReturnType<typeof getLatestRunByDate>>>): string {
   const lines: string[] = [];
-  lines.push("RELATORIO DE AUDITORIA");
-  lines.push(`Data de referencia: ${run.date_ref}`);
-  lines.push(`Execucao: ${run.id}`);
+  lines.push("RELATÓRIO DE AUDITORIA");
+  lines.push(`Data de referência: ${run.date_ref}`);
+  lines.push(`Execução: ${run.id}`);
   lines.push(`Status: ${run.status}`);
-  lines.push(`Inicio: ${run.started_at}`);
+  lines.push(`Início: ${run.started_at}`);
   lines.push(`Fim: ${run.finished_at || "-"}`);
   lines.push(`Processadas: ${run.processed}/${run.total_conversations}`);
   lines.push(`Sucesso: ${run.success_count} | Falhas: ${run.failure_count}`);
@@ -46,7 +46,7 @@ function buildTxtFromRun(run: NonNullable<Awaited<ReturnType<typeof getLatestRun
     return lines.join("\n");
   }
 
-  lines.push("Relatorio em markdown nao encontrado. Conteudo JSON abaixo:");
+  lines.push("Relatório em markdown não encontrado. Conteúdo JSON abaixo:");
   lines.push("");
   lines.push(JSON.stringify(run.report_json || {}, null, 2));
   return lines.join("\n");
@@ -70,7 +70,7 @@ function buildTxtFromRuns(
   label: string,
 ): string {
   const lines: string[] = [];
-  lines.push("RELATORIO CONSOLIDADO");
+  lines.push("RELATÓRIO CONSOLIDADO");
   lines.push(`Escopo: ${label}`);
   lines.push(`Execucoes: ${runs.length}`);
   lines.push("");
@@ -79,11 +79,11 @@ function buildTxtFromRuns(
 
   for (let index = 0; index < runs.length; index += 1) {
     const run = runs[index];
-    lines.push(`# EXECUCAO ${index + 1}`);
-    lines.push(`Data de referencia: ${run.dateRef.toISOString().slice(0, 10)}`);
-    lines.push(`Execucao: ${run.id}`);
+    lines.push(`# EXECUÇÃO ${index + 1}`);
+    lines.push(`Data de referência: ${run.dateRef.toISOString().slice(0, 10)}`);
+    lines.push(`Execução: ${run.id}`);
     lines.push(`Status: ${run.status}`);
-    lines.push(`Inicio: ${run.startedAt.toISOString()}`);
+    lines.push(`Início: ${run.startedAt.toISOString()}`);
     lines.push(`Fim: ${run.finishedAt ? run.finishedAt.toISOString() : "-"}`);
     lines.push(`Processadas: ${run.processed}/${run.totalConversations}`);
     lines.push(`Sucesso: ${run.successCount} | Falhas: ${run.failureCount}`);
@@ -94,7 +94,7 @@ function buildTxtFromRuns(
     if (markdown) {
       lines.push(markdown);
     } else {
-      lines.push("Relatorio em markdown nao encontrado. Conteudo JSON abaixo:");
+      lines.push("Relatório em markdown não encontrado. Conteúdo JSON abaixo:");
       lines.push(JSON.stringify(run.report?.reportJson || {}, null, 2));
     }
     lines.push("");
@@ -118,13 +118,13 @@ export async function GET(request: Request) {
       const preset = String(searchParams.get("preset") || "").trim().toLowerCase() as ExportPreset;
       if (!["week", "month", "year", "total"].includes(preset)) {
         return NextResponse.json(
-          { error: "invalid_param", message: "Parametro preset invalido para exportacao de periodo." },
+          { error: "invalid_param", message: "Parâmetro preset inválido para exportação de período." },
           { status: 400 },
         );
       }
       if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
         return NextResponse.json(
-          { error: "invalid_param", message: "Parametro date em YYYY-MM-DD e obrigatorio para exportacao de periodo." },
+          { error: "invalid_param", message: "Parâmetro date em YYYY-MM-DD é obrigatório para exportação de período." },
           { status: 400 },
         );
       }
@@ -182,7 +182,7 @@ export async function GET(request: Request) {
 
     if (!date) {
       return NextResponse.json(
-        { error: "invalid_param", message: "Parametro date e obrigatorio." },
+        { error: "invalid_param", message: "Parâmetro date é obrigatório." },
         { status: 400 },
       );
     }
@@ -190,7 +190,7 @@ export async function GET(request: Request) {
     const run = await getLatestRunByDate(date);
     if (!run) {
       return NextResponse.json(
-        { error: "run_not_found", message: "Sem relatorio salvo para a data selecionada." },
+        { error: "run_not_found", message: "Sem relatório salvo para a data selecionada." },
         { status: 404 },
       );
     }
@@ -207,7 +207,7 @@ export async function GET(request: Request) {
       },
     });
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : "Nao foi possivel exportar o relatorio.";
+    const message = error instanceof Error ? error.message : "Não foi possível exportar o relatório.";
     return NextResponse.json({ error: "report_export_failed", message }, { status: 400 });
   }
 }

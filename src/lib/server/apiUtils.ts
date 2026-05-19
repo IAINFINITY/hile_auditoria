@@ -1,4 +1,4 @@
-﻿import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { getIsAuthorizedUser } from "@/lib/auth/server";
 import { assertRequiredConfig, getConfig } from "@/lib/server/audit/config";
 import { assertYmd, todayYmd } from "@/lib/server/audit/dateUtils";

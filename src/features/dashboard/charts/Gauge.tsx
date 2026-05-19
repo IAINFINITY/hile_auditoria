@@ -1,4 +1,4 @@
-﻿export function Gauge({
+export function Gauge({
   current,
   total,
   hasData = true,

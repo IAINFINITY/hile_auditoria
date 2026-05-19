@@ -1,4 +1,4 @@
-﻿import type { Severity } from "../../../types";
+import type { Severity } from "../../../types";
 
 export const INSIGHTS_COLLAPSED_LIMIT = 5;
 

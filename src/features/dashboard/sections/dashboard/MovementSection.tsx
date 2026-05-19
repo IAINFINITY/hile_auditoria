@@ -1,8 +1,8 @@
-﻿import { useMemo } from "react";
-import type { Severity } from "../../../types";
-import { DonutChart } from "../charts/DonutChart";
-import { GroupedHourlyChart } from "../charts/GroupedHourlyChart";
-import { severityColors, severityLabel } from "../shared/constants";
+import { useMemo } from "react";
+import type { Severity } from "../../../../types";
+import { DonutChart } from "../../charts/DonutChart";
+import { GroupedHourlyChart } from "../../charts/GroupedHourlyChart";
+import { severityColors, severityLabel } from "../../shared/constants";
 
 const PIE_SEVERITIES: Severity[] = ["critical", "high", "medium", "low"];
 
@@ -111,3 +111,4 @@ export function MovementSection({
     </div>
   );
 }
+

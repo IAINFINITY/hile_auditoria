@@ -1,9 +1,9 @@
-﻿import { useMemo, useState } from "react";
-import type { Severity } from "../../../types";
-import type { ReportHistoryItem, ReportPayload } from "../../../types";
-import type { PeriodPreset } from "../shared/types";
-import { PaginationControls } from "./report/PaginationControls";
-import { toTitleCaseName } from "../hooks/controller/common";
+import { useMemo, useState } from "react";
+import type { Severity } from "../../../../types";
+import type { ReportHistoryItem, ReportPayload } from "../../../../types";
+import type { PeriodPreset } from "../../shared/types";
+import { PaginationControls } from "../report/PaginationControls";
+import { toTitleCaseName } from "../../hooks/controller/common";
 import {
   REPORT_SEVERITY_OPTIONS,
   extractStateLabels,
@@ -16,7 +16,7 @@ import {
   toneColor,
   type ContactContextItem,
   type SeverityFilter,
-} from "./report/utils";
+} from "../report/utils";
 
 function normalizePhaseText(value: unknown): string {
   return String(value || "")
@@ -490,4 +490,5 @@ export function ReportSection({
     </div>
   );
 }
+
 

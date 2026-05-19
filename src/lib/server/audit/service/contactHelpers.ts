@@ -1,4 +1,4 @@
-﻿import { createHash } from "node:crypto";
+import { createHash } from "node:crypto";
 import { unique } from "../dateUtils";
 
 function extractEnteredToday(conversations, date, toYmd) {

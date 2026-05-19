@@ -1,7 +1,7 @@
-﻿import { useMemo, useState } from "react";
-import type { InsightItem, Severity } from "../../../types";
-import type { ProductDemandItem } from "../shared/types";
-import { toTitleCaseName } from "../hooks/controller/common";
+import { useMemo, useState } from "react";
+import type { InsightItem, Severity } from "../../../../types";
+import type { ProductDemandItem } from "../../shared/types";
+import { toTitleCaseName } from "../../hooks/controller/common";
 
 interface ProductsViewProps {
   items: ProductDemandItem[];
@@ -202,3 +202,4 @@ export function ProductsView({
     </section>
   );
 }
+

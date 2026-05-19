@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
-import type { AnalysisOverallResponse, Severity } from "../../../types";
+import type { AnalysisOverallResponse, Severity } from "../../../../types";
 import { apiGet } from "@/lib/api";
-import { DonutChart } from "../charts/DonutChart";
-import { toTitleCaseName } from "../hooks/controller/common";
+import { DonutChart } from "../../charts/DonutChart";
+import { toTitleCaseName } from "../../hooks/controller/common";
 
 interface AnalysisOverallViewProps {
   refreshHint?: string | null;
@@ -158,7 +158,7 @@ export function AnalysisOverallView({ refreshHint }: AnalysisOverallViewProps) {
                       <h4>{toTitleCaseName(item.contact_name)}</h4>
                       <p>{item.summary}</p>
                       <p>
-                        <strong>Data:</strong> {item.date} • <strong>Severidade:</strong> {severityLabel(item.severity)}
+                        <strong>Data:</strong> {item.date} ⬢ <strong>Severidade:</strong> {severityLabel(item.severity)}
                       </p>
                     </div>
                   </article>
@@ -169,7 +169,7 @@ export function AnalysisOverallView({ refreshHint }: AnalysisOverallViewProps) {
             {contextItems.length > contextPageSize ? (
               <div className="pagination-row">
                 <span>
-                  {contextItems.length} registros • Página {safeContextPage} de {totalContextPages}
+                  {contextItems.length} registros ⬢ Página {safeContextPage} de {totalContextPages}
                 </span>
                 <button type="button" onClick={() => setContextPage(Math.max(1, safeContextPage - 1))} disabled={safeContextPage <= 1}>
                   {"<"}
@@ -185,3 +185,4 @@ export function AnalysisOverallView({ refreshHint }: AnalysisOverallViewProps) {
     </div>
   );
 }
+

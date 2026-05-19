@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
-import type { DissatisfactionOverallResponse } from "../../../types";
+import type { DissatisfactionOverallResponse } from "../../../../types";
 import { apiGet } from "@/lib/api";
-import { toTitleCaseName } from "../hooks/controller/common";
-import type { OperationalAlertItem } from "../shared/types";
+import { toTitleCaseName } from "../../hooks/controller/common";
+import type { OperationalAlertItem } from "../../shared/types";
 
 interface DissatisfactionOverallViewProps {
   onOpenReportByContact: (contactName: string) => void;
@@ -171,7 +171,7 @@ export function DissatisfactionOverallView({ onOpenReportByContact, refreshHint 
                     <div className="report-card-content">
                       <h4>{typeLabel(alertType)}</h4>
                       <p>
-                        <strong>{toTitleCaseName(item.contactName || "")}</strong> • conversa #{item.conversationId || "-"}
+                        <strong>{toTitleCaseName(item.contactName || "")}</strong> ⬢ conversa #{item.conversationId || "-"}
                       </p>
                       <p className="dissatisfaction-meta-row">
                         <span className="dissatisfaction-type-chip" style={{ borderColor: typeColor(alertType), color: typeColor(alertType) }}>
@@ -196,7 +196,7 @@ export function DissatisfactionOverallView({ onOpenReportByContact, refreshHint 
           {filteredAlerts.length > perPage ? (
             <div className="pagination-row">
               <span>
-                {filteredAlerts.length} registros • Página {safePage} de {totalPages}
+                {filteredAlerts.length} registros ⬢ Página {safePage} de {totalPages}
               </span>
               <button type="button" onClick={() => setPage(Math.max(1, safePage - 1))} disabled={safePage <= 1}>
                 {"<"}
@@ -211,3 +211,4 @@ export function DissatisfactionOverallView({ onOpenReportByContact, refreshHint 
     </section>
   );
 }
+

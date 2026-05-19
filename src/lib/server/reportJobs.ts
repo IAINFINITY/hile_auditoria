@@ -1,4 +1,4 @@
-﻿export type ReportJobStatus = "running" | "completed" | "failed";
+export type ReportJobStatus = "running" | "completed" | "failed";
 
 export type ReportJobEvent = {
   sequence: number;

@@ -1,8 +1,8 @@
 import { useMemo, useState } from "react";
-import type { InsightItem } from "../../../types";
-import type { ProductDemandItem } from "../shared/types";
+import type { InsightItem } from "../../../../types";
+import type { ProductDemandItem } from "../../shared/types";
 import { ProductsOverallView } from "./ProductsOverallView";
-import { toTitleCaseName } from "../hooks/controller/common";
+import { toTitleCaseName } from "../../hooks/controller/common";
 
 interface ProductsDualViewProps {
   selectedDate: string;
@@ -45,6 +45,7 @@ export function ProductsDualView({
       </div>
 
       <article className="settings-card">
+        <div className="settings-card-head">Escopo dos produtos</div>
         <div className="settings-card-body">
           <div className="btn-group">
             <button type="button" className={`gap-chip ${scope === "day" ? "active" : ""}`} onClick={() => setScope("day")}>
@@ -87,7 +88,7 @@ export function ProductsDualView({
                         <p>
                           <strong>Usuários:</strong>{" "}
                           {item.contactNames.length > 0
-                            ? item.contactNames.map((name) => toTitleCaseName(name)).join(" • ")
+                            ? item.contactNames.map((name) => toTitleCaseName(name)).join(" ⬢ ")
                             : "-"}
                         </p>
                       </div>
@@ -123,4 +124,5 @@ export function ProductsDualView({
     </section>
   );
 }
+
 

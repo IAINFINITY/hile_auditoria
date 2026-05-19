@@ -1,4 +1,4 @@
-﻿function buildQueryString(query: Record<string, unknown>): string {
+function buildQueryString(query: Record<string, unknown>): string {
   const params = new URLSearchParams();
 
   for (const [key, value] of Object.entries(query)) {

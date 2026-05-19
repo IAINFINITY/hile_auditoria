@@ -1,4 +1,4 @@
-﻿import { createHash } from "node:crypto";
+import { createHash } from "node:crypto";
 import type { NormalizedMessage } from "../types";
 
 interface DeltaStateLike {

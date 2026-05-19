@@ -1,6 +1,6 @@
-﻿import { useMemo } from "react";
+import { useMemo } from "react";
 import { FiCheckCircle, FiClock, FiXCircle } from "react-icons/fi";
-import type { ReportHistoryItem, SystemCheckResponse } from "../../../types";
+import type { ReportHistoryItem, SystemCheckResponse } from "../../../../types";
 
 interface LogsViewProps {
   systemCheck: SystemCheckResponse | null;
@@ -166,3 +166,4 @@ export function LogsView({
     </div>
   );
 }
+

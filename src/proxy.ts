@@ -1,4 +1,4 @@
-﻿import { NextResponse, type NextRequest } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
 import { getIsAuthorizedUser } from "@/lib/auth/server";
 import { createProxySupabaseClient } from "@/lib/supabase/server";
 

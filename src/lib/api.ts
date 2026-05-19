@@ -1,4 +1,4 @@
-﻿const DEFAULT_TIMEOUT_MS = 240000;
+const DEFAULT_TIMEOUT_MS = 240000;
 
 function withTimeout(signal: AbortSignal | undefined, timeoutMs: number): AbortSignal {
   if (signal) {

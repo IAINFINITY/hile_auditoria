@@ -1,4 +1,4 @@
-﻿import { createHash } from "node:crypto";
+import { createHash } from "node:crypto";
 import type { DifyConfig, ErrorWithMeta } from "./types";
 
 function normalizeDifyBaseUrl(rawBaseUrl: string): string {
@@ -334,9 +334,9 @@ export function createDifyClient({
 
     if (mode === "chat") {
       const prompt = [
-        `Data de referencia: ${date}`,
+        `Data de referência: ${date}`,
         "Analise o log abaixo e identifique pontos de melhoria e gaps operacionais.",
-        "Retorne somente JSON valido com as chaves: resumo, pontos_melhoria[], gaps_operacionais[], risco_critico, proximos_passos[].",
+        "Retorne somente JSON válido com as chaves: resumo, pontos_melhoria[], gaps_operacionais[], risco_critico, proximos_passos[].",
         "Cada item de gaps_operacionais[] deve conter: nome_gap, severidade, descricao, mensagem_referencia.",
         "Em mensagem_referencia, inclua trecho literal da mensagem e/ou timestamp da conversa (nunca deixe vazio).",
         "",

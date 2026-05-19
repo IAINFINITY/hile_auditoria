@@ -1,4 +1,4 @@
-﻿import type { AnalysisItem, InsightItem, OverviewPayload, ReportByDateResponse, ReportPayload, Severity } from "../../../../types";
+import type { AnalysisItem, InsightItem, OverviewPayload, ReportByDateResponse, ReportPayload, Severity } from "../../../../types";
 import {
   asBoolean,
   asNumber,

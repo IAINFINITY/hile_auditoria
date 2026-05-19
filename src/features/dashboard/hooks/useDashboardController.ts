@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { apiGet, apiPost } from "../../../lib/api";
 import type {
   AvailableDatesResponse,
@@ -10,11 +10,9 @@ import type {
   ReportJobStartResponse,
   ReportJobStatusResponse,
   ReportPayload,
-  Severity,
   SystemCheckResponse,
 } from "../../../types";
-import { INSIGHTS_COLLAPSED_LIMIT, severityOrder } from "../shared/constants";
-import { clampDateInput, normalizeDateInput, parseHour, toDateInputValue } from "../shared/helpers";
+import { clampDateInput, normalizeDateInput, toDateInputValue } from "../shared/helpers";
 import type {
   ActionKey,
   ApiConfigPayload,
@@ -22,24 +20,34 @@ import type {
   InsightFilter,
   MetricCard,
   PeriodPreset,
-  ReportLinkItem,
-  RiskRow,
-  SeveritySnapshot,
   AttendantPerformanceSummary,
 } from "../shared/types";
 import {
   addDays,
-  buildConversationLink,
-  parseJsonObject,
-  parseHourlyRolesFromLogText,
   toTitleCaseName,
-  toChatwootAppBase,
   type ReportSeverityFilter,
 } from "./controller/common";
-import { buildStructuredReportMarkdown } from "./controller/reportMarkdown";
 import { aggregateSnapshots } from "./controller/periodAggregation";
 import type { DashboardRunSnapshot } from "./controller/runSnapshotMapper";
 import { mapRunToDashboardSnapshot } from "./controller/runSnapshotMapper";
+import { buildAttendantsPerformance } from "./controller/attendantsPerformance";
+import {
+  buildAllInsights,
+  buildFilteredReportMarkdown,
+  buildGaugeData,
+  buildInformationalInsights,
+  buildMetricCards,
+  buildPanoramaExtra,
+  buildReportContacts,
+  buildReportLinks,
+  buildRiskRows,
+  buildSelectedDateInfo,
+  buildSeveritySnapshot,
+  buildSortedInsights,
+  buildTrendSeries,
+  clampInsightsPageSize,
+  filterFailuresByContact,
+} from "./controller/derived";
 import {
   buildClientResponseStats,
   extractOperationalAlerts,
@@ -93,7 +101,7 @@ export function useDashboardController(options?: { enabled?: boolean; syncNavOnS
   const missingReportDatesRef = useRef<Set<string>>(new Set());
   const isBusy = loading !== null;
   const isRunningOverview = loading === "overview";
-  const insightsPageSize = INSIGHTS_COLLAPSED_LIMIT;
+  const insightsPageSize = clampInsightsPageSize();
 
   function setDate(value: string) {
     const normalized = normalizeDateInput(value, maxDate);
@@ -435,64 +443,15 @@ export function useDashboardController(options?: { enabled?: boolean; syncNavOnS
   }, [date, enabled, hasLoadedAvailableDates, isDateHydrated, isRunningOverview, isPeriodMode]);
 
   const informationalInsights = useMemo(() => {
-    const analyses = report?.raw_analysis?.analyses || [];
-    const contextual: InsightItem[] = [];
-
-    analyses.forEach((analysis, analysisIndex) => {
-      const parsed = parseJsonObject(String(analysis.analysis?.answer || ""));
-      const contextItems = Array.isArray(parsed.contexto_informativo)
-        ? parsed.contexto_informativo.map((item) => String(item || "").trim()).filter(Boolean)
-        : [];
-
-      const fallbackSummary = String(parsed.resumo || "").trim();
-      const lines = contextItems.length > 0 ? contextItems : fallbackSummary ? [fallbackSummary] : [];
-      if (lines.length === 0) return;
-
-      const contactName = toTitleCaseName(
-        analysis.contact?.name || analysis.contact?.identifier || analysis.contact_key || "Contato",
-      );
-      const conversationId = Number((analysis.conversation_ids || [0])[0] || analysisIndex + 1);
-      const firstState = analysis.conversation_operational?.[0]?.state;
-      const finalizationStatus =
-        String(firstState?.finalization_status || "").toLowerCase() === "finalizada" ? "finalizada" : "continuada";
-      const finalizationReason =
-        String(firstState?.finalization_reason || "").trim() ||
-        (finalizationStatus === "finalizada" ? "finalizada" : "continuada");
-      const labels = Array.isArray(firstState?.labels) ? firstState.labels.map((item) => String(item || "")) : [];
-
-      lines.forEach((line, lineIndex) => {
-        contextual.push({
-          id: `ctx-${analysis.contact_key || analysisIndex}-${lineIndex}`,
-          severity: "info",
-          title: "Contexto informativo",
-          summary: line,
-          conversation_id: conversationId > 0 ? conversationId : analysisIndex + 1,
-          contact_key: String(analysis.contact_key || `contact-${analysisIndex + 1}`),
-          contact_name: contactName || "Contato",
-          finalization_status: finalizationStatus,
-          finalization_reason: finalizationReason,
-          finalization_actor: firstState?.finalization_actor || null,
-          labels,
-          status: null,
-          unread_count: 0,
-          last_interaction_at_local: null,
-          trigger_after_1h_at_local: null,
-        });
-      });
-    });
-
-    if (contextual.length > 0) return contextual;
-    return insights.filter((insight) => insight.severity === "info");
-  }, [insights, report?.raw_analysis?.analyses]);
+    return buildInformationalInsights(report, insights);
+  }, [insights, report]);
 
   const sortedInsights = useMemo(() => {
-    return [...insights]
-      .filter((insight) => insight.severity !== "info")
-      .sort((a, b) => severityOrder[b.severity] - severityOrder[a.severity]);
+    return buildSortedInsights(insights);
   }, [insights]);
 
   const allInsights = useMemo(() => {
-    return [...insights].sort((a, b) => severityOrder[b.severity] - severityOrder[a.severity]);
+    return buildAllInsights(insights);
   }, [insights]);
 
   const improvementInsights = useMemo(() => {
@@ -521,111 +480,27 @@ export function useDashboardController(options?: { enabled?: boolean; syncNavOnS
   }, [filteredInsights, insightsPage, insightsPageSize, totalInsightPages]);
 
   const severitySnapshot = useMemo(() => {
-    return {
-      critical: sortedInsights.filter((i) => i.severity === "critical").length,
-      high: sortedInsights.filter((i) => i.severity === "high").length,
-      medium: sortedInsights.filter((i) => i.severity === "medium").length,
-      low: sortedInsights.filter((i) => i.severity === "low").length,
-      info: 0,
-    } as SeveritySnapshot;
+    return buildSeveritySnapshot(sortedInsights);
   }, [sortedInsights]);
 
   const trendSeries = useMemo(() => {
-    const hourlyConversations = new Array<number>(24).fill(0);
-    const hourlyIa = new Array<number>(24).fill(0);
-    const hourlyUsuario = new Array<number>(24).fill(0);
-
-    if (overview?.conversation_operational?.length) {
-      for (const item of overview.conversation_operational) {
-        const hour = parseHour(item.last_interaction_at_local || item.trigger_after_1h_at_local);
-        if (hour === null || hour < 0 || hour > 23) continue;
-        hourlyConversations[hour] += 1;
-      }
-    }
-
-    if (report?.raw_analysis?.analyses?.length) {
-      for (const analysis of report.raw_analysis.analyses) {
-        const pairs = parseHourlyRolesFromLogText(analysis.log_text || "");
-        for (const pair of pairs) {
-          if (pair.hour < 0 || pair.hour > 23) continue;
-          if (pair.role === "AGENT") {
-            hourlyIa[pair.hour] += 1;
-          } else {
-            hourlyUsuario[pair.hour] += 1;
-          }
-        }
-      }
-    }
-
-    const hasConversations = hourlyConversations.some((value) => value > 0);
-    const hasRoles = hourlyIa.some((value) => value > 0) || hourlyUsuario.some((value) => value > 0);
-    if (!hasConversations && !hasRoles) return [] as Array<{ label: string; conversas: number; ia: number; usuario: number }>;
-
-    return hourlyConversations.map((conversas, hour) => ({
-      label: `${String(hour).padStart(2, "0")}h`,
-      conversas,
-      ia: hourlyIa[hour],
-      usuario: hourlyUsuario[hour],
-    }));
+    return buildTrendSeries(overview, report);
   }, [overview, report]);
 
   const metricCards = useMemo<MetricCard[]>(() => {
-    const baseCards: MetricCard[] = [
-      { label: "Conversas varridas", value: "—", tone: "" },
-      { label: "Entraram no dia", value: "—", tone: "accent" },
-      { label: "Total analisadas", value: "—", tone: "" },
-      { label: "Total análises", value: "—", tone: "" },
-      { label: "Números repetidos", value: "—", tone: "" },
-      { label: "Finalizadas", value: "—", tone: "" },
-      { label: "Continuadas", value: "—", tone: "" },
-      { label: "Insights críticos", value: "—", tone: "" },
-      { label: "Gatilho +1h ativo", value: "—", tone: "" },
-    ];
-
-    if (!overview) return baseCards;
-
-    const m = overview.overview;
-    return [
-      { label: "Conversas varridas", value: m.conversations_scanned, tone: "" },
-      { label: "Entraram no dia", value: m.conversations_entered_today, tone: "accent" },
-      { label: "Total analisadas", value: m.conversations_total_analyzed_day, tone: "" },
-      { label: "Total análises", value: m.total_analysis_count, tone: "" },
-      { label: "Números repetidos", value: m.repeated_identifier_count ?? 0, tone: (m.repeated_identifier_count ?? 0) > 0 ? "orange" : "green" },
-      { label: "Finalizadas", value: m.finalized_count, tone: "green" },
-      { label: "Continuadas", value: m.continued_count, tone: "orange" },
-      { label: "Insights críticos", value: m.critical_insights_count, tone: m.critical_insights_count > 0 ? "red" : "" },
-      { label: "Gatilho +1h ativo", value: m.trigger_ready_count, tone: m.trigger_ready_count > 0 ? "orange" : "" },
-    ];
+    return buildMetricCards(overview);
   }, [overview]);
 
   const gaugeData = useMemo(() => {
-    const total = severitySnapshot.critical + severitySnapshot.high + severitySnapshot.medium + severitySnapshot.low;
-    const critical = severitySnapshot.critical;
-    const score = total > 0 ? Math.max(0, Math.round(((total - critical) / total) * 100)) : 100;
-    return { current: score, total: 100 };
+    return buildGaugeData(severitySnapshot);
   }, [severitySnapshot]);
 
   const panoramaExtra = useMemo(() => {
-    if (!overview) return "Execute o overview para consolidar os indicadores.";
-
-    const data = overview.overview;
-    return `${data.finalized_count} finalizadas • ${data.continued_count} continuadas • ${data.insights_total} insights`;
+    return buildPanoramaExtra(overview);
   }, [overview]);
 
   const riskRows = useMemo(() => {
-    const snapshot = severitySnapshot;
-    const total = snapshot.critical + snapshot.high + snapshot.medium + snapshot.low;
-
-    const baseRows: Array<{ key: Severity; label: string; count: number; pct: string }> = [
-      { key: "critical", label: "Crítico", count: snapshot.critical, pct: total ? ((snapshot.critical / total) * 100).toFixed(1) : "0.0" },
-      { key: "high", label: "Alto", count: snapshot.high, pct: total ? ((snapshot.high / total) * 100).toFixed(1) : "0.0" },
-      { key: "medium", label: "Médio", count: snapshot.medium, pct: total ? ((snapshot.medium / total) * 100).toFixed(1) : "0.0" },
-      { key: "low", label: "Baixo", count: snapshot.low, pct: total ? ((snapshot.low / total) * 100).toFixed(1) : "0.0" },
-    ];
-
-    const rows: RiskRow[] = baseRows.map((row) => ({ ...row }));
-
-    return { rows, total };
+    return buildRiskRows(severitySnapshot);
   }, [severitySnapshot]);
 
   const operationalAlerts = useMemo(() => {
@@ -644,167 +519,7 @@ export function useDashboardController(options?: { enabled?: boolean; syncNavOnS
   }, [report?.raw_analysis?.analyses]);
 
   const attendantsPerformance = useMemo<AttendantPerformanceSummary>(() => {
-    const owners: Array<"ia" | "suellen" | "samuel"> = ["ia", "suellen", "samuel"];
-    const fromSummary = report?.summary?.responsible_performance;
-
-    if (fromSummary) {
-      const entries = owners.map((owner) => {
-        const item = fromSummary[owner];
-        return {
-          owner,
-          ownerLabel: item.owner_label,
-          analysesCount: Number(item.analyses_count || 0),
-          contactsCount: Number(item.contacts_count || 0),
-          conversationsCount: Number(item.conversations_count || 0),
-          messageCountAgent: Number(item.message_count_agent || 0),
-          gapsCount: Number(item.gaps_count || 0),
-          criticalGapsCount: Number(item.critical_gaps_count || 0),
-          improvementsCount: Number(item.improvements_count || 0),
-          avgResponseSec: item.avg_response_sec ?? null,
-          maxResponseSec: item.max_response_sec ?? null,
-          responseSamples: Number(item.response_samples || 0),
-        };
-      });
-      return {
-        entries,
-        totalAnalyses: entries.reduce((acc, entry) => acc + entry.analysesCount, 0),
-        totalMessages: entries.reduce((acc, entry) => acc + entry.messageCountAgent, 0),
-        totalGaps: entries.reduce((acc, entry) => acc + entry.gapsCount, 0),
-        totalCriticalGaps: entries.reduce((acc, entry) => acc + entry.criticalGapsCount, 0),
-      };
-    }
-
-    const analyses = report?.raw_analysis?.analyses || [];
-    const bucketMap = {
-      ia: {
-        owner: "ia" as const,
-        ownerLabel: "IA",
-        analysesCount: 0,
-        contactsCount: 0,
-        conversationsCount: 0,
-        messageCountAgent: 0,
-        gapsCount: 0,
-        criticalGapsCount: 0,
-        improvementsCount: 0,
-        avgResponseSec: null as number | null,
-        maxResponseSec: null as number | null,
-        responseSamples: 0,
-        _sumResponseSec: 0,
-        _contacts: new Set<string>(),
-        _conversations: new Set<number>(),
-      },
-      suellen: {
-        owner: "suellen" as const,
-        ownerLabel: "Comercial Suellen",
-        analysesCount: 0,
-        contactsCount: 0,
-        conversationsCount: 0,
-        messageCountAgent: 0,
-        gapsCount: 0,
-        criticalGapsCount: 0,
-        improvementsCount: 0,
-        avgResponseSec: null as number | null,
-        maxResponseSec: null as number | null,
-        responseSamples: 0,
-        _sumResponseSec: 0,
-        _contacts: new Set<string>(),
-        _conversations: new Set<number>(),
-      },
-      samuel: {
-        owner: "samuel" as const,
-        ownerLabel: "Comercial Samuel",
-        analysesCount: 0,
-        contactsCount: 0,
-        conversationsCount: 0,
-        messageCountAgent: 0,
-        gapsCount: 0,
-        criticalGapsCount: 0,
-        improvementsCount: 0,
-        avgResponseSec: null as number | null,
-        maxResponseSec: null as number | null,
-        responseSamples: 0,
-        _sumResponseSec: 0,
-        _contacts: new Set<string>(),
-        _conversations: new Set<number>(),
-      },
-    };
-
-    const parseSeverity = (value: unknown): "critical" | "high" | "medium" | "low" | "info" => {
-      const normalized = String(value || "")
-        .toLowerCase()
-        .normalize("NFD")
-        .replace(/[\u0300-\u036f]/g, "");
-      if (normalized.includes("crit")) return "critical";
-      if (normalized.includes("high") || normalized.includes("alt")) return "high";
-      if (normalized.includes("medium") || normalized.includes("med")) return "medium";
-      if (normalized.includes("low") || normalized.includes("baix")) return "low";
-      return "info";
-    };
-
-    for (const analysis of analyses) {
-      const tracking = analysis.responsible_tracking;
-      const owner = tracking?.owner_bucket && owners.includes(tracking.owner_bucket) ? tracking.owner_bucket : "ia";
-      const bucket = bucketMap[owner];
-      const parsed = parseJsonObject(String(analysis.analysis?.answer || ""));
-
-      bucket.analysesCount += 1;
-      bucket.messageCountAgent += Number(tracking?.message_count_agent || 0);
-      bucket.improvementsCount += Array.isArray(parsed.pontos_melhoria)
-        ? (parsed.pontos_melhoria as unknown[]).length
-        : 0;
-
-      if (analysis.contact_key) bucket._contacts.add(String(analysis.contact_key));
-      for (const conversationId of analysis.conversation_ids || []) {
-        const id = Number(conversationId || 0);
-        if (id > 0) bucket._conversations.add(id);
-      }
-
-      const gaps = Array.isArray(parsed.gaps_operacionais) ? parsed.gaps_operacionais : [];
-      bucket.gapsCount += gaps.length;
-      for (const gap of gaps) {
-        const gapObj = gap && typeof gap === "object" ? (gap as Record<string, unknown>) : {};
-        const sev = parseSeverity(gapObj.severidade || gapObj.severity || gapObj.nivel || gapObj.prioridade);
-        if (sev === "critical") bucket.criticalGapsCount += 1;
-      }
-
-      const metric = tracking?.response_metrics?.[owner];
-      const samples = Number(metric?.samples || 0);
-      const avg = Number(metric?.avg_response_sec || 0);
-      const max = Number(metric?.max_response_sec || 0);
-      if (samples > 0 && avg > 0) {
-        bucket._sumResponseSec += avg * samples;
-        bucket.responseSamples += samples;
-      }
-      if (max > 0) {
-        bucket.maxResponseSec = Math.max(Number(bucket.maxResponseSec || 0), max);
-      }
-    }
-
-    const entries = owners.map((owner) => {
-      const bucket = bucketMap[owner];
-      return {
-        owner: bucket.owner,
-        ownerLabel: bucket.ownerLabel,
-        analysesCount: bucket.analysesCount,
-        contactsCount: bucket._contacts.size,
-        conversationsCount: bucket._conversations.size,
-        messageCountAgent: bucket.messageCountAgent,
-        gapsCount: bucket.gapsCount,
-        criticalGapsCount: bucket.criticalGapsCount,
-        improvementsCount: bucket.improvementsCount,
-        avgResponseSec: bucket.responseSamples > 0 ? Number((bucket._sumResponseSec / bucket.responseSamples).toFixed(2)) : null,
-        maxResponseSec: bucket.maxResponseSec && bucket.maxResponseSec > 0 ? bucket.maxResponseSec : null,
-        responseSamples: bucket.responseSamples,
-      };
-    });
-
-    return {
-      entries,
-      totalAnalyses: entries.reduce((acc, entry) => acc + entry.analysesCount, 0),
-      totalMessages: entries.reduce((acc, entry) => acc + entry.messageCountAgent, 0),
-      totalGaps: entries.reduce((acc, entry) => acc + entry.gapsCount, 0),
-      totalCriticalGaps: entries.reduce((acc, entry) => acc + entry.criticalGapsCount, 0),
-    };
+    return buildAttendantsPerformance(report);
   }, [report]);
 
   const selectedDateHasSavedReport = useMemo(() => {
@@ -813,100 +528,33 @@ export function useDashboardController(options?: { enabled?: boolean; syncNavOnS
   }, [availableReportDates, date, report?.date]);
 
   const selectedDateInfo = useMemo(() => {
-    if (isLoadingDateReport) {
-      return "Carregando relatório salvo da data selecionada...";
-    }
-
-    if (periodPreset === "total") {
-      return "Você está visualizando o consolidado total das execuções salvas.";
-    }
-
-    const today = maxDate;
-    const yesterday = addDays(new Date(today), -1).toISOString().slice(0, 10);
-    const dayBeforeYesterday = addDays(new Date(today), -2).toISOString().slice(0, 10);
-
-    if (date === today) {
-      return selectedDateHasSavedReport
-        ? "Você está em hoje e já existe relatório salvo para esta data."
-        : "Você está em hoje e ainda não existe relatório salvo.";
-    }
-
-    if (date === yesterday) {
-      return selectedDateHasSavedReport
-        ? "Você está em ontem com relatório salvo."
-        : "Você está em ontem sem relatório salvo ainda.";
-    }
-
-    if (date === dayBeforeYesterday) {
-      return selectedDateHasSavedReport
-        ? "Você está em anteontem com relatório salvo."
-        : "Você está em anteontem sem relatório salvo ainda.";
-    }
-
-    if (date < today) {
-      return selectedDateHasSavedReport
-        ? "Você está em um dia personalizado com relatório salvo."
-        : "Você está em um dia personalizado sem relatório salvo ainda.";
-    }
-
-    return "Data fora do intervalo permitido.";
+    return buildSelectedDateInfo({
+      date,
+      maxDate,
+      isLoadingDateReport,
+      periodPreset,
+      selectedDateHasSavedReport,
+    });
   }, [date, isLoadingDateReport, maxDate, periodPreset, selectedDateHasSavedReport]);
 
   const reportContacts = useMemo(() => {
-    if (!report?.raw_analysis?.analyses?.length) return [] as string[];
-
-    const unique = new Set<string>();
-    for (const analysis of report.raw_analysis.analyses) {
-      const name = toTitleCaseName(analysis.contact?.name || analysis.contact?.identifier || analysis.contact_key || "");
-      if (name) unique.add(name);
-    }
-
-    return Array.from(unique).sort((a, b) => a.localeCompare(b, "pt-BR"));
+    return buildReportContacts(report);
   }, [report]);
 
   const filteredFailures = useMemo(() => {
-    if (!selectedReportContact) return failures;
-    const needle = selectedReportContact.toLowerCase();
-    return failures.filter((failure) => {
-      const name = (failure.contact?.name || failure.contact?.identifier || failure.contact_key || "").toLowerCase();
-      return name.includes(needle);
-    });
+    return filterFailuresByContact(failures, selectedReportContact);
   }, [failures, selectedReportContact]);
 
   const filteredReportMarkdown = useMemo(() => {
-    const structured = buildStructuredReportMarkdown(report, selectedReportContact, reportSeverityFilter);
-    if (structured.trim()) return structured;
-    return report?.report_markdown || "";
+    return buildFilteredReportMarkdown(report, selectedReportContact, reportSeverityFilter);
   }, [report, selectedReportContact, reportSeverityFilter]);
 
   const reportLinks = useMemo(() => {
-    if (!report?.raw_analysis?.analyses?.length) return [] as ReportLinkItem[];
-
-    const baseUrl = toChatwootAppBase(apiConfig?.chatwoot_base_url || "");
-    const accountId = Number(report.account?.id || 0);
-    const inboxId = Number(report.inbox?.id || 0);
-    const links: ReportLinkItem[] = [];
-    const seen = new Set<string>();
-
-    for (const analysis of report.raw_analysis.analyses) {
-      const contactName = toTitleCaseName(analysis.contact?.name || analysis.contact?.identifier || analysis.contact_key || "");
-      if (!contactName) continue;
-      if (selectedReportContact && selectedReportContact !== contactName) continue;
-
-      const conversationIds = Array.isArray(analysis.conversation_ids) ? analysis.conversation_ids : [];
-      for (const rawConversationId of conversationIds) {
-        const conversationId = Number(rawConversationId || 0);
-        const url = buildConversationLink(baseUrl, accountId, inboxId, conversationId);
-        if (!url || seen.has(url)) continue;
-        seen.add(url);
-        links.push({
-          label: `${contactName} - conversa ${conversationId}`,
-          url,
-        });
-      }
-    }
-
-    return links;
+    return buildReportLinks({
+      report,
+      selectedReportContact,
+      chatwootBaseUrl: apiConfig?.chatwoot_base_url || "",
+    });
   }, [apiConfig?.chatwoot_base_url, report, selectedReportContact]);
 
   function pushRunStep(step: string) {

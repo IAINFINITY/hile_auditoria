@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { apiGet } from "@/lib/api";
 
 type ProductOverallItem = {
@@ -461,5 +461,6 @@ export function ProductsOverallView({ refreshHint = null }: ProductsOverallViewP
     </section>
   );
 }
+
 
 

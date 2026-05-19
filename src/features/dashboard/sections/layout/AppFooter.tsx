@@ -1,4 +1,4 @@
-﻿import { FaFacebookF, FaInstagram, FaLinkedinIn, FaXTwitter } from "react-icons/fa6";
+import { FaFacebookF, FaInstagram, FaLinkedinIn, FaXTwitter } from "react-icons/fa6";
 
 interface AppFooterProps {
   loginMode?: boolean;
