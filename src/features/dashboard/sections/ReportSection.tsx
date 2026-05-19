@@ -1,6 +1,7 @@
 ﻿import { useMemo, useState } from "react";
 import type { Severity } from "../../../types";
 import type { ReportHistoryItem, ReportPayload } from "../../../types";
+import type { PeriodPreset } from "../shared/types";
 import { PaginationControls } from "./report/PaginationControls";
 import { toTitleCaseName } from "../hooks/controller/common";
 import {
@@ -74,6 +75,7 @@ interface ReportSectionProps {
   reportSeverityFilter: SeverityFilter;
   onChangeReportSeverityFilter: (value: SeverityFilter) => void;
   selectedDate: string;
+  periodPreset: PeriodPreset;
 }
 
 export function ReportSection({
@@ -85,6 +87,7 @@ export function ReportSection({
   reportSeverityFilter,
   onChangeReportSeverityFilter,
   selectedDate,
+  periodPreset,
 }: ReportSectionProps) {
   const hasReportData = Boolean(report?.raw_analysis?.analyses?.length) || criticalGapInsights.length > 0;
   const [isDownloadingTxt, setIsDownloadingTxt] = useState(false);
@@ -94,6 +97,8 @@ export function ReportSection({
   const [filterPulse, setFilterPulse] = useState(0);
   const perPage = 5;
   const contactFilterValue = selectedReportContact || "";
+  const isAggregatePreset =
+    periodPreset === "week" || periodPreset === "month" || periodPreset === "year" || periodPreset === "total";
 
   const historyForSelectedDate = useMemo(() => {
     const target = String(selectedDate || "").trim();
@@ -245,7 +250,13 @@ export function ReportSection({
     if (isDownloadingTxt || !hasReportData) return;
     setIsDownloadingTxt(true);
     try {
-      const response = await fetch(`/api/report-day/export-txt?date=${encodeURIComponent(selectedDate)}`, {
+      const query = new URLSearchParams();
+      query.set("date", selectedDate);
+      if (isAggregatePreset) {
+        query.set("scope", "period");
+        query.set("preset", periodPreset);
+      }
+      const response = await fetch(`/api/report-day/export-txt?${query.toString()}`, {
         method: "GET",
       });
       if (!response.ok) {
@@ -257,7 +268,9 @@ export function ReportSection({
       const objectUrl = window.URL.createObjectURL(blob);
       const anchor = document.createElement("a");
       anchor.href = objectUrl;
-      anchor.download = `relatorio-${selectedDate}.txt`;
+      anchor.download = isAggregatePreset
+        ? `relatorio-${periodPreset}-${selectedDate}.txt`
+        : `relatorio-${selectedDate}.txt`;
       document.body.appendChild(anchor);
       anchor.click();
       anchor.remove();
@@ -293,7 +306,11 @@ export function ReportSection({
                 disabled={isDownloadingTxt || !hasReportData}
                 title={!hasReportData ? "Gere ou carregue um relatório para habilitar a exportação TXT." : undefined}
               >
-                {isDownloadingTxt ? "Baixando..." : "Baixar TXT do dia"}
+                {isDownloadingTxt
+                  ? "Baixando..."
+                  : isAggregatePreset
+                    ? "Baixar TXT do período"
+                    : "Baixar TXT do dia"}
               </button>
             </span>
           </div>
@@ -473,3 +490,4 @@ export function ReportSection({
     </div>
   );
 }
+

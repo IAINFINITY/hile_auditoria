@@ -99,7 +99,12 @@ export function useDashboardController(options?: { enabled?: boolean; syncNavOnS
     const normalized = normalizeDateInput(value, maxDate);
     const safe = clampDateInput(normalized, minDate, maxDate);
     if (safe > maxDate) return;
-    if (periodPreset === "week" || periodPreset === "month" || periodPreset === "year") {
+    if (
+      periodPreset === "week" ||
+      periodPreset === "month" ||
+      periodPreset === "year" ||
+      periodPreset === "total"
+    ) {
       setPeriodPreset("today");
     }
     setDateState(safe);
@@ -110,7 +115,8 @@ export function useDashboardController(options?: { enabled?: boolean; syncNavOnS
     setInsightsPage(1);
   }
 
-  const isPeriodMode = periodPreset === "week" || periodPreset === "month" || periodPreset === "year";
+  const isPeriodMode =
+    periodPreset === "week" || periodPreset === "month" || periodPreset === "year" || periodPreset === "total";
   const loadedPeriodDatesRef = useRef<string | null>(null);
   const isLoadingPeriodRef = useRef(false);
 
@@ -125,9 +131,12 @@ export function useDashboardController(options?: { enabled?: boolean; syncNavOnS
     else if (preset === "year") from.setDate(now.getDate() - 364);
     const fromDate = toDateInputValue(from);
 
-    const datesInRange = [...dates]
-      .filter((d) => d >= fromDate && d <= toDate)
-      .sort();
+    const datesInRange =
+      preset === "total"
+        ? [...dates].sort()
+        : [...dates]
+            .filter((d) => d >= fromDate && d <= toDate)
+            .sort();
 
     if (datesInRange.length === 0) {
       setStatus("Nenhum relatório salvo no período selecionado.");
@@ -170,7 +179,12 @@ export function useDashboardController(options?: { enabled?: boolean; syncNavOnS
       }
 
       loadedPeriodDatesRef.current = periodKey;
-      const dateLabel = `${fromDate} a ${toDate}`;
+      const dateLabel =
+        preset === "total"
+          ? datesInRange.length > 0
+            ? `${datesInRange[0]} a ${datesInRange[datesInRange.length - 1]}`
+            : "Total"
+          : `${fromDate} a ${toDate}`;
       const aggregated = aggregateSnapshots(results, dateLabel);
       setOverview(aggregated.overview);
       setInsights(aggregated.insights);
@@ -274,15 +288,25 @@ export function useDashboardController(options?: { enabled?: boolean; syncNavOnS
           [...missingReportDatesRef.current].filter((item) => !dates.includes(item)),
         );
         setHasLoadedAvailableDates(true);
-        if (periodPreset === "week" || periodPreset === "month" || periodPreset === "year") {
-          loadedPeriodDatesRef.current = null;
-          loadPeriodData(periodPreset, dates);
-        }
+    if (
+      periodPreset === "week" ||
+      periodPreset === "month" ||
+      periodPreset === "year" ||
+      periodPreset === "total"
+    ) {
+      loadedPeriodDatesRef.current = null;
+      loadPeriodData(periodPreset, dates);
+    }
       })
       .catch(() => {
         setAvailableReportDates([]);
         setHasLoadedAvailableDates(true);
-        if (periodPreset === "week" || periodPreset === "month" || periodPreset === "year") {
+        if (
+          periodPreset === "week" ||
+          periodPreset === "month" ||
+          periodPreset === "year" ||
+          periodPreset === "total"
+        ) {
           loadedPeriodDatesRef.current = null;
           loadPeriodData(periodPreset, []);
         }
@@ -793,6 +817,10 @@ export function useDashboardController(options?: { enabled?: boolean; syncNavOnS
       return "Carregando relatório salvo da data selecionada...";
     }
 
+    if (periodPreset === "total") {
+      return "Você está visualizando o consolidado total das execuções salvas.";
+    }
+
     const today = maxDate;
     const yesterday = addDays(new Date(today), -1).toISOString().slice(0, 10);
     const dayBeforeYesterday = addDays(new Date(today), -2).toISOString().slice(0, 10);
@@ -822,7 +850,7 @@ export function useDashboardController(options?: { enabled?: boolean; syncNavOnS
     }
 
     return "Data fora do intervalo permitido.";
-  }, [date, isLoadingDateReport, maxDate, selectedDateHasSavedReport]);
+  }, [date, isLoadingDateReport, maxDate, periodPreset, selectedDateHasSavedReport]);
 
   const reportContacts = useMemo(() => {
     if (!report?.raw_analysis?.analyses?.length) return [] as string[];

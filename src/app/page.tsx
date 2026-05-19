@@ -10,12 +10,14 @@ import { AppFooter } from "@/features/dashboard/sections/AppFooter";
 import { GapsSection } from "@/features/dashboard/sections/GapsSection";
 import { InsightsSection } from "@/features/dashboard/sections/InsightsSection";
 import { AccountsView } from "@/features/dashboard/sections/AccountsView";
+import { AnalysisOverallView } from "@/features/dashboard/sections/AnalysisOverallView";
 import { AttendantsView } from "@/features/dashboard/sections/AttendantsView";
+import { DissatisfactionOverallView } from "@/features/dashboard/sections/DissatisfactionOverallView";
 import { DissatisfactionView } from "@/features/dashboard/sections/DissatisfactionView";
 import { LogsView } from "@/features/dashboard/sections/LogsView";
 import { MetricsSection } from "@/features/dashboard/sections/MetricsSection";
 import { MovementSection } from "@/features/dashboard/sections/MovementSection";
-import { ProductsOverallView } from "@/features/dashboard/sections/ProductsOverallView";
+import { ProductsDualView } from "@/features/dashboard/sections/ProductsDualView";
 import { ProductsView } from "@/features/dashboard/sections/ProductsView";
 import { ReportSection } from "@/features/dashboard/sections/ReportSection";
 import { SettingsView } from "@/features/dashboard/sections/SettingsView";
@@ -73,6 +75,8 @@ export default function Page() {
   const [showForgotPasswordModal, setShowForgotPasswordModal] = useState(false);
   const [showLogoutConfirmModal, setShowLogoutConfirmModal] = useState(false);
   const [activeSubNavKey, setActiveSubNavKey] = useState<string>("inicio");
+  const [analysisScope, setAnalysisScope] = useState<"day" | "overall">("day");
+  const [dissatisfactionScope, setDissatisfactionScope] = useState<"day" | "overall">("day");
   const [currentUser, setCurrentUser] = useState<{ name: string; email: string; role: string } | null>(null);
   useRevealOnScroll({ enabled: stage === "app", viewKey: activeView });
   const controller = useDashboardController({
@@ -532,6 +536,7 @@ export default function Page() {
 
   function handleOpenDissatisfaction() {
     setActiveSubNavKey("dissatisfaction-overview");
+    setDissatisfactionScope("day");
     setActiveView("dissatisfaction");
     requestAnimationFrame(() => {
       window.scrollTo({ top: 0, behavior: "auto" });
@@ -540,6 +545,7 @@ export default function Page() {
 
   function handleOpenAnalysis() {
     setActiveSubNavKey("analysis-overview");
+    setAnalysisScope("day");
     setActiveView("analysis");
     requestAnimationFrame(() => {
       window.scrollTo({ top: 0, behavior: "auto" });
@@ -805,6 +811,7 @@ export default function Page() {
               reportSeverityFilter={controller.reportSeverityFilter}
               onChangeReportSeverityFilter={controller.setReportSeverityFilter}
               selectedDate={controller.date}
+              periodPreset={controller.periodPreset}
             />
           </div>
           ) : activeView === "clients" ? (
@@ -830,81 +837,151 @@ export default function Page() {
             </div>
           ) : activeView === "analysis" ? (
             <div className="settings-animated analysis-animated" key="analysis-view">
-              <div className="section reveal" id="analysis-overview">
-                <div className="section-inner">
-                  <div className="section-header">
-                    <span className="section-num">01</span>
-                    <div className="section-title">
-                      <h2>Análise Geral do Dia</h2>
-                      <p>Esta análise geral reflete exatamente os dados do dia selecionado: {controller.date}.</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
               <section className="analysis-content-shell reveal">
                 <article className="settings-card">
-                  <div className="settings-card-head">Como interpretar esta análise</div>
+                  <div className="settings-card-head">Escopo da análise</div>
                   <div className="settings-card-body">
-                    <p>
-                      <strong>Análise do Dia:</strong> sempre considera somente os dados da data selecionada no período.
-                    </p>
-                    <p>
-                      <strong>Movimentação:</strong> mostra volume horário e distribuição de severidade para o mesmo dia.
-                    </p>
-                    <p>
-                      <strong>Produtos e Contexto:</strong> lista produtos detectados e insights informativos desse dia, sem misturar com outras datas.
-                    </p>
+                    <div className="btn-group">
+                      <button
+                        type="button"
+                        className={`gap-chip ${analysisScope === "day" ? "active" : ""}`}
+                        onClick={() => setAnalysisScope("day")}
+                      >
+                        Análise do dia
+                      </button>
+                      <button
+                        type="button"
+                        className={`gap-chip ${analysisScope === "overall" ? "active" : ""}`}
+                        onClick={() => setAnalysisScope("overall")}
+                      >
+                        Análise total
+                      </button>
+                    </div>
                   </div>
                 </article>
               </section>
 
-              <MovementSection
-                trendSeries={controller.trendSeries}
-                severitySnapshot={controller.severitySnapshot}
-                totalMessagesDay={controller.overview?.overview.total_messages_day ?? 0}
-                totalConversationsDay={controller.overview?.overview.conversations_total_analyzed_day ?? 0}
-                sectionId="analysis-movimentacao"
-                sectionNumber="02"
-              />
-
-              <div className="section reveal" id="analysis-conteudo">
-                <div className="section-inner">
-                  <div className="section-header">
-                    <span className="section-num">03</span>
-                    <div className="section-title">
-                      <h2>Produtos e Contexto</h2>
-                      <p>Produtos procurados e insights informativos do dia selecionado</p>
+              {analysisScope === "overall" ? (
+                <AnalysisOverallView refreshHint={controller.lastRunAt} />
+              ) : (
+                <>
+                  <div className="section reveal" id="analysis-overview">
+                    <div className="section-inner">
+                      <div className="section-header">
+                        <span className="section-num">01</span>
+                        <div className="section-title">
+                          <h2>Análise Geral do Dia</h2>
+                          <p>Esta análise geral reflete exatamente os dados do dia selecionado: {controller.date}.</p>
+                        </div>
+                      </div>
                     </div>
                   </div>
-                </div>
-              </div>
 
-              <div>
-                <ProductsView
-                  items={controller.productDemand}
-                  selectedDate={controller.date}
-                  informationalInsights={controller.informationalInsights}
-                  contextInsights={controller.allInsights}
-                  showHeader={false}
-                />
-              </div>
+                  <section className="analysis-content-shell reveal">
+                    <article className="settings-card">
+                      <div className="settings-card-head">Como interpretar esta análise</div>
+                      <div className="settings-card-body">
+                        <p>
+                          <strong>Análise do Dia:</strong> sempre considera somente os dados da data selecionada no período.
+                        </p>
+                        <p>
+                          <strong>Movimentação:</strong> mostra volume horário e distribuição de severidade para o mesmo dia.
+                        </p>
+                        <p>
+                          <strong>Produtos e Contexto:</strong> lista produtos detectados e insights informativos desse dia, sem misturar com outras datas.
+                        </p>
+                      </div>
+                    </article>
+                  </section>
+
+                  <MovementSection
+                    trendSeries={controller.trendSeries}
+                    severitySnapshot={controller.severitySnapshot}
+                    totalMessagesDay={controller.overview?.overview.total_messages_day ?? 0}
+                    totalConversationsDay={controller.overview?.overview.conversations_total_analyzed_day ?? 0}
+                    sectionId="analysis-movimentacao"
+                    sectionNumber="02"
+                  />
+
+                  <div className="section reveal" id="analysis-conteudo">
+                    <div className="section-inner">
+                      <div className="section-header">
+                        <span className="section-num">03</span>
+                        <div className="section-title">
+                          <h2>Produtos e Contexto</h2>
+                          <p>Produtos procurados e insights informativos do dia selecionado</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <ProductsView
+                      items={controller.productDemand}
+                      selectedDate={controller.date}
+                      informationalInsights={controller.informationalInsights}
+                      contextInsights={controller.allInsights}
+                      showHeader={false}
+                    />
+                  </div>
+                </>
+              )}
             </div>
           ) : activeView === "attendants" ? (
             <div className="settings-animated" key="attendants-view">
-              <AttendantsView selectedDate={controller.date} summary={controller.attendantsPerformance} />
+              <AttendantsView
+                selectedDate={controller.date}
+                summary={controller.attendantsPerformance}
+                refreshHint={controller.lastRunAt}
+              />
             </div>
           ) : activeView === "dissatisfaction" ? (
             <div className="settings-animated" key="dissatisfaction-view">
-              <DissatisfactionView
-                selectedDate={controller.date}
-                alerts={controller.operationalAlerts}
-                onOpenReportByContact={controller.focusReportByContact}
-              />
+              <section className="analysis-content-shell reveal">
+                <article className="settings-card">
+                  <div className="settings-card-head">Escopo de insatisfação</div>
+                  <div className="settings-card-body">
+                    <div className="btn-group">
+                      <button
+                        type="button"
+                        className={`gap-chip ${dissatisfactionScope === "day" ? "active" : ""}`}
+                        onClick={() => setDissatisfactionScope("day")}
+                      >
+                        Insatisfação do dia
+                      </button>
+                      <button
+                        type="button"
+                        className={`gap-chip ${dissatisfactionScope === "overall" ? "active" : ""}`}
+                        onClick={() => setDissatisfactionScope("overall")}
+                      >
+                        Insatisfação geral
+                      </button>
+                    </div>
+                  </div>
+                </article>
+              </section>
+
+              {dissatisfactionScope === "overall" ? (
+                <DissatisfactionOverallView
+                  onOpenReportByContact={controller.focusReportByContact}
+                  refreshHint={controller.lastRunAt}
+                />
+              ) : (
+                <DissatisfactionView
+                  selectedDate={controller.date}
+                  alerts={controller.operationalAlerts}
+                  onOpenReportByContact={controller.focusReportByContact}
+                />
+              )}
             </div>
           ) : activeView === "products" ? (
             <div className="settings-animated" key="products-view">
-              <ProductsOverallView refreshHint={controller.lastRunAt} />
+              <ProductsDualView
+                selectedDate={controller.date}
+                dayItems={controller.productDemand}
+                informationalInsights={controller.informationalInsights}
+                refreshHint={controller.lastRunAt}
+              />
             </div>
           ) : (
             <div className="settings-animated" key="settings-view">

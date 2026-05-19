@@ -10,7 +10,7 @@ import type {
 
 export type ActionKey = "overview";
 export type InsightFilter = "all" | Severity;
-export type PeriodPreset = "today" | "yesterday" | "before_yesterday" | "week" | "month" | "year";
+export type PeriodPreset = "today" | "yesterday" | "before_yesterday" | "week" | "month" | "year" | "total";
 
 export interface ApiConfigPayload {
   timezone: string;

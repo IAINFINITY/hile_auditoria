@@ -65,21 +65,34 @@ export async function GET(request: Request) {
     if (authResponse) return authResponse;
 
     const { searchParams } = new URL(request.url);
-    const limitInput = Number(searchParams.get("limit") || 300);
-    const take = Number.isFinite(limitInput) && limitInput > 0 ? Math.min(1000, limitInput) : 300;
+    const takeInput = Number(searchParams.get("take") || searchParams.get("limit") || 300);
+    const pageInput = Number(searchParams.get("page") || 1);
+    const take = Number.isFinite(takeInput) && takeInput > 0 ? Math.min(1000, takeInput) : 300;
+    const page = Number.isFinite(pageInput) && pageInput > 0 ? Math.floor(pageInput) : 1;
+    const skip = (page - 1) * take;
+    const from = String(searchParams.get("from") || "").trim();
+    const to = String(searchParams.get("to") || "").trim();
+    const dateRefWhere: { gte?: Date; lte?: Date } = {};
+    if (/^\d{4}-\d{2}-\d{2}$/.test(from)) dateRefWhere.gte = new Date(`${from}T00:00:00.000Z`);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(to)) dateRefWhere.lte = new Date(`${to}T23:59:59.999Z`);
+
+    const where = {
+      status: RunStatus.completed,
+      report: { isNot: null },
+      ...(dateRefWhere.gte || dateRefWhere.lte ? { dateRef: dateRefWhere } : {}),
+    };
 
     const runs = await prisma.analysisRun.findMany({
-      where: {
-        status: RunStatus.completed,
-        report: { isNot: null },
-      },
+      where,
       orderBy: { startedAt: "desc" },
+      skip,
       take,
       select: {
         dateRef: true,
         report: { select: { reportJson: true } },
       },
     });
+    const totalRuns = await prisma.analysisRun.count({ where });
 
     const counters = new Map<string, ProductCounter>();
 
@@ -162,6 +175,12 @@ export async function GET(request: Request) {
     return NextResponse.json({
       items,
       totalRuns: runs.length,
+      totalRunsAvailable: totalRuns,
+      pagination: {
+        page,
+        take,
+        total_pages: Math.max(1, Math.ceil(totalRuns / take)),
+      },
     });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Falha ao carregar ranking de produtos.";

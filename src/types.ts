@@ -423,3 +423,56 @@ export interface NotificationSummaryResponse {
     signature: string | null;
   };
 }
+
+export interface AnalysisOverallContextItem {
+  id: string;
+  date: string;
+  contact_name: string;
+  summary: string;
+  severity: Severity;
+}
+
+export interface AnalysisOverallResponse {
+  total_runs: number;
+  date_range: {
+    from: string | null;
+    to: string | null;
+  };
+  overview: {
+    conversations_scanned: number;
+    conversations_total_analyzed: number;
+    unique_contacts: number;
+    critical_insights_count: number;
+    non_critical_insights_count: number;
+    total_messages: number;
+    finalized_count: number;
+    continued_count: number;
+  };
+  severity_snapshot: Record<Severity, number>;
+  context_items: AnalysisOverallContextItem[];
+}
+
+export interface DissatisfactionOverallResponse {
+  total_runs: number;
+  date_range: {
+    from: string | null;
+    to: string | null;
+  };
+  summary: {
+    total: number;
+    critical: number;
+    high: number;
+    medium: number;
+    unique_contacts: number;
+  };
+  alerts: Array<{
+    id: string;
+    type: "consultor" | "desengajamento";
+    category?: "insatisfacao_hile" | "insatisfacao_atendimento" | "pedido_consultor" | "outro";
+    severity?: "critical" | "high" | "medium" | "low" | "info";
+    contactName: string;
+    conversationId: number;
+    excerpt: string;
+    occurredAt?: string | null;
+  }>;
+}

@@ -1,4 +1,4 @@
-import { Fragment, useMemo } from "react";
+﻿import { Fragment, useMemo } from "react";
 import type { OverviewPayload, Severity } from "../../../types";
 import type { PeriodPreset } from "../shared/types";
 
@@ -29,8 +29,9 @@ const PRESETS: Array<{ key: PeriodPreset; label: string }> = [
   { key: "yesterday", label: "Ontem" },
   { key: "before_yesterday", label: "Anteontem" },
   { key: "week", label: "Semana" },
-  { key: "month", label: "Mês" },
+  { key: "month", label: "MÃªs" },
   { key: "year", label: "Ano" },
+  { key: "total", label: "Total" },
 ];
 
 function getRelativePreset(date: string): PeriodPreset | null {
@@ -68,8 +69,9 @@ function formatPeriodLabel(preset: PeriodPreset, date?: string): string {
     yesterday: "Ontem",
     before_yesterday: "Anteontem",
     week: "Semana",
-    month: "Mês",
+    month: "MÃªs",
     year: "Ano",
+    total: "Total",
   };
   return map[preset];
 }
@@ -133,7 +135,8 @@ export function MetricsSection({
   }, [kpis.finalizadas, kpis.gapsCriticosAltos, kpis.gatilhos, summary?.conversations_total_analyzed_day, summary?.total_messages_day]);
 
   const relativePreset = useMemo(() => getRelativePreset(date), [date]);
-  const isAggregateMode = periodPreset === "week" || periodPreset === "month" || periodPreset === "year";
+  const isAggregateMode =
+    periodPreset === "week" || periodPreset === "month" || periodPreset === "year" || periodPreset === "total";
   const isCustomDay = !isAggregateMode && relativePreset === null;
 
   return (
@@ -142,18 +145,18 @@ export function MetricsSection({
         <div className="section-header">
           <span className="section-num">01</span>
           <div className="section-title">
-            <h2>Métricas do Dia</h2>
-            <p>Período: {formatPeriodLabel(periodPreset, date)} — {formatDateBr(date)}</p>
+            <h2>{isAggregateMode ? "Métricas do Período" : "MÃ©tricas do Dia"}</h2>
+            <p>PerÃ­odo: {formatPeriodLabel(periodPreset, date)} â€” {formatDateBr(date)}</p>
           </div>
         </div>
 
         <div className="metrics-block">
           <div className="metrics-block-header">
-            <span>Controles do período</span>
+            <span>Controles do perÃ­odo</span>
           </div>
           <div className="metrics-block-body">
             <div className="orq-row orq-row-period">
-              <label>Período</label>
+              <label>PerÃ­odo</label>
               <div className="filter-box" style={{ flex: 1 }}>
                 <div className="filter-group" style={{ flex: 1 }}>
                   {PRESETS.map((preset, index) => (
@@ -166,6 +169,7 @@ export function MetricsSection({
                           (preset.key === "week" ||
                             preset.key === "month" ||
                             preset.key === "year" ||
+                            preset.key === "total" ||
                             relativePreset === preset.key)
                             ? "active"
                             : ""
@@ -189,7 +193,7 @@ export function MetricsSection({
             </div>
 
             <div className="orq-row orq-row-exec">
-              <label>Execução</label>
+              <label>ExecuÃ§Ã£o</label>
               <div className="orq-exec-stack">
                 <div className="filter-box orq-exec-main">
                   <input
@@ -201,7 +205,7 @@ export function MetricsSection({
                     onChange={(event) => setDate(event.target.value)}
                   />
                   <span className={`status-badge ${selectedDateHasSavedReport ? "ok" : "orq-warning"}`}>
-                    {selectedDateHasSavedReport ? "Com relatório" : "Sem relatório"}
+                    {selectedDateHasSavedReport ? "Com relatÃ³rio" : "Sem relatÃ³rio"}
                   </span>
                 </div>
                 <div className="filter-box orq-exec-actions">
@@ -231,7 +235,7 @@ export function MetricsSection({
                   </div>
                 ) : (
                   <div className="orq-hint-box">
-                    Se quiser acompanhar o processo detalhado da execução, abra a seção{" "}
+                    Se quiser acompanhar o processo detalhado da execuÃ§Ã£o, abra a seÃ§Ã£o{" "}
                     <button type="button" className="link-btn" onClick={onOpenLogs}>
                       Logs
                     </button>
@@ -245,14 +249,14 @@ export function MetricsSection({
 
         <div className={`metrics-block ${hasOverviewData ? "" : "data-dim"}`}>
           <div className="metrics-block-header">
-            <span>Indicadores do período</span>
+            <span>Indicadores do perÃ­odo</span>
           </div>
           <div className="metrics-block-body" style={{ padding: 0 }}>
             <div className="kpi-grid">
-              <div className="kpi-card"><div className="kpi-label">Mensagens</div><div className="kpi-value">{kpis.mensagensHoje}</div><div className="kpi-sub">IA + usuário</div></div>
-              <div className="kpi-card"><div className="kpi-label">Gaps</div><div className="kpi-value gap-val">{kpis.gapsCriticosAltos}</div><div className="kpi-sub">críticos + altos</div></div>
+              <div className="kpi-card"><div className="kpi-label">Mensagens</div><div className="kpi-value">{kpis.mensagensHoje}</div><div className="kpi-sub">IA + usuÃ¡rio</div></div>
+              <div className="kpi-card"><div className="kpi-label">Gaps</div><div className="kpi-value gap-val">{kpis.gapsCriticosAltos}</div><div className="kpi-sub">crÃ­ticos + altos</div></div>
               <div className="kpi-card"><div className="kpi-label">Finalizadas</div><div className="kpi-value pos-val">{kpis.finalizadas}</div><div className="kpi-sub">com etiqueta</div></div>
-              <div className="kpi-card"><div className="kpi-label">Repetidos</div><div className="kpi-value alert-val">{kpis.numerosRepetidos}</div><div className="kpi-sub">números</div></div>
+              <div className="kpi-card"><div className="kpi-label">Repetidos</div><div className="kpi-value alert-val">{kpis.numerosRepetidos}</div><div className="kpi-sub">nÃºmeros</div></div>
               <div className="kpi-card"><div className="kpi-label">Abertas</div><div className="kpi-value">{kpis.abertas}</div><div className="kpi-sub">ainda ativas</div></div>
               <div className="kpi-card"><div className="kpi-label">Gatilhos</div><div className="kpi-value">{kpis.gatilhos}</div><div className="kpi-sub">+1h sem resposta</div></div>
             </div>
@@ -266,15 +270,15 @@ export function MetricsSection({
           <div className="metrics-block-body">
             <div className="panorama-grid">
               <div className="pano-card">
-                <div className="pano-label">Média de mensagens por conversa</div>
+                <div className="pano-label">MÃ©dia de mensagens por conversa</div>
                 <div className="pano-value">{panorama.mediaMensagens}</div>
               </div>
               <div className="pano-card">
-                <div className="pano-label">Taxa de finalização</div>
+                <div className="pano-label">Taxa de finalizaÃ§Ã£o</div>
                 <div className="pano-value pano-pos">{panorama.taxaFinalizacao}</div>
               </div>
               <div className="pano-card">
-                <div className="pano-label">Taxa de gaps críticos + altos</div>
+                <div className="pano-label">Taxa de gaps crÃ­ticos + altos</div>
                 <div className="pano-value gap-val">{panorama.taxaCriticidade}</div>
               </div>
               <div className="pano-card">
@@ -282,7 +286,7 @@ export function MetricsSection({
                 <div className="pano-value">{panorama.aguardandoIa}</div>
               </div>
               <div className="pano-card">
-                <div className="pano-label">Tempo médio de resposta do cliente</div>
+                <div className="pano-label">Tempo mÃ©dio de resposta do cliente</div>
                 <div className="pano-value">{clientAvgResponseMinutes}</div>
               </div>
               <div className="pano-card">
@@ -296,3 +300,4 @@ export function MetricsSection({
     </div>
   );
 }
+

@@ -6,6 +6,7 @@ import { labelClass } from "./report/utils";
 
 type AccountStatus = "entrada" | "remarketing" | "atencao" | "resolvido";
 type ResponsibleFilter = "all" | "ia" | "suellen" | "samuel";
+type ClientsScope = "day" | "overall";
 
 interface AccountsViewProps {
   selectedDate: string;
@@ -145,6 +146,7 @@ function dateKeyNowFortaleza(): string {
 }
 
 export function AccountsView({ selectedDate, knownRunId = null, refreshHint = null }: AccountsViewProps) {
+  const [scope, setScope] = useState<ClientsScope>("day");
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | AccountStatus>("all");
   const [labelFilter, setLabelFilter] = useState<string>("all");
@@ -161,8 +163,9 @@ export function AccountsView({ selectedDate, knownRunId = null, refreshHint = nu
   const [runId, setRunId] = useState<string | null>(null);
   const [selectedRecord, setSelectedRecord] = useState<ClientRecordItem | null>(null);
   const handledRefreshHintRef = useRef<string | null>(null);
-  const cacheKey = `hile_clients_cache_${CLIENTS_CACHE_VERSION}_${selectedDate}`;
-  const fetchMetaKey = `hile_clients_fetch_meta_${CLIENTS_CACHE_VERSION}_${selectedDate}`;
+  const scopeKey = scope === "overall" ? "overall" : selectedDate;
+  const cacheKey = `hile_clients_cache_${CLIENTS_CACHE_VERSION}_${scopeKey}`;
+  const fetchMetaKey = `hile_clients_fetch_meta_${CLIENTS_CACHE_VERSION}_${scopeKey}`;
 
   useEffect(() => {
     let raf = 0;
@@ -223,7 +226,7 @@ export function AccountsView({ selectedDate, knownRunId = null, refreshHint = nu
     }
 
     const now = Date.now();
-    const isToday = selectedDate === dateKeyNowFortaleza();
+    const isToday = scope === "day" && selectedDate === dateKeyNowFortaleza();
 
     const cachedRaw = localStorage.getItem(cacheKey);
     const cachedPayload = cachedRaw
@@ -240,7 +243,7 @@ export function AccountsView({ selectedDate, knownRunId = null, refreshHint = nu
     const freshnessWindow = isToday ? CLIENTS_REVALIDATE_TODAY_MS : CLIENTS_REVALIDATE_MS;
     const hasFreshCache = Boolean(cachedRaw) && now - lastFetchedAt < freshnessWindow;
 
-    const runMismatch = Boolean(knownRunId) && knownRunId !== cachedRunId;
+    const runMismatch = scope === "day" && Boolean(knownRunId) && knownRunId !== cachedRunId;
     const shouldBypassCache = hasNewRefreshHint || runMismatch;
 
     if (!isToday && cachedRaw && hasFreshCache && !shouldBypassCache) {
@@ -262,7 +265,12 @@ export function AccountsView({ selectedDate, knownRunId = null, refreshHint = nu
     setLoading(!cachedRaw);
     setErrorMessage("");
 
-    apiGet<ClientsByDateResponse>(`/api/clients?date=${encodeURIComponent(selectedDate)}`)
+    const endpoint =
+      scope === "overall"
+        ? `/api/clients/overall?take=1000`
+        : `/api/clients?date=${encodeURIComponent(selectedDate)}`;
+
+    apiGet<ClientsByDateResponse>(endpoint)
       .then((payload) => {
         if (cancelled) return;
 
@@ -303,7 +311,7 @@ export function AccountsView({ selectedDate, knownRunId = null, refreshHint = nu
     return () => {
       cancelled = true;
     };
-  }, [cacheKey, fetchMetaKey, knownRunId, records.length, refreshHint, selectedDate]);
+  }, [cacheKey, fetchMetaKey, knownRunId, records.length, refreshHint, scope, selectedDate]);
 
   const labelsAvailable = useMemo(() => {
     const set = new Set<string>();
@@ -447,13 +455,47 @@ export function AccountsView({ selectedDate, knownRunId = null, refreshHint = nu
           <div className="section-title">
             <h2>Clientes</h2>
             <p>
-              Chave primária operacional: <strong>telefone</strong>. Registros carregados do banco para{" "}
-              <strong>{selectedDate}</strong>
-              {runId ? <> (execução: <code>{runId}</code>)</> : null}.
+              Chave primária operacional: <strong>telefone</strong>.{" "}
+              {scope === "day" ? (
+                <>
+                  Registros carregados do banco para <strong>{selectedDate}</strong>
+                  {runId ? <> (execução: <code>{runId}</code>)</> : null}.
+                </>
+              ) : (
+                <>Base geral de clientes consolidada a partir de <code>client_states</code>.</>
+              )}
             </p>
           </div>
         </div>
       </div>
+
+      <article className="settings-card">
+        <div className="settings-card-head">Escopo dos clientes</div>
+        <div className="settings-card-body">
+          <div className="btn-group">
+            <button
+              type="button"
+              className={`gap-chip ${scope === "day" ? "active" : ""}`}
+              onClick={() => {
+                setSelectedRecord(null);
+                setScope("day");
+              }}
+            >
+              Clientes do dia
+            </button>
+            <button
+              type="button"
+              className={`gap-chip ${scope === "overall" ? "active" : ""}`}
+              onClick={() => {
+                setSelectedRecord(null);
+                setScope("overall");
+              }}
+            >
+              Base geral de clientes
+            </button>
+          </div>
+        </div>
+      </article>
 
       <article className="settings-card">
         <div className="settings-card-head">Como funciona a classificação</div>
