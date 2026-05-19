@@ -145,6 +145,17 @@ export interface AnalysisItem {
   analysis?: {
     answer?: string | null;
   };
+  responsible_tracking?: {
+    owner_bucket: "ia" | "suellen" | "samuel";
+    owner_label: string;
+    message_count_agent: number;
+    message_breakdown: { ia: number; suellen: number; samuel: number };
+    response_metrics: {
+      ia: { avg_response_sec: number | null; max_response_sec: number | null; samples: number };
+      suellen: { avg_response_sec: number | null; max_response_sec: number | null; samples: number };
+      samuel: { avg_response_sec: number | null; max_response_sec: number | null; samples: number };
+    };
+  };
 }
 
 export interface RawAnalysisPayload {
@@ -171,6 +182,47 @@ export interface ReportPayload {
     improvements_count: number;
     gaps_count: number;
     execution_order_count?: number;
+    responsible_performance?: {
+      ia: {
+        owner_label: string;
+        analyses_count: number;
+        contacts_count: number;
+        conversations_count: number;
+        message_count_agent: number;
+        gaps_count: number;
+        critical_gaps_count: number;
+        improvements_count: number;
+        avg_response_sec: number | null;
+        max_response_sec: number | null;
+        response_samples: number;
+      };
+      suellen: {
+        owner_label: string;
+        analyses_count: number;
+        contacts_count: number;
+        conversations_count: number;
+        message_count_agent: number;
+        gaps_count: number;
+        critical_gaps_count: number;
+        improvements_count: number;
+        avg_response_sec: number | null;
+        max_response_sec: number | null;
+        response_samples: number;
+      };
+      samuel: {
+        owner_label: string;
+        analyses_count: number;
+        contacts_count: number;
+        conversations_count: number;
+        message_count_agent: number;
+        gaps_count: number;
+        critical_gaps_count: number;
+        improvements_count: number;
+        avg_response_sec: number | null;
+        max_response_sec: number | null;
+        response_samples: number;
+      };
+    };
   };
   execution_order?: Array<{
     sequence: number;
@@ -298,6 +350,21 @@ export interface ReportByDateResponse {
 }
 
 export interface ClientRecordItem {
+  responsibleBucket?: "ia" | "suellen" | "samuel" | string;
+  responsibleLabel?: string | null;
+  responsibleMessageCount?: number | null;
+  responsibleMessageBreakdown?: {
+    ia: number;
+    suellen: number;
+    samuel: number;
+  } | null;
+  pipelineBlock?: "entrada" | "remarketing" | "atencao" | "resolvido" | string;
+  remarketing?: {
+    eligible: boolean;
+    pendingHours: number | null;
+    reason: string | null;
+    ruleMatched?: string | null;
+  } | null;
   lifecycle?: {
     firstSeenAt: string;
     lastSeenAt: string;

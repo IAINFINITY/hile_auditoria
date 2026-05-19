@@ -34,6 +34,17 @@
 .settings-animated .accounts-shell > *:nth-child(3){animation-delay:.2s}
 .settings-animated .accounts-shell > *:nth-child(4){animation-delay:.26s}
 
+.settings-animated.analysis-animated > *{
+  opacity:0;
+  transform:translateY(14px);
+  animation:sectionRevealIn .62s ease forwards;
+}
+.settings-animated.analysis-animated > *:nth-child(1){animation-delay:.08s}
+.settings-animated.analysis-animated > *:nth-child(2){animation-delay:.14s}
+.settings-animated.analysis-animated > *:nth-child(3){animation-delay:.2s}
+.settings-animated.analysis-animated > *:nth-child(4){animation-delay:.26s}
+.settings-animated.analysis-animated > *:nth-child(5){animation-delay:.32s}
+
 .settings-header h1{
   margin:0;
   color:var(--navy);
@@ -347,14 +358,14 @@
 
 .accounts-kanban{
   display:grid;
-  grid-template-columns:repeat(3,minmax(260px,1fr));
+  grid-template-columns:repeat(4,minmax(240px,1fr));
   gap:12px;
   align-items:start;
   min-height:0;
 }
 
 .accounts-kanban.is-filtered{
-  grid-template-columns:repeat(3,minmax(0,1fr));
+  grid-template-columns:repeat(4,minmax(0,1fr));
   justify-content:flex-start;
 }
 
@@ -368,6 +379,10 @@
 
 .accounts-kanban.is-filtered.cols-3{
   grid-template-columns:repeat(3,minmax(0,1fr));
+}
+
+.accounts-kanban.is-filtered.cols-4{
+  grid-template-columns:repeat(4,minmax(0,1fr));
 }
 
 .accounts-kanban-col{
@@ -399,9 +414,15 @@
   border-radius:999px;
 }
 
+.accounts-kanban-badge.status-entrada,
 .accounts-kanban-badge.status-aberto{
   color:var(--azul);
   background:rgba(16,107,182,.12);
+}
+
+.accounts-kanban-badge.status-remarketing{
+  color:#9a3412;
+  background:rgba(251,146,60,.24);
 }
 
 .accounts-kanban-badge.status-atencao{

@@ -1,7 +1,8 @@
 import { useEffect } from "react";
 
-export function useRevealOnScroll(options?: { enabled?: boolean }): void {
+export function useRevealOnScroll(options?: { enabled?: boolean; viewKey?: string }): void {
   const enabled = options?.enabled ?? true;
+  const viewKey = options?.viewKey ?? "default";
 
   useEffect(() => {
     if (!enabled) return;
@@ -50,5 +51,5 @@ export function useRevealOnScroll(options?: { enabled?: boolean }): void {
       window.removeEventListener("load", handleLoad);
       obs.disconnect();
     };
-  }, [enabled]);
+  }, [enabled, viewKey]);
 }

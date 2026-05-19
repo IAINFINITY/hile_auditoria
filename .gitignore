@@ -41,6 +41,7 @@ client/
 mainprompt.txt
 deltaprompt.txt
 contextoprompt.txt
+attendants_performance.txt
 alteracoes.txt
 rag_hile_txt.txt
 relatoriodia.txt

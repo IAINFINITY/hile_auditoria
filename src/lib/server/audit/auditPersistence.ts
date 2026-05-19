@@ -838,6 +838,13 @@ export async function persistCompletedRun(params: {
             .filter(Boolean),
         ),
       );
+      const responsibleTracking = (analysis as {
+        responsible_tracking?: {
+          owner_bucket?: string;
+          owner_label?: string;
+          message_count_agent?: number;
+        } | null;
+      }).responsible_tracking;
       compactLogItems.push({
         contact_key: analysis.contact_key,
         contact_name: analysis.contact?.name || analysis.contact?.identifier || analysis.contact_key,
@@ -859,6 +866,9 @@ export async function persistCompletedRun(params: {
         trigger_ready: asBool(firstState.trigger_ready),
         minutes_overdue: asNumOrNull(firstState.minutes_overdue),
         labels: aggregatedLabels.length > 0 ? aggregatedLabels : Array.isArray(firstState.labels) ? firstState.labels : [],
+        responsible_bucket: String(responsibleTracking?.owner_bucket || "").trim() || null,
+        responsible_label: String(responsibleTracking?.owner_label || "").trim() || null,
+        responsible_message_count: Number(responsibleTracking?.message_count_agent || 0) || 0,
         created_at: params.finishedAtIso,
       });
       compactRawAnalyses.push({
@@ -870,6 +880,7 @@ export async function persistCompletedRun(params: {
         message_count_day: analysis.message_count_day || 0,
         log_text: analysis.log_text || "",
         conversation_operational: analysis.conversation_operational || [],
+        responsible_tracking: responsibleTracking || null,
         analysis: {
           answer: answerJson || analysis.analysis?.answer || null,
         },
@@ -1489,6 +1500,126 @@ export async function listClientsByDate(date: string) {
     if (raw.includes("info")) return "info";
     return "info";
   };
+  const normalizeStatusText = (value: unknown): "entrada" | "atencao" | "resolvido" => {
+    const raw = String(value || "").trim().toLowerCase();
+    if (raw === "resolvido") return "resolvido";
+    if (raw === "atencao") return "atencao";
+    return "entrada";
+  };
+  const normalizeLabelText = (value: unknown): string =>
+    String(value || "")
+      .toLowerCase()
+      .trim()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "");
+  const hasExitLabel = (labels: string[]): boolean => {
+    const normalized = labels.map((label) => normalizeLabelText(label));
+    return normalized.includes("lead_agendado") || normalized.includes("pausar_ia");
+  };
+  const hasRemarketingIntent = (params: { labels: string[]; gaps: string[]; attentions: string[] }): boolean => {
+    const normalizedLabels = params.labels.map((label) => normalizeLabelText(label));
+    if (normalizedLabels.includes("ia_remarketing")) return true;
+
+    const corpus = normalizeLabelText([...params.gaps, ...params.attentions].join(" "));
+    return /\b(consultor|atendente|video chamada|videochamada|reuniao|videoconferencia|video call|agendar call|falar com atendente)\b/.test(corpus);
+  };
+  const asFiniteNumber = (value: unknown): number | null => {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : null;
+  };
+  const parseIsoDate = (value: unknown): Date | null => {
+    const text = String(value || "").trim();
+    if (!text) return null;
+    const parsed = new Date(text);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  };
+  type PendingContext = {
+    waitingOnAgent: boolean;
+    pendingHours: number | null;
+    labels: string[];
+    source: "conversation" | "name";
+  };
+  type ResponsibleBucket = "ia" | "suellen" | "samuel";
+  type ResponsibleTracking = {
+    bucket: ResponsibleBucket;
+    label: string;
+    messageCount: number;
+    breakdown: {
+      ia: number;
+      suellen: number;
+      samuel: number;
+    };
+  };
+  const responsibleLabel = (bucket: ResponsibleBucket): string => {
+    if (bucket === "samuel") return "Comercial Samuel";
+    if (bucket === "suellen") return "Comercial Suellen";
+    return "IA";
+  };
+  const resolveResponsibleBucket = (senderName: unknown): ResponsibleBucket | null => {
+    const raw = String(senderName || "").trim();
+    const normalized = normalizeLabelText(raw);
+    if (!normalized) return "ia";
+    if (/\b(grupo|group|equipe|team)\b/.test(normalized)) return null;
+    if (/\bsamuel\b/.test(normalized)) return "samuel";
+    if (/\bsuelen\b|\bsuellen\b/.test(normalized)) return "suellen";
+    if (
+      /\bacesso infinity\b|\bacesso_infinity\b|\bassistant\b|\bchatbot\b|\bbot\b|(^|\s)ia(\s|$)/.test(normalized)
+    ) {
+      return "ia";
+    }
+    return null;
+  };
+  const classifyPipelineBlock = (params: {
+    status: string;
+    severity: string;
+    labels: string[];
+    gaps: string[];
+    attentions: string[];
+    pendingContext: PendingContext | null;
+  }) => {
+    const normalizedStatus = normalizeStatusText(params.status);
+    const normalizedSeverity = normalizeSeverityText(params.severity);
+    const labels = (params.labels || []).map((label) => String(label || "").trim()).filter(Boolean);
+    const resolved = normalizedStatus === "resolvido" || hasExitLabel(labels);
+    const isAttention = normalizedStatus === "atencao" || normalizedSeverity === "critical" || normalizedSeverity === "high";
+    const pendingHours = params.pendingContext?.pendingHours ?? null;
+    const inWindow = pendingHours !== null && pendingHours >= 6 && pendingHours <= 24;
+    const staleOver24h = pendingHours !== null && pendingHours > 24;
+    const intent = hasRemarketingIntent({
+      labels: [...labels, ...(params.pendingContext?.labels || [])],
+      gaps: params.gaps || [],
+      attentions: params.attentions || [],
+    });
+
+    const eligible = !resolved && !isAttention && inWindow && intent;
+    const block: "entrada" | "remarketing" | "atencao" | "resolvido" = resolved
+      ? "resolvido"
+      : isAttention
+        ? "atencao"
+        : eligible
+          ? "remarketing"
+          : "entrada";
+
+    let reason: string | null = null;
+    let ruleMatched: string | null = null;
+    if (eligible) {
+      reason = `Lead com sinal de consultor/videochamada aguardando ${pendingHours?.toFixed(1)}h sem retorno da equipe.`;
+      ruleMatched = "remarketing_6h_24h_with_consultant_intent";
+    } else if (staleOver24h && intent) {
+      reason = "Lead com sinal de remarketing fora da janela (mais de 24h sem resposta).";
+      ruleMatched = "remarketing_outside_window_over_24h";
+    }
+
+    return {
+      pipelineBlock: block,
+      remarketing: {
+        eligible,
+        pendingHours,
+        reason,
+        ruleMatched,
+      },
+    };
+  };
   for (const event of timelineEvents) {
     const key = String(event.phonePk || "").trim();
     if (!key) continue;
@@ -1561,6 +1692,92 @@ export async function listClientsByDate(date: string) {
     const reportJson = (runForDate?.report?.reportJson as Record<string, unknown> | null) || null;
     return Array.isArray(reportJson?.logs) ? (reportJson.logs as Array<Record<string, unknown>>) : [];
   })();
+  const trackedConversationIds = Array.from(
+    new Set([
+      ...(runForDate?.clientRecords || []).flatMap((item) => (Array.isArray(item.conversationIds) ? item.conversationIds : [])),
+      ...reportDrafts.flatMap((item) => (Array.isArray(item.conversationIds) ? item.conversationIds : [])),
+      ...reportLogs.flatMap((item) =>
+        Array.isArray(item.conversation_ids)
+          ? item.conversation_ids.map((id) => Number(id || 0)).filter((id) => id > 0)
+          : [],
+      ),
+    ]),
+  )
+    .map((id) => Number(id || 0))
+    .filter((id) => id > 0);
+  const conversationResponsibleMap = new Map<
+    number,
+    {
+      counts: { ia: number; suellen: number; samuel: number };
+      last: { bucket: ResponsibleBucket; at: number } | null;
+    }
+  >();
+  if (trackedConversationIds.length > 0) {
+    const rows = await prisma.message.findMany({
+      where: {
+        tenantId: contextRun.tenantId,
+        conversation: {
+          chatwootConversationId: {
+            in: trackedConversationIds,
+          },
+        },
+        role: {
+          contains: "AGENT",
+          mode: "insensitive",
+        },
+      },
+      select: {
+        senderName: true,
+        createdAt: true,
+        conversation: {
+          select: {
+            chatwootConversationId: true,
+          },
+        },
+      },
+      orderBy: [{ createdAt: "asc" }],
+    });
+    for (const row of rows) {
+      const conversationId = Number(row.conversation?.chatwootConversationId || 0);
+      if (!conversationId) continue;
+      const bucket = resolveResponsibleBucket(row.senderName);
+      if (!bucket) continue;
+      const current = conversationResponsibleMap.get(conversationId) || {
+        counts: { ia: 0, suellen: 0, samuel: 0 },
+        last: null,
+      };
+      current.counts[bucket] += 1;
+      current.last = { bucket, at: row.createdAt.getTime() };
+      conversationResponsibleMap.set(conversationId, current);
+    }
+  }
+  const buildResponsibleTracking = (conversationIds: number[]): ResponsibleTracking => {
+    const counts = { ia: 0, suellen: 0, samuel: 0 };
+    let latest: { bucket: ResponsibleBucket; at: number } | null = null;
+    for (const rawId of conversationIds || []) {
+      const id = Number(rawId || 0);
+      if (!id) continue;
+      const entry = conversationResponsibleMap.get(id);
+      if (!entry) continue;
+      counts.ia += Number(entry.counts.ia || 0);
+      counts.suellen += Number(entry.counts.suellen || 0);
+      counts.samuel += Number(entry.counts.samuel || 0);
+      if (entry.last && (!latest || entry.last.at > latest.at)) {
+        latest = { ...entry.last };
+      }
+    }
+    const ranked = (Object.entries(counts) as Array<[ResponsibleBucket, number]>).sort((a, b) => b[1] - a[1]);
+    const fallbackBucket: ResponsibleBucket = latest?.bucket || (ranked[0]?.[1] > 0 ? ranked[0][0] : "ia");
+    const messageCount = counts[fallbackBucket] || 0;
+    return {
+      bucket: fallbackBucket,
+      label: responsibleLabel(fallbackBucket),
+      messageCount,
+      breakdown: counts,
+    };
+  };
+  const pendingContextByName = new Map<string, PendingContext>();
+  const pendingContextByConversationId = new Map<number, PendingContext>();
 
   const reportLogFallbackByName = new Map<
     string,
@@ -1646,6 +1863,22 @@ export async function listClientsByDate(date: string) {
       labels: [],
       textSignals: [summary, ...improvements],
     });
+    const waitingOnAgent = Boolean(log.waiting_on_agent);
+    const pendingSinceAt = asFiniteNumber(log.pending_since_at);
+    const createdAt = parseIsoDate(log.created_at);
+    const pendingHours =
+      waitingOnAgent && pendingSinceAt && createdAt
+        ? Number(((createdAt.getTime() - pendingSinceAt * 1000) / (1000 * 60 * 60)).toFixed(2))
+        : null;
+    const logLabels = Array.isArray(log.labels)
+      ? log.labels.map((label) => String(label || "").trim()).filter(Boolean)
+      : [];
+    const pendingContext: PendingContext = {
+      waitingOnAgent,
+      pendingHours: pendingHours !== null && pendingHours >= 0 ? pendingHours : null,
+      labels: logLabels,
+      source: "name",
+    };
 
     reportLogFallbackByName.set(nameKey, {
       gaps,
@@ -1659,6 +1892,14 @@ export async function listClientsByDate(date: string) {
       clientPhase: phaseFromLog.phase,
       clientPhaseReason: phaseFromLog.reason,
     });
+    pendingContextByName.set(nameKey, pendingContext);
+    for (const conversationId of conversationIds) {
+      if (!conversationId) continue;
+      pendingContextByConversationId.set(conversationId, {
+        ...pendingContext,
+        source: "conversation",
+      });
+    }
   }
 
   const analysisFallbackByConversationId = new Map<
@@ -1947,6 +2188,18 @@ export async function listClientsByDate(date: string) {
     }
   }
 
+  const pickPendingContext = (name: string, conversationIds: number[]): PendingContext | null => {
+    const byConversation = (conversationIds || [])
+      .map((id) => pendingContextByConversationId.get(Number(id || 0)) || null)
+      .filter((item): item is PendingContext => Boolean(item));
+    if (byConversation.length > 0) {
+      return byConversation
+        .slice()
+        .sort((a, b) => Number(b.pendingHours || -1) - Number(a.pendingHours || -1))[0];
+    }
+    return pendingContextByName.get(normalizeMatchKey(name)) || null;
+  };
+
   const recordsFromRun = (runForDate?.clientRecords || []).map((item) => {
     const fallback =
       reportFallbackByPhone.get(String(item.phonePk || "").trim()) ||
@@ -2105,6 +2358,48 @@ export async function listClientsByDate(date: string) {
             []),
       ],
     });
+    const unifiedGaps =
+      gapsFromRecord.length > 0
+        ? gapsFromRecord
+        : fallback?.gaps ||
+          analysisFallbackByPhoneHit?.gaps ||
+          analysisFallbackByNameHit?.gaps ||
+          logFallback?.gaps ||
+          conversationFallback.gaps ||
+          [];
+    const unifiedAttentions =
+      attentionsFromRecord.length > 0
+        ? attentionsFromRecord
+        : fallback?.attentions ||
+          analysisFallbackByPhoneHit?.attentions ||
+          analysisFallbackByNameHit?.attentions ||
+          logFallback?.attentions ||
+          conversationFallback.attentions ||
+          [];
+    const unifiedLabels =
+      labelsFromRecord.length > 0
+        ? labelsFromRecord
+        : fallback?.labels ||
+          analysisFallbackByPhoneHit?.labels ||
+          analysisFallbackByNameHit?.labels ||
+          logFallback?.labels ||
+          conversationFallback.labels ||
+          [];
+    const resolvedConversationIds =
+      conversationIdsFromRecord.length > 0
+        ? conversationIdsFromRecord
+        : fallback?.conversationIds || logFallback?.conversationIds || [];
+    const resolvedContactName = toTitleCaseName(item.contactName || fallback?.contactName || "");
+    const pendingContext = pickPendingContext(resolvedContactName, resolvedConversationIds);
+    const classification = classifyPipelineBlock({
+      status: unifiedStatus,
+      severity: unifiedSeverity,
+      labels: unifiedLabels,
+      gaps: unifiedGaps,
+      attentions: unifiedAttentions,
+      pendingContext,
+    });
+    const responsibleTracking = buildResponsibleTracking(resolvedConversationIds);
 
     return {
     lifecycle: (() => {
@@ -2122,36 +2417,12 @@ export async function listClientsByDate(date: string) {
     })(),
     timeline: timelineByPhone.get(item.phonePk) || [],
     phonePk: item.phonePk,
-    contactName: toTitleCaseName(item.contactName || fallback?.contactName || ""),
+    contactName: resolvedContactName,
     companyName: item.companyName || "",
     cnpj: item.cnpj || "",
-    gaps:
-      gapsFromRecord.length > 0
-        ? gapsFromRecord
-        : fallback?.gaps ||
-          analysisFallbackByPhoneHit?.gaps ||
-          analysisFallbackByNameHit?.gaps ||
-          logFallback?.gaps ||
-          conversationFallback.gaps ||
-          [],
-    attentions:
-      attentionsFromRecord.length > 0
-        ? attentionsFromRecord
-        : fallback?.attentions ||
-          analysisFallbackByPhoneHit?.attentions ||
-          analysisFallbackByNameHit?.attentions ||
-          logFallback?.attentions ||
-          conversationFallback.attentions ||
-          [],
-    labels:
-      labelsFromRecord.length > 0
-        ? labelsFromRecord
-        : fallback?.labels ||
-          analysisFallbackByPhoneHit?.labels ||
-          analysisFallbackByNameHit?.labels ||
-          logFallback?.labels ||
-          conversationFallback.labels ||
-          [],
+    gaps: unifiedGaps,
+    attentions: unifiedAttentions,
+    labels: unifiedLabels,
     products: normalizeClientProductList(firstNonEmptyStringArray(
       fallback?.products,
       analysisFallbackByPhoneHit?.products,
@@ -2161,10 +2432,7 @@ export async function listClientsByDate(date: string) {
     )),
     clientPhase: inferredPhase.phase,
     clientPhaseReason: inferredPhase.reason,
-    conversationIds:
-      conversationIdsFromRecord.length > 0
-        ? conversationIdsFromRecord
-        : fallback?.conversationIds || logFallback?.conversationIds || [],
+    conversationIds: resolvedConversationIds,
     chatLinks:
       chatLinksFromRecord.length > 0
         ? chatLinksFromRecord
@@ -2178,6 +2446,12 @@ export async function listClientsByDate(date: string) {
     closedAt: item.closedAt ? item.closedAt.toISOString() : null,
     status: unifiedStatus,
     severity: unifiedSeverity,
+    responsibleBucket: responsibleTracking.bucket,
+    responsibleLabel: responsibleTracking.label,
+    responsibleMessageCount: responsibleTracking.messageCount,
+    responsibleMessageBreakdown: responsibleTracking.breakdown,
+    pipelineBlock: classification.pipelineBlock,
+    remarketing: classification.remarketing,
   };
   });
 
@@ -2206,6 +2480,16 @@ export async function listClientsByDate(date: string) {
           labels: draft.labels || [],
           textSignals: [...(draft.gaps || []), ...(draft.attentions || [])],
         });
+        const pendingContext = pickPendingContext(String(draft.contactName || ""), draft.conversationIds || []);
+        const classification = classifyPipelineBlock({
+          status: draft.status || "aberto",
+          severity: draft.severity || "info",
+          labels: draft.labels || [],
+          gaps: draft.gaps || [],
+          attentions: draft.attentions || [],
+          pendingContext,
+        });
+        const responsibleTracking = buildResponsibleTracking(draft.conversationIds || []);
         return {
           lifecycle: state
             ? {
@@ -2233,8 +2517,14 @@ export async function listClientsByDate(date: string) {
           closedAt: draft.closedAt ? draft.closedAt.toISOString() : null,
           status: draft.status || "aberto",
           severity: draft.severity || "info",
+          responsibleBucket: responsibleTracking.bucket,
+          responsibleLabel: responsibleTracking.label,
+          responsibleMessageCount: responsibleTracking.messageCount,
+          responsibleMessageBreakdown: responsibleTracking.breakdown,
           clientPhase: phase.phase,
           clientPhaseReason: phase.reason,
+          pipelineBlock: classification.pipelineBlock,
+          remarketing: classification.remarketing,
         };
       }),
     };
@@ -2263,6 +2553,16 @@ export async function listClientsByDate(date: string) {
           labels: state.currentLabels || [],
           textSignals: [],
         });
+        const pendingContext = pickPendingContext(String(state.contactName || ""), state.openConversationIds || []);
+        const classification = classifyPipelineBlock({
+          status: state.currentStatus,
+          severity: state.currentSeverity,
+          labels: state.currentLabels || [],
+          gaps: [],
+          attentions: [],
+          pendingContext,
+        });
+        const responsibleTracking = buildResponsibleTracking(state.openConversationIds || []);
         return {
         clientPhase: phase.phase,
         clientPhaseReason: phase.reason,
@@ -2299,6 +2599,12 @@ export async function listClientsByDate(date: string) {
         closedAt: state.resolvedAt ? state.resolvedAt.toISOString() : null,
         status: state.currentStatus,
         severity: state.currentSeverity,
+        responsibleBucket: responsibleTracking.bucket,
+        responsibleLabel: responsibleTracking.label,
+        responsibleMessageCount: responsibleTracking.messageCount,
+        responsibleMessageBreakdown: responsibleTracking.breakdown,
+        pipelineBlock: classification.pipelineBlock,
+        remarketing: classification.remarketing,
       };
       }),
     };
@@ -2362,6 +2668,16 @@ export async function listClientsByDate(date: string) {
       labels,
       textSignals: [],
     });
+    const pendingContext = pickPendingContext(String(contact.name || ""), conversationIds);
+    const classification = classifyPipelineBlock({
+      status,
+      severity: "info",
+      labels,
+      gaps: [],
+      attentions: [],
+      pendingContext,
+    });
+    const responsibleTracking = buildResponsibleTracking(conversationIds);
 
     return {
       lifecycle: null,
@@ -2389,8 +2705,14 @@ export async function listClientsByDate(date: string) {
       closedAt: closedAt ? closedAt.toISOString() : null,
       status,
       severity: "info",
+      responsibleBucket: responsibleTracking.bucket,
+      responsibleLabel: responsibleTracking.label,
+      responsibleMessageCount: responsibleTracking.messageCount,
+      responsibleMessageBreakdown: responsibleTracking.breakdown,
       clientPhase: phase.phase,
       clientPhaseReason: phase.reason,
+      pipelineBlock: classification.pipelineBlock,
+      remarketing: classification.remarketing,
     };
   });
 

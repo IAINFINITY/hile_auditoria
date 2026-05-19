@@ -17,6 +17,40 @@ export type DashboardRunSnapshot = {
   rawOutput: string;
 };
 
+function parseResponsiblePerformanceFromSummary(summary: Record<string, unknown>): ReportPayload["summary"]["responsible_performance"] {
+  const raw = asRecord(summary.responsible_performance);
+  if (!raw || Object.keys(raw).length === 0) return undefined;
+
+  const toOwner = (owner: "ia" | "suellen" | "samuel", fallbackLabel: string) => {
+    const item = asRecord(raw[owner]);
+    return {
+      owner_label: asString(item.owner_label, fallbackLabel),
+      analyses_count: asNumber(item.analyses_count, 0),
+      contacts_count: asNumber(item.contacts_count, 0),
+      conversations_count: asNumber(item.conversations_count, 0),
+      message_count_agent: asNumber(item.message_count_agent, 0),
+      gaps_count: asNumber(item.gaps_count, 0),
+      critical_gaps_count: asNumber(item.critical_gaps_count, 0),
+      improvements_count: asNumber(item.improvements_count, 0),
+      avg_response_sec:
+        item.avg_response_sec === null || item.avg_response_sec === undefined
+          ? null
+          : asNumber(item.avg_response_sec, 0),
+      max_response_sec:
+        item.max_response_sec === null || item.max_response_sec === undefined
+          ? null
+          : asNumber(item.max_response_sec, 0),
+      response_samples: asNumber(item.response_samples, 0),
+    };
+  };
+
+  return {
+    ia: toOwner("ia", "IA"),
+    suellen: toOwner("suellen", "Comercial Suellen"),
+    samuel: toOwner("samuel", "Comercial Samuel"),
+  };
+}
+
 function extractMaxSeverityFromAnswer(answer: Record<string, unknown>): string {
   const topLevel = asString(answer.severidade || answer.severity || answer.nivel_risco || answer.risco || "");
   if (topLevel && /crit|alt|med|baix|info/.test(normalizeTextForMatch(topLevel))) return topLevel;
@@ -434,6 +468,7 @@ export function mapRunToDashboardSnapshot(run: ReportByDateResponse["run"]): Das
       critical_count: asNumber(summary.critical_count, criticalCount),
       improvements_count: asNumber(summary.improvements_count, improvementFallbackCount),
       gaps_count: asNumber(summary.gaps_count, criticalCount),
+      responsible_performance: parseResponsiblePerformanceFromSummary(summary),
     },
     execution_order: [],
     raw_analysis: {

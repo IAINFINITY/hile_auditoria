@@ -62,6 +62,29 @@ export interface OperationalAlertItem {
   occurredAt?: string | null;
 }
 
+export interface AttendantPerformanceEntry {
+  owner: "ia" | "suellen" | "samuel";
+  ownerLabel: string;
+  analysesCount: number;
+  contactsCount: number;
+  conversationsCount: number;
+  messageCountAgent: number;
+  gapsCount: number;
+  criticalGapsCount: number;
+  improvementsCount: number;
+  avgResponseSec: number | null;
+  maxResponseSec: number | null;
+  responseSamples: number;
+}
+
+export interface AttendantPerformanceSummary {
+  entries: AttendantPerformanceEntry[];
+  totalAnalyses: number;
+  totalMessages: number;
+  totalGaps: number;
+  totalCriticalGaps: number;
+}
+
 export interface DashboardController {
   date: string;
   setDate: (value: string) => void;
@@ -106,6 +129,7 @@ export interface DashboardController {
   riskRows: { rows: RiskRow[]; total: number };
   productDemand: ProductDemandItem[];
   operationalAlerts: OperationalAlertItem[];
+  attendantsPerformance: AttendantPerformanceSummary;
   clientAvgResponseMinutes: string;
   clientPeakHourLabel: string;
   reportContacts: string[];

@@ -86,10 +86,20 @@
 
 .side-nav{
   flex:1;
+  min-height:0;
   padding:12px 10px;
   display:flex;
   flex-direction:column;
   gap:2px;
+  overflow-y:auto;
+  -ms-overflow-style:none;
+  scrollbar-width:none;
+}
+
+.side-nav::-webkit-scrollbar{
+  width:0;
+  height:0;
+  display:none;
 }
 
 .side-subnav{

@@ -4,7 +4,8 @@ import { apiGet } from "@/lib/api";
 import type { ClientPhase, ClientRecordItem, ClientsByDateResponse, Severity } from "../../../types";
 import { labelClass } from "./report/utils";
 
-type AccountStatus = "aberto" | "atencao" | "resolvido";
+type AccountStatus = "entrada" | "remarketing" | "atencao" | "resolvido";
+type ResponsibleFilter = "all" | "ia" | "suellen" | "samuel";
 
 interface AccountsViewProps {
   selectedDate: string;
@@ -12,10 +13,10 @@ interface AccountsViewProps {
   refreshHint?: string | null;
 }
 
-const STATUS_ORDER: AccountStatus[] = ["aberto", "atencao", "resolvido"];
+const STATUS_ORDER: AccountStatus[] = ["entrada", "remarketing", "atencao", "resolvido"];
 const CLIENTS_REVALIDATE_MS = 5 * 60 * 1000;
 const CLIENTS_REVALIDATE_TODAY_MS = 60 * 1000;
-const CLIENTS_CACHE_VERSION = "v7";
+const CLIENTS_CACHE_VERSION = "v8";
 
 function normalizeFilterText(value: unknown): string {
   return String(value || "")
@@ -43,8 +44,9 @@ function normalizeNarrativeDateTokens(text: string): string {
 
 function statusLabel(status: AccountStatus): string {
   if (status === "resolvido") return "Fora da IA";
+  if (status === "remarketing") return "Remarketing";
   if (status === "atencao") return "Atenção";
-  return "Em acompanhamento";
+  return "Entrada";
 }
 
 function normalizeClientPhase(value: unknown): ClientPhase {
@@ -111,11 +113,31 @@ function hasExitFromAiLabel(labels: string[]): boolean {
   return normalized.includes("lead_agendado") || normalized.includes("pausar_ia");
 }
 
+function normalizeResponsibleBucket(value: unknown): "ia" | "suellen" | "samuel" {
+  const normalized = normalizeLabelKey(String(value || ""));
+  if (normalized === "samuel") return "samuel";
+  if (normalized === "suellen" || normalized === "suelen") return "suellen";
+  return "ia";
+}
+
+function responsibleLabel(value: unknown): string {
+  const bucket = normalizeResponsibleBucket(value);
+  if (bucket === "samuel") return "Comercial Samuel";
+  if (bucket === "suellen") return "Comercial Suellen";
+  return "IA";
+}
+
 function mapStatus(record: ClientRecordItem): AccountStatus {
+  const pipelineBlock = normalizeLabelKey(record.pipelineBlock || "");
+  if (pipelineBlock === "resolvido") return "resolvido";
+  if (pipelineBlock === "atencao") return "atencao";
+  if (pipelineBlock === "remarketing") return "remarketing";
+  if (pipelineBlock === "entrada") return "entrada";
+
   if (hasExitFromAiLabel(record.labels || [])) return "resolvido";
   if (record.status === "resolvido") return "resolvido";
   if (record.severity === "critical" || record.severity === "high") return "atencao";
-  return "aberto";
+  return "entrada";
 }
 
 function dateKeyNowFortaleza(): string {
@@ -127,6 +149,7 @@ export function AccountsView({ selectedDate, knownRunId = null, refreshHint = nu
   const [statusFilter, setStatusFilter] = useState<"all" | AccountStatus>("all");
   const [labelFilter, setLabelFilter] = useState<string>("all");
   const [analysisFilter, setAnalysisFilter] = useState<"all" | "gaps_insights" | Severity>("all");
+  const [responsibleFilter, setResponsibleFilter] = useState<ResponsibleFilter>("all");
   const [phaseFilter, setPhaseFilter] = useState<"all" | ClientPhase>("all");
   const [favoritesOnly, setFavoritesOnly] = useState(false);
   const [pinnedOnly, setPinnedOnly] = useState(false);
@@ -350,9 +373,11 @@ export function AccountsView({ selectedDate, knownRunId = null, refreshHint = nu
         (effectiveAnalysisFilter === "info" && record.severity === "info");
       const phase = normalizeClientPhase(record.clientPhase);
       const byPhase = phaseFilter === "all" || phase === phaseFilter;
+      const bucket = normalizeResponsibleBucket(record.responsibleBucket || record.responsibleLabel || "ia");
+      const byResponsible = responsibleFilter === "all" || bucket === responsibleFilter;
       const byFavorite = !favoritesOnly || favoritePhones.includes(record.phonePk);
       const byPinned = !pinnedOnly || pinnedPhones.includes(record.phonePk);
-      return byText && byStatus && byLabel && byAnalysis && byPhase && byFavorite && byPinned;
+      return byText && byStatus && byLabel && byAnalysis && byPhase && byResponsible && byFavorite && byPinned;
     });
 
     return list.sort((a, b) => {
@@ -362,11 +387,12 @@ export function AccountsView({ selectedDate, knownRunId = null, refreshHint = nu
       if (favDiff !== 0) return favDiff;
       return String(a.contactName || "").localeCompare(String(b.contactName || ""), "pt-BR");
     });
-  }, [effectiveAnalysisFilter, favoritePhones, favoritesOnly, labelFilter, phaseFilter, pinnedOnly, pinnedPhones, query, records, statusFilter]);
+  }, [effectiveAnalysisFilter, favoritePhones, favoritesOnly, labelFilter, phaseFilter, pinnedOnly, pinnedPhones, query, records, responsibleFilter, statusFilter]);
 
   const recordsByStatus = useMemo(() => {
     const grouped: Record<AccountStatus, ClientRecordItem[]> = {
-      aberto: [],
+      entrada: [],
+      remarketing: [],
       atencao: [],
       resolvido: [],
     };
@@ -385,10 +411,11 @@ export function AccountsView({ selectedDate, knownRunId = null, refreshHint = nu
       statusFilter !== "all" ||
       labelFilter !== "all" ||
       effectiveAnalysisFilter !== "all" ||
+      responsibleFilter !== "all" ||
       phaseFilter !== "all" ||
       favoritesOnly ||
       pinnedOnly,
-    [effectiveAnalysisFilter, favoritesOnly, labelFilter, phaseFilter, pinnedOnly, query, statusFilter],
+    [effectiveAnalysisFilter, favoritesOnly, labelFilter, phaseFilter, pinnedOnly, query, responsibleFilter, statusFilter],
   );
   const shouldDimKanban = filteredRecords.length === 0;
 
@@ -397,7 +424,7 @@ export function AccountsView({ selectedDate, knownRunId = null, refreshHint = nu
     return STATUS_ORDER.filter((status) => recordsByStatus[status].length > 0);
   }, [hasActiveFilters, recordsByStatus]);
   const filteredColsClass = hasActiveFilters
-    ? `cols-${Math.min(3, Math.max(1, visibleStatuses.length))}`
+    ? `cols-${Math.min(4, Math.max(1, visibleStatuses.length))}`
     : "";
 
   function toggleFavorite(phonePk: string) {
@@ -432,7 +459,10 @@ export function AccountsView({ selectedDate, knownRunId = null, refreshHint = nu
         <div className="settings-card-head">Como funciona a classificação</div>
         <div className="settings-card-body">
           <p>
-            <strong>Em acompanhamento:</strong> conversa ainda dentro do fluxo da IA e sem etiqueta de saída.
+            <strong>Entrada:</strong> conversa no fluxo normal da IA, sem necessidade de ação imediata.
+          </p>
+          <p>
+            <strong>Remarketing:</strong> lead com indício de consultor/reunião e entre 6h e 24h aguardando retorno da equipe.
           </p>
           <p>
             <strong>Atenção:</strong> conversa ainda no fluxo da IA com sinais operacionais que merecem acompanhamento.
@@ -465,7 +495,8 @@ export function AccountsView({ selectedDate, knownRunId = null, refreshHint = nu
               Status
               <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as "all" | AccountStatus)}>
                 <option value="all">Todos</option>
-                <option value="aberto">Em acompanhamento</option>
+                <option value="entrada">Entrada</option>
+                <option value="remarketing">Remarketing</option>
                 <option value="atencao">Atenção</option>
                 <option value="resolvido">Fora da IA</option>
               </select>
@@ -491,6 +522,16 @@ export function AccountsView({ selectedDate, knownRunId = null, refreshHint = nu
                     {option.label}
                   </option>
                 ))}
+              </select>
+            </label>
+
+            <label>
+              Responsável
+              <select value={responsibleFilter} onChange={(event) => setResponsibleFilter(event.target.value as ResponsibleFilter)}>
+                <option value="all">Todos</option>
+                <option value="ia">IA</option>
+                <option value="suellen">Comercial Suellen</option>
+                <option value="samuel">Comercial Samuel</option>
               </select>
             </label>
 
@@ -568,6 +609,8 @@ export function AccountsView({ selectedDate, knownRunId = null, refreshHint = nu
                                 <span className={`client-phase-badge ${clientPhaseClass(record.clientPhase)}`}>
                                   {clientPhaseLabel(record.clientPhase)}
                                 </span>
+                                <span className="k-card-meta-sep">·</span>
+                                <span>{responsibleLabel(record.responsibleBucket || record.responsibleLabel || "ia")}</span>
                                 <span className="k-card-meta-sep">·</span>
                                 <span>{record.companyName || "Empresa não informada"}</span>
                               </p>
@@ -651,6 +694,15 @@ export function AccountsView({ selectedDate, knownRunId = null, refreshHint = nu
               <div className="modal-row">
                 <strong>Severidade</strong>
                 <span>{severityLabel(selectedRecord.severity)}</span>
+              </div>
+              <div className="modal-row">
+                <strong>Responsável rastreado</strong>
+                <span>
+                  {responsibleLabel(selectedRecord.responsibleBucket || selectedRecord.responsibleLabel || "ia")}
+                  {typeof selectedRecord.responsibleMessageCount === "number"
+                    ? ` (${selectedRecord.responsibleMessageCount} msg)`
+                    : ""}
+                </span>
               </div>
               <div className="modal-row">
                 <strong>Fase do cliente</strong>

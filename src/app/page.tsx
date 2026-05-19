@@ -9,6 +9,7 @@ import { AppFooter } from "@/features/dashboard/sections/AppFooter";
 import { GapsSection } from "@/features/dashboard/sections/GapsSection";
 import { InsightsSection } from "@/features/dashboard/sections/InsightsSection";
 import { AccountsView } from "@/features/dashboard/sections/AccountsView";
+import { AttendantsView } from "@/features/dashboard/sections/AttendantsView";
 import { DissatisfactionView } from "@/features/dashboard/sections/DissatisfactionView";
 import { LogsView } from "@/features/dashboard/sections/LogsView";
 import { MetricsSection } from "@/features/dashboard/sections/MetricsSection";
@@ -20,7 +21,7 @@ import { SettingsView } from "@/features/dashboard/sections/SettingsView";
 import { ShellNavigation } from "@/features/dashboard/sections/ShellNavigation";
 import { supabaseBrowser } from "@/lib/supabase/browser";
 
-type AppView = "dashboard" | "clients" | "analysis" | "dissatisfaction" | "products" | "logs" | "settings";
+type AppView = "dashboard" | "clients" | "analysis" | "attendants" | "dissatisfaction" | "products" | "logs" | "settings";
 
 interface AuthStatusPayload {
   authenticated: boolean;
@@ -31,6 +32,16 @@ interface AuthStatusPayload {
   } | null;
 }
 
+const VIEW_SECTION_KEYS: Record<Exclude<AppView, "dashboard">, string[]> = {
+  clients: ["clients-filtros", "clients-kanban"],
+  analysis: ["analysis-overview", "analysis-movimentacao", "analysis-conteudo"],
+  attendants: ["attendants-overview", "attendants-breakdown", "attendants-comparison"],
+  dissatisfaction: ["dissatisfaction-overview", "dissatisfaction-filters", "dissatisfaction-list"],
+  products: ["products-overview", "products-ranking", "products-charts"],
+  logs: ["logs-saude", "logs-execucao", "logs-recentes"],
+  settings: ["settings-profile", "settings-security", "settings-preferences"],
+};
+
 export default function Page() {
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [activeView, setActiveView] = useState<AppView>(() => {
@@ -40,6 +51,7 @@ export default function Page() {
         saved === "dashboard" ||
         saved === "clients" ||
         saved === "analysis" ||
+        saved === "attendants" ||
         saved === "dissatisfaction" ||
         saved === "products" ||
         saved === "logs" ||
@@ -61,7 +73,7 @@ export default function Page() {
   const [showLogoutConfirmModal, setShowLogoutConfirmModal] = useState(false);
   const [activeSubNavKey, setActiveSubNavKey] = useState<string>("inicio");
   const [currentUser, setCurrentUser] = useState<{ name: string; email: string; role: string } | null>(null);
-  useRevealOnScroll({ enabled: stage === "app" });
+  useRevealOnScroll({ enabled: stage === "app", viewKey: activeView });
   const controller = useDashboardController({
     enabled: stage === "app",
     syncNavOnScroll: stage === "app" && activeView === "dashboard",
@@ -202,15 +214,67 @@ export default function Page() {
       activeView === "dashboard" ? "inicio" :
       activeView === "clients" ? "clients-filtros" :
       activeView === "analysis" ? "analysis-overview" :
+      activeView === "attendants" ? "attendants-overview" :
       activeView === "dissatisfaction" ? "dissatisfaction-overview" :
       activeView === "products" ? "products-overview" :
       activeView === "logs" ? "logs-saude" :
       "settings-profile";
 
-    if (activeSubNavKey === nextKey) return;
     const raf = requestAnimationFrame(() => setActiveSubNavKey(nextKey));
     return () => cancelAnimationFrame(raf);
-  }, [activeSubNavKey, activeView]);
+  }, [activeView]);
+
+  useEffect(() => {
+    if (stage !== "app" || activeView === "dashboard") return;
+    const sectionKeys = VIEW_SECTION_KEYS[activeView];
+    if (!sectionKeys || sectionKeys.length === 0) return;
+
+    const offsetTop = 96;
+
+    const syncActiveSection = () => {
+      let bestKey = sectionKeys[0];
+      let bestTopDistance = Number.POSITIVE_INFINITY;
+
+      for (const key of sectionKeys) {
+        const element = document.getElementById(key);
+        if (!element) continue;
+        const top = element.getBoundingClientRect().top;
+        const distanceFromMarker = Math.abs(top - offsetTop);
+
+        if (top <= offsetTop && distanceFromMarker < bestTopDistance) {
+          bestTopDistance = distanceFromMarker;
+          bestKey = key;
+        }
+      }
+
+      if (bestTopDistance === Number.POSITIVE_INFINITY) {
+        for (const key of sectionKeys) {
+          const element = document.getElementById(key);
+          if (element) {
+            bestKey = key;
+            break;
+          }
+        }
+      }
+
+      setActiveSubNavKey((current) => (current === bestKey ? current : bestKey));
+    };
+
+    let raf = requestAnimationFrame(syncActiveSection);
+    const handleScroll = () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(syncActiveSection);
+    };
+
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    window.addEventListener("resize", handleScroll);
+
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener("scroll", handleScroll);
+      window.removeEventListener("resize", handleScroll);
+    };
+  }, [activeView, stage]);
 
   useEffect(() => {
     if (stage !== "app") return;
@@ -301,6 +365,15 @@ export default function Page() {
   function handleNavigateDissatisfaction(section: "dissatisfaction-overview" | "dissatisfaction-filters" | "dissatisfaction-list") {
     if (activeView !== "dissatisfaction") {
       setActiveView("dissatisfaction");
+      setTimeout(() => scrollToAnchoredSection(section), 0);
+      return;
+    }
+    scrollToAnchoredSection(section);
+  }
+
+  function handleNavigateAttendants(section: "attendants-overview" | "attendants-breakdown" | "attendants-comparison") {
+    if (activeView !== "attendants") {
+      setActiveView("attendants");
       setTimeout(() => scrollToAnchoredSection(section), 0);
       return;
     }
@@ -467,6 +540,15 @@ export default function Page() {
   function handleOpenAnalysis() {
     setActiveSubNavKey("analysis-overview");
     setActiveView("analysis");
+    requestAnimationFrame(() => {
+      window.scrollTo({ top: 0, behavior: "auto" });
+      requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "auto" }));
+    });
+  }
+
+  function handleOpenAttendants() {
+    setActiveSubNavKey("attendants-overview");
+    setActiveView("attendants");
     requestAnimationFrame(() => {
       window.scrollTo({ top: 0, behavior: "auto" });
       requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "auto" }));
@@ -646,10 +728,12 @@ export default function Page() {
         onOpenClients={handleOpenClients}
         onOpenAnalysis={handleOpenAnalysis}
         onOpenDissatisfaction={handleOpenDissatisfaction}
+        onOpenAttendants={handleOpenAttendants}
         onOpenProducts={handleOpenProducts}
         onOpenLogs={handleOpenLogs}
         onNavigateAnalysis={handleNavigateAnalysis}
         onNavigateDissatisfaction={handleNavigateDissatisfaction}
+        onNavigateAttendants={handleNavigateAttendants}
         onNavigateClients={handleNavigateClients}
         onNavigateProducts={handleNavigateProducts}
         onNavigateLogs={handleNavigateLogs}
@@ -744,7 +828,7 @@ export default function Page() {
               />
             </div>
           ) : activeView === "analysis" ? (
-            <div className="settings-animated" key="analysis-view">
+            <div className="settings-animated analysis-animated" key="analysis-view">
               <div className="section reveal" id="analysis-overview">
                 <div className="section-inner">
                   <div className="section-header">
@@ -804,6 +888,10 @@ export default function Page() {
                   showHeader={false}
                 />
               </div>
+            </div>
+          ) : activeView === "attendants" ? (
+            <div className="settings-animated" key="attendants-view">
+              <AttendantsView selectedDate={controller.date} summary={controller.attendantsPerformance} />
             </div>
           ) : activeView === "dissatisfaction" ? (
             <div className="settings-animated" key="dissatisfaction-view">

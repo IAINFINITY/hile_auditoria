@@ -65,6 +65,103 @@ function mergeFailures(snapshots: DashboardRunSnapshot[]): FailureItem[] {
   return Array.from(seen.values());
 }
 
+function mergeResponsiblePerformance(snapshots: DashboardRunSnapshot[]) {
+  const owners: Array<"ia" | "suellen" | "samuel"> = ["ia", "suellen", "samuel"];
+  const base = {
+    owner_label: "",
+    analyses_count: 0,
+    contacts_count: 0,
+    conversations_count: 0,
+    message_count_agent: 0,
+    gaps_count: 0,
+    critical_gaps_count: 0,
+    improvements_count: 0,
+    avg_response_sec: null as number | null,
+    max_response_sec: null as number | null,
+    response_samples: 0,
+    _sum_response: 0,
+  };
+
+  const merged = {
+    ia: { ...base, owner_label: "IA" },
+    suellen: { ...base, owner_label: "Comercial Suellen" },
+    samuel: { ...base, owner_label: "Comercial Samuel" },
+  };
+
+  for (const snapshot of snapshots) {
+    const perf = snapshot.report?.summary?.responsible_performance;
+    if (!perf) continue;
+    for (const owner of owners) {
+      const row = perf[owner];
+      const target = merged[owner];
+      target.owner_label = row.owner_label || target.owner_label;
+      target.analyses_count += Number(row.analyses_count || 0);
+      target.contacts_count += Number(row.contacts_count || 0);
+      target.conversations_count += Number(row.conversations_count || 0);
+      target.message_count_agent += Number(row.message_count_agent || 0);
+      target.gaps_count += Number(row.gaps_count || 0);
+      target.critical_gaps_count += Number(row.critical_gaps_count || 0);
+      target.improvements_count += Number(row.improvements_count || 0);
+      target.response_samples += Number(row.response_samples || 0);
+      if (row.avg_response_sec !== null && row.avg_response_sec !== undefined) {
+        target._sum_response += Number(row.avg_response_sec || 0) * Math.max(1, Number(row.response_samples || 1));
+      }
+      if (row.max_response_sec !== null && row.max_response_sec !== undefined) {
+        target.max_response_sec = Math.max(Number(target.max_response_sec || 0), Number(row.max_response_sec || 0));
+      }
+    }
+  }
+
+  for (const owner of owners) {
+    const target = merged[owner];
+    target.avg_response_sec =
+      target.response_samples > 0 ? Number((target._sum_response / target.response_samples).toFixed(2)) : null;
+    if (!target.max_response_sec || target.max_response_sec <= 0) target.max_response_sec = null;
+  }
+
+  return {
+    ia: {
+      owner_label: merged.ia.owner_label,
+      analyses_count: merged.ia.analyses_count,
+      contacts_count: merged.ia.contacts_count,
+      conversations_count: merged.ia.conversations_count,
+      message_count_agent: merged.ia.message_count_agent,
+      gaps_count: merged.ia.gaps_count,
+      critical_gaps_count: merged.ia.critical_gaps_count,
+      improvements_count: merged.ia.improvements_count,
+      avg_response_sec: merged.ia.avg_response_sec,
+      max_response_sec: merged.ia.max_response_sec,
+      response_samples: merged.ia.response_samples,
+    },
+    suellen: {
+      owner_label: merged.suellen.owner_label,
+      analyses_count: merged.suellen.analyses_count,
+      contacts_count: merged.suellen.contacts_count,
+      conversations_count: merged.suellen.conversations_count,
+      message_count_agent: merged.suellen.message_count_agent,
+      gaps_count: merged.suellen.gaps_count,
+      critical_gaps_count: merged.suellen.critical_gaps_count,
+      improvements_count: merged.suellen.improvements_count,
+      avg_response_sec: merged.suellen.avg_response_sec,
+      max_response_sec: merged.suellen.max_response_sec,
+      response_samples: merged.suellen.response_samples,
+    },
+    samuel: {
+      owner_label: merged.samuel.owner_label,
+      analyses_count: merged.samuel.analyses_count,
+      contacts_count: merged.samuel.contacts_count,
+      conversations_count: merged.samuel.conversations_count,
+      message_count_agent: merged.samuel.message_count_agent,
+      gaps_count: merged.samuel.gaps_count,
+      critical_gaps_count: merged.samuel.critical_gaps_count,
+      improvements_count: merged.samuel.improvements_count,
+      avg_response_sec: merged.samuel.avg_response_sec,
+      max_response_sec: merged.samuel.max_response_sec,
+      response_samples: merged.samuel.response_samples,
+    },
+  };
+}
+
 export function aggregateSnapshots(snapshots: DashboardRunSnapshot[], dateLabel: string): AggregatedData {
   if (snapshots.length === 0) {
     throw new Error("Nenhum snapshot para agregar");
@@ -132,6 +229,7 @@ export function aggregateSnapshots(snapshots: DashboardRunSnapshot[], dateLabel:
       critical_count: criticalCount,
       improvements_count: nonCriticalCount,
       gaps_count: criticalCount,
+      responsible_performance: mergeResponsiblePerformance(snapshots),
     },
     execution_order: snapshots.flatMap((s) => s.report?.execution_order || []),
     raw_analysis: {

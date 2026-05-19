@@ -42,6 +42,105 @@ function normalizeText(value) {
   return String(value || "").trim().toLowerCase();
 }
 
+function normalizeNameToken(value) {
+  return String(value || "")
+    .toLowerCase()
+    .trim()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
+function resolveResponsibleBucket(senderName) {
+  const normalized = normalizeNameToken(senderName);
+  if (!normalized) return "ia";
+  if (/\b(grupo|group|equipe|team)\b/.test(normalized)) return null;
+  if (/\bsamuel\b/.test(normalized)) return "samuel";
+  if (/\bsuelen\b|\bsuellen\b/.test(normalized)) return "suellen";
+  if (
+    /\bacesso infinity\b|\bacesso_infinity\b|\bassistant\b|\bbot\b|(^|\s)ia(\s|$)/.test(normalized)
+  ) {
+    return "ia";
+  }
+  return "ia";
+}
+
+function responsibleLabel(bucket) {
+  if (bucket === "samuel") return "Comercial Samuel";
+  if (bucket === "suellen") return "Comercial Suellen";
+  return "IA";
+}
+
+function buildResponsibleTracking(messages) {
+  const safeMessages = Array.isArray(messages) ? messages : [];
+  const counts = { ia: 0, suellen: 0, samuel: 0 };
+  const latestByBucket = { ia: 0, suellen: 0, samuel: 0 };
+  const responseAgg = {
+    ia: { sum: 0, count: 0, max: 0 },
+    suellen: { sum: 0, count: 0, max: 0 },
+    samuel: { sum: 0, count: 0, max: 0 },
+  };
+
+  for (const message of safeMessages) {
+    const role = String(message?.role || "").toUpperCase();
+    if (role !== "AGENT") continue;
+    const bucket = resolveResponsibleBucket(message?.sender_name);
+    if (!bucket) continue;
+    counts[bucket] += 1;
+    latestByBucket[bucket] = Math.max(latestByBucket[bucket] || 0, Number(message?.created_at || 0));
+  }
+
+  for (let index = 0; index < safeMessages.length; index += 1) {
+    const current = safeMessages[index];
+    const role = String(current?.role || "").toUpperCase();
+    if (role !== "USER") continue;
+    const startedAt = Number(current?.created_at || 0);
+    if (!startedAt) continue;
+    for (let scan = index + 1; scan < safeMessages.length; scan += 1) {
+      const next = safeMessages[scan];
+      const nextRole = String(next?.role || "").toUpperCase();
+      if (nextRole !== "AGENT") continue;
+      const bucket = resolveResponsibleBucket(next?.sender_name);
+      if (!bucket) break;
+      const endedAt = Number(next?.created_at || 0);
+      const delta = endedAt - startedAt;
+      if (delta > 0) {
+        responseAgg[bucket].sum += delta;
+        responseAgg[bucket].count += 1;
+        responseAgg[bucket].max = Math.max(responseAgg[bucket].max, delta);
+      }
+      break;
+    }
+  }
+
+  const ranked = ["ia", "suellen", "samuel"].sort((a, b) => {
+    const byCount = Number(counts[b] || 0) - Number(counts[a] || 0);
+    if (byCount !== 0) return byCount;
+    return Number(latestByBucket[b] || 0) - Number(latestByBucket[a] || 0);
+  });
+  const ownerBucket = ranked[0] || "ia";
+
+  const toMetric = (bucket) => ({
+    avg_response_sec:
+      responseAgg[bucket].count > 0
+        ? Number((responseAgg[bucket].sum / responseAgg[bucket].count).toFixed(2))
+        : null,
+    max_response_sec: responseAgg[bucket].count > 0 ? responseAgg[bucket].max : null,
+    samples: responseAgg[bucket].count,
+  });
+
+  return {
+    owner_bucket: ownerBucket,
+    owner_label: responsibleLabel(ownerBucket),
+    message_count_agent: counts.ia + counts.suellen + counts.samuel,
+    message_breakdown: counts,
+    response_metrics: {
+      ia: toMetric("ia"),
+      suellen: toMetric("suellen"),
+      samuel: toMetric("samuel"),
+    },
+  };
+}
+
 function looksLikeWhatsapp(inbox) {
   const provider = normalizeText(inbox?.provider);
   const channelType = normalizeText(inbox?.channel_type);
@@ -603,6 +702,7 @@ export async function runDailyAnalysis({
           .filter((entry) => entry.state),
         message_count_day: log.message_count_day,
         log_text: logText,
+        responsible_tracking: buildResponsibleTracking(log.messages || []),
         analysis: compactAnalysis(difyRaw),
       });
       console.log(
@@ -735,6 +835,120 @@ export async function buildDailyReport({
   );
   const gapsCount = orderedAnalyses.reduce((acc, item) => acc + extractGapEntriesFromAnalysis(item).length, 0);
   const gapsForReport = orderedAnalyses.flatMap((item) => extractGapEntriesFromAnalysis(item));
+  const responsiblePerformanceRaw = {
+    ia: {
+      owner_label: "IA",
+      analyses_count: 0,
+      contacts_count: 0,
+      conversations_count: 0,
+      message_count_agent: 0,
+      gaps_count: 0,
+      critical_gaps_count: 0,
+      improvements_count: 0,
+      avg_response_sec: null,
+      max_response_sec: null,
+      response_samples: 0,
+      _sum_response_sec: 0,
+      _contact_keys: new Set<string>(),
+      _conversation_ids: new Set<number>(),
+    },
+    suellen: {
+      owner_label: "Comercial Suellen",
+      analyses_count: 0,
+      contacts_count: 0,
+      conversations_count: 0,
+      message_count_agent: 0,
+      gaps_count: 0,
+      critical_gaps_count: 0,
+      improvements_count: 0,
+      avg_response_sec: null,
+      max_response_sec: null,
+      response_samples: 0,
+      _sum_response_sec: 0,
+      _contact_keys: new Set<string>(),
+      _conversation_ids: new Set<number>(),
+    },
+    samuel: {
+      owner_label: "Comercial Samuel",
+      analyses_count: 0,
+      contacts_count: 0,
+      conversations_count: 0,
+      message_count_agent: 0,
+      gaps_count: 0,
+      critical_gaps_count: 0,
+      improvements_count: 0,
+      avg_response_sec: null,
+      max_response_sec: null,
+      response_samples: 0,
+      _sum_response_sec: 0,
+      _contact_keys: new Set<string>(),
+      _conversation_ids: new Set<number>(),
+    },
+  };
+
+  const toSeverityKey = (value) =>
+    String(value || "")
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "");
+
+  for (const entry of parsedItems) {
+    const tracking = entry.item?.responsible_tracking || null;
+    const ownerBucket = ["ia", "suellen", "samuel"].includes(String(tracking?.owner_bucket || ""))
+      ? String(tracking.owner_bucket)
+      : "ia";
+    const bucketStats = responsiblePerformanceRaw[ownerBucket];
+    bucketStats.analyses_count += 1;
+    bucketStats.message_count_agent += Number(tracking?.message_count_agent || 0);
+    bucketStats.improvements_count += toArray(entry.parsed?.pontos_melhoria).length;
+
+    const contactKey = String(entry.item?.contact_key || "").trim();
+    if (contactKey) bucketStats._contact_keys.add(contactKey);
+    for (const convId of entry.item?.conversation_ids || []) {
+      const id = Number(convId || 0);
+      if (id > 0) bucketStats._conversation_ids.add(id);
+    }
+
+    const gaps = extractGapEntriesFromAnalysis(entry.item);
+    bucketStats.gaps_count += gaps.length;
+    for (const gap of gaps) {
+      const sev = toSeverityKey(gap?.severidade || gap?.severity || gap?.nivel || gap?.prioridade);
+      if (sev.startsWith("crit") || sev === "critical") {
+        bucketStats.critical_gaps_count += 1;
+      }
+    }
+
+    const ownerMetric = tracking?.response_metrics?.[ownerBucket] || null;
+    const ownerAvg = Number(ownerMetric?.avg_response_sec || 0);
+    const ownerSamples = Number(ownerMetric?.samples || 0);
+    if (ownerSamples > 0 && ownerAvg > 0) {
+      bucketStats._sum_response_sec += ownerAvg * ownerSamples;
+      bucketStats.response_samples += ownerSamples;
+      bucketStats.max_response_sec = Math.max(
+        Number(bucketStats.max_response_sec || 0),
+        Number(ownerMetric?.max_response_sec || 0),
+      );
+    }
+  }
+
+  const responsiblePerformance = {} as Record<string, any>;
+  for (const owner of ["ia", "suellen", "samuel"]) {
+    const stats = responsiblePerformanceRaw[owner];
+    responsiblePerformance[owner] = {
+      owner_label: stats.owner_label,
+      analyses_count: stats.analyses_count,
+      contacts_count: stats._contact_keys.size,
+      conversations_count: stats._conversation_ids.size,
+      message_count_agent: stats.message_count_agent,
+      gaps_count: stats.gaps_count,
+      critical_gaps_count: stats.critical_gaps_count,
+      improvements_count: stats.improvements_count,
+      avg_response_sec:
+        stats.response_samples > 0 ? Number((stats._sum_response_sec / stats.response_samples).toFixed(2)) : null,
+      max_response_sec: Number(stats.max_response_sec || 0) > 0 ? Number(stats.max_response_sec) : null,
+      response_samples: stats.response_samples,
+    };
+  }
 
   const chatwootAppBase = toChatwootAppBase(config.chatwoot.baseUrl);
 
@@ -751,6 +965,32 @@ export async function buildDailyReport({
   lines.push(`- Total de pontos de melhoria citados: ${improvementsCount}`);
   lines.push(`- Total de gaps operacionais citados: ${gapsCount}`);
   lines.push("");
+  lines.push(`## Desempenho por Responsável`);
+  lines.push("");
+  for (const owner of ["ia", "suellen", "samuel"]) {
+    const stats = responsiblePerformance[owner];
+    lines.push(`### ${stats.owner_label}`);
+    lines.push(`- Análises: ${stats.analyses_count}`);
+    lines.push(`- Contatos únicos: ${stats.contacts_count}`);
+    lines.push(`- Conversas únicas: ${stats.conversations_count}`);
+    lines.push(`- Mensagens de agente rastreadas: ${stats.message_count_agent}`);
+    lines.push(`- Gaps totais: ${stats.gaps_count}`);
+    lines.push(`- Gaps críticos: ${stats.critical_gaps_count}`);
+    lines.push(`- Pontos de melhoria: ${stats.improvements_count}`);
+    lines.push(
+      `- Tempo médio de resposta: ${
+        stats.avg_response_sec !== null ? `${Number(stats.avg_response_sec).toFixed(2)}s` : "N/A"
+      }`,
+    );
+    lines.push(
+      `- Maior tempo de resposta: ${
+        stats.max_response_sec !== null ? `${Number(stats.max_response_sec).toFixed(2)}s` : "N/A"
+      }`,
+    );
+    lines.push(`- Amostras de resposta: ${stats.response_samples}`);
+    lines.push("");
+  }
+
   lines.push(`## Detalhamento por Contato`);
   lines.push("");
 
@@ -790,6 +1030,7 @@ export async function buildDailyReport({
       critical_count: criticalCount,
       improvements_count: improvementsCount,
       gaps_count: gapsCount,
+      responsible_performance: responsiblePerformance,
     },
     report_markdown: lines.join("\n"),
     raw_analysis: {
