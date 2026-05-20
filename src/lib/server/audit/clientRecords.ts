@@ -77,8 +77,12 @@ function extractPhoneFromText(text: string): string {
 }
 
 function extractCnpj(text: string): string {
-  const match = text.match(/\b\d{2}\.?\d{3}\.?\d{3}\/?\d{4}-?\d{2}\b/);
-  return match?.[0] || "";
+  const punctuated = text.match(/\b\d{2}\.?\d{3}\.?\d{3}\/?\d{4}-?\d{2}\b/);
+  if (punctuated?.[0]) return punctuated[0];
+
+  // Fallback para CNPJ informado só com dígitos (sem pontuação)
+  const digitsOnly = text.match(/\b\d{14}\b/);
+  return digitsOnly?.[0] || "";
 }
 
 function extractCompanyName(text: string): string {

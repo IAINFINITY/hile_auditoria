@@ -549,15 +549,20 @@
   background: rgba(11, 19, 40, 0.45);
   display: grid;
   place-items: center;
+  padding: 16px;
+  backdrop-filter: blur(2px);
 }
 .modal-card {
-  background: #fff;
+  background: var(--branco);
   border: 1px solid var(--line);
+  border-radius: 14px;
   padding: 24px;
   max-width: 420px;
   width: calc(100vw - 32px);
   display: grid;
   gap: 12px;
+  box-shadow: 0 14px 40px rgba(11, 19, 40, 0.18);
+  overflow: hidden;
 }
 .modal-card h3 {
   margin: 0;
@@ -577,6 +582,11 @@
 
 .products-overall-summary-card .settings-card-body{
   padding:0;
+}
+
+.products-scope-shell{
+  display:grid;
+  gap:20px;
 }
 
 .products-overall-summary{

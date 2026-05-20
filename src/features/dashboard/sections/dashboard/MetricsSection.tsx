@@ -1,4 +1,4 @@
-import { Fragment, useMemo } from "react";
+﻿import { Fragment, useMemo } from "react";
 import type { OverviewPayload, Severity } from "../../../../types";
 import type { PeriodPreset } from "../../shared/types";
 
@@ -108,16 +108,28 @@ export function MetricsSection({
   const hasOverviewData = Boolean(summary);
 
   const kpis = useMemo(() => {
-    const criticalAndHigh = (severitySnapshot.critical || 0) + (severitySnapshot.high || 0);
+    const conversasTotais = summary?.conversations_total_analyzed_day ?? 0;
+    const gapsCriticos = severitySnapshot.critical || 0;
+    const gapsAltos = severitySnapshot.high || 0;
+    const gapsMedios = severitySnapshot.medium || 0;
+    const gapsBaixos = severitySnapshot.low || 0;
+    const criticalAndHigh = gapsCriticos + gapsAltos;
+    const semGaps = Math.max(0, conversasTotais - (gapsCriticos + gapsAltos + gapsMedios + gapsBaixos));
     return {
+      conversasTotais,
       mensagensHoje: summary?.total_messages_day ?? 0,
+      gapsCriticos,
+      gapsAltos,
+      gapsMedios,
+      gapsBaixos,
       gapsCriticosAltos: criticalAndHigh,
+      semGaps,
       finalizadas: summary?.finalized_count ?? 0,
       numerosRepetidos: summary?.repeated_identifier_count ?? 0,
       abertas: summary?.continued_count ?? 0,
       gatilhos: summary?.trigger_ready_count ?? 0,
     };
-  }, [severitySnapshot.critical, severitySnapshot.high, summary]);
+  }, [severitySnapshot.critical, severitySnapshot.high, severitySnapshot.medium, severitySnapshot.low, summary]);
 
   const panorama = useMemo(() => {
     const totalConv = Math.max(1, summary?.conversations_total_analyzed_day ?? 0);
@@ -253,11 +265,13 @@ export function MetricsSection({
           </div>
           <div className="metrics-block-body" style={{ padding: 0 }}>
             <div className="kpi-grid">
-              <div className="kpi-card"><div className="kpi-label">Mensagens</div><div className="kpi-value">{kpis.mensagensHoje}</div><div className="kpi-sub">IA + usuário</div></div>
-              <div className="kpi-card"><div className="kpi-label">Gaps</div><div className="kpi-value gap-val">{kpis.gapsCriticosAltos}</div><div className="kpi-sub">críticos + altos</div></div>
+              <div className="kpi-card"><div className="kpi-label">Conversas totais</div><div className="kpi-value">{kpis.conversasTotais}</div><div className="kpi-sub">analisadas no período</div></div>
+              <div className="kpi-card"><div className="kpi-label">Gaps Críticos</div><div className="kpi-value gap-val">{kpis.gapsCriticos}</div><div className="kpi-sub">severidade crítica</div></div>
+              <div className="kpi-card"><div className="kpi-label">Gaps Altos</div><div className="kpi-value alert-val">{kpis.gapsAltos}</div><div className="kpi-sub">severidade alta</div></div>
+              <div className="kpi-card"><div className="kpi-label">Gaps Médios</div><div className="kpi-value">{kpis.gapsMedios}</div><div className="kpi-sub">severidade média</div></div>
+              <div className="kpi-card"><div className="kpi-label">Gaps Baixos</div><div className="kpi-value pos-val">{kpis.gapsBaixos}</div><div className="kpi-sub">severidade baixa</div></div>
+              <div className="kpi-card"><div className="kpi-label">Sem gaps</div><div className="kpi-value info-val">{kpis.semGaps}</div><div className="kpi-sub">sem risco operacional</div></div>
               <div className="kpi-card"><div className="kpi-label">Finalizadas</div><div className="kpi-value pos-val">{kpis.finalizadas}</div><div className="kpi-sub">com etiqueta</div></div>
-              <div className="kpi-card"><div className="kpi-label">Repetidos</div><div className="kpi-value alert-val">{kpis.numerosRepetidos}</div><div className="kpi-sub">números</div></div>
-              <div className="kpi-card"><div className="kpi-label">Abertas</div><div className="kpi-value">{kpis.abertas}</div><div className="kpi-sub">ainda ativas</div></div>
               <div className="kpi-card"><div className="kpi-label">Gatilhos</div><div className="kpi-value">{kpis.gatilhos}</div><div className="kpi-sub">+1h sem resposta</div></div>
             </div>
           </div>
@@ -286,6 +300,10 @@ export function MetricsSection({
                 <div className="pano-value">{panorama.aguardandoIa}</div>
               </div>
               <div className="pano-card">
+                <div className="pano-label">Mensagens IA + usuário</div>
+                <div className="pano-value">{kpis.mensagensHoje}</div>
+              </div>
+              <div className="pano-card">
                 <div className="pano-label">Tempo médio de resposta do cliente</div>
                 <div className="pano-value">{clientAvgResponseMinutes}</div>
               </div>
@@ -300,5 +318,8 @@ export function MetricsSection({
     </div>
   );
 }
+
+
+
 
 

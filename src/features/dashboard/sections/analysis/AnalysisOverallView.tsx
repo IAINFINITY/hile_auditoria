@@ -6,6 +6,7 @@ import { toTitleCaseName } from "../../hooks/controller/common";
 
 interface AnalysisOverallViewProps {
   refreshHint?: string | null;
+  sectionStart?: number;
 }
 
 function severityLabel(value: Severity): string {
@@ -24,7 +25,7 @@ function severityColor(value: Severity): string {
   return "var(--info)";
 }
 
-export function AnalysisOverallView({ refreshHint }: AnalysisOverallViewProps) {
+export function AnalysisOverallView({ refreshHint, sectionStart = 1 }: AnalysisOverallViewProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [payload, setPayload] = useState<AnalysisOverallResponse | null>(null);
@@ -69,13 +70,16 @@ export function AnalysisOverallView({ refreshHint }: AnalysisOverallViewProps) {
     low: 0,
     info: 0,
   };
+  const sectionOne = String(sectionStart).padStart(2, "0");
+  const sectionTwo = String(sectionStart + 1).padStart(2, "0");
+  const sectionThree = String(sectionStart + 2).padStart(2, "0");
 
   return (
     <div className="settings-animated analysis-animated">
       <div className="section reveal" id="analysis-overview">
         <div className="section-inner">
           <div className="section-header">
-            <span className="section-num">01</span>
+            <span className="section-num">{sectionOne}</span>
             <div className="section-title">
               <h2>Análise Geral Total</h2>
               <p>
@@ -106,7 +110,7 @@ export function AnalysisOverallView({ refreshHint }: AnalysisOverallViewProps) {
       <div className="section reveal" id="analysis-movimentacao">
         <div className="section-inner">
           <div className="section-header">
-            <span className="section-num">02</span>
+            <span className="section-num">{sectionTwo}</span>
             <div className="section-title">
               <h2>Distribuição de Severidade</h2>
               <p>Consolidado por nível em todas as execuções salvas</p>
@@ -138,7 +142,7 @@ export function AnalysisOverallView({ refreshHint }: AnalysisOverallViewProps) {
       <div className="section reveal" id="analysis-conteudo">
         <div className="section-inner">
           <div className="section-header">
-            <span className="section-num">03</span>
+            <span className="section-num">{sectionThree}</span>
             <div className="section-title">
               <h2>Contexto Total</h2>
               <p>Resumo dos contatos mais recentes no consolidado geral</p>

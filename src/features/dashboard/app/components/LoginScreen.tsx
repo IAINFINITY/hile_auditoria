@@ -1,4 +1,4 @@
-import type { FormEvent } from "react";
+﻿import type { FormEvent } from "react";
 import Image from "next/image";
 import { FiEye, FiEyeOff, FiLock, FiMail } from "react-icons/fi";
 import { AppFooter } from "@/features/dashboard/sections/layout/AppFooter";
@@ -44,7 +44,7 @@ export function LoginScreen({
 
       <form className="login-card login-card-advanced" onSubmit={onSubmit}>
         <div className="login-card-header">
-          <Image className="login-brand-logo" src="/logo_hile1.png" alt="Hil?" width={280} height={96} priority />
+          <Image className="login-brand-logo" src="/logo_hile1.png" alt="Hilê" width={280} height={96} priority />
           <h1>
             PAINEL <span>DE AUDITORIA</span>
           </h1>
@@ -149,3 +149,5 @@ export function LoginScreen({
     </div>
   );
 }
+
+

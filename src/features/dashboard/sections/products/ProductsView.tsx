@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+﻿import { useMemo, useState } from "react";
 import type { InsightItem, Severity } from "../../../../types";
 import type { ProductDemandItem } from "../../shared/types";
 import { toTitleCaseName } from "../../hooks/controller/common";
@@ -202,4 +202,3 @@ export function ProductsView({
     </section>
   );
 }
-

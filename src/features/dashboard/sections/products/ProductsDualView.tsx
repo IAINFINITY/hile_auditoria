@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+﻿import { useMemo, useState } from "react";
 import type { InsightItem } from "../../../../types";
 import type { ProductDemandItem } from "../../shared/types";
 import { ProductsOverallView } from "./ProductsOverallView";
@@ -59,15 +59,21 @@ export function ProductsDualView({
       </article>
 
       {scope === "overall" ? (
-        <ProductsOverallView refreshHint={refreshHint} />
+        <ProductsOverallView refreshHint={refreshHint} showHeader={false} />
       ) : (
-        <div className="analysis-content-shell reveal">
+        <div className="products-scope-shell reveal">
           <article className={`settings-card ${summary.totalProducts > 0 ? "" : "data-dim"}`}>
             <div className="settings-card-head">Resumo do dia</div>
             <div className="settings-card-body dissatisfaction-kpis">
-              <p><strong>Produtos:</strong> {summary.totalProducts}</p>
-              <p><strong>Ocorrências:</strong> {summary.totalOccurrences}</p>
-              <p><strong>Contatos únicos:</strong> {summary.totalContacts}</p>
+              <p>
+                <strong>Produtos:</strong> {summary.totalProducts}
+              </p>
+              <p>
+                <strong>Ocorrências:</strong> {summary.totalOccurrences}
+              </p>
+              <p>
+                <strong>Contatos únicos:</strong> {summary.totalContacts}
+              </p>
             </div>
           </article>
 
@@ -80,15 +86,19 @@ export function ProductsDualView({
                 <div className="report-list-animated">
                   {dayItems.map((item, index) => (
                     <article className="report-card" key={`${item.name}-${index + 1}`}>
-                      <span className="report-card-dot" />
+                      <span className="report-card-dot report-card-dot-default" />
                       <div className="report-card-content">
                         <h4>{item.name}</h4>
-                        <p><strong>Ocorrências:</strong> {item.count}</p>
-                        <p><strong>Clientes únicos:</strong> {item.contacts}</p>
+                        <p>
+                          <strong>Ocorrências:</strong> {item.count}
+                        </p>
+                        <p>
+                          <strong>Clientes únicos:</strong> {item.contacts}
+                        </p>
                         <p>
                           <strong>Usuários:</strong>{" "}
                           {item.contactNames.length > 0
-                            ? item.contactNames.map((name) => toTitleCaseName(name)).join(" ⬢ ")
+                            ? item.contactNames.map((name) => toTitleCaseName(name)).join(" • ")
                             : "-"}
                         </p>
                       </div>
@@ -108,7 +118,7 @@ export function ProductsDualView({
                 <div className="report-list-animated">
                   {informationalInsights.slice(0, 8).map((item) => (
                     <article className="report-card" key={item.id}>
-                      <span className="report-card-dot" />
+                      <span className={`report-card-dot report-card-dot-${item.severity || "info"}`} />
                       <div className="report-card-content">
                         <h4>{toTitleCaseName(item.contact_name)}</h4>
                         <p>{item.summary}</p>
@@ -124,5 +134,3 @@ export function ProductsDualView({
     </section>
   );
 }
-
-

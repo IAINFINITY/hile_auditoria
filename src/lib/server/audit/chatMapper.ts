@@ -4,6 +4,17 @@ function normalizeSenderType(rawType: unknown): string {
   return String(rawType || "").toLowerCase();
 }
 
+function toUnixSecondsSafe(value: unknown): number {
+  if (value === null || value === undefined || value === "") return 0;
+  const asNumber = Number(value);
+  if (Number.isFinite(asNumber) && asNumber > 0) {
+    return asNumber > 1e12 ? Math.floor(asNumber / 1000) : Math.floor(asNumber);
+  }
+  const parsed = new Date(String(value)).getTime();
+  if (!Number.isFinite(parsed) || parsed <= 0) return 0;
+  return Math.floor(parsed / 1000);
+}
+
 function pickStatusFromAttributes(attributes: any): string {
   if (!attributes || typeof attributes !== "object") return "";
 
@@ -80,7 +91,7 @@ function textFromMessage(message: any): string {
 function normalizeMessage(message: any): NormalizedMessage {
   return {
     id: Number(message?.id || 0),
-    created_at: Number(message?.created_at || 0),
+    created_at: toUnixSecondsSafe(message?.created_at),
     role: resolveRole(message),
     sender_name: message?.sender?.name || message?.sender?.available_name || null,
     sender_id: Number(message?.sender_id || message?.sender?.id || 0) || null,
@@ -176,10 +187,10 @@ export function normalizeConversationLog({ conversation, messages }: { conversat
   return {
     conversation_id: Number(conversation?.id || 0),
     status: conversation?.status || null,
-    created_at: Number(conversation?.created_at || 0),
-    updated_at: Number(conversation?.updated_at || 0),
-    last_activity_at: Number(conversation?.last_activity_at || 0),
-    timestamp: Number(conversation?.timestamp || 0),
+    created_at: toUnixSecondsSafe(conversation?.created_at),
+    updated_at: toUnixSecondsSafe(conversation?.updated_at),
+    last_activity_at: toUnixSecondsSafe(conversation?.last_activity_at),
+    timestamp: toUnixSecondsSafe(conversation?.timestamp),
     unread_count: Number(conversation?.unread_count || 0),
     inbox_id: Number(conversation?.inbox_id || 0),
     labels: extractLabels(conversation),
@@ -207,4 +218,3 @@ export function renderLogForPrompt(log: { messages: NormalizedMessage[] }): stri
 
   return lines.join("\n");
 }
-

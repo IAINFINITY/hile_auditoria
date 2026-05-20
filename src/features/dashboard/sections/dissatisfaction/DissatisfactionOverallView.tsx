@@ -7,6 +7,7 @@ import type { OperationalAlertItem } from "../../shared/types";
 interface DissatisfactionOverallViewProps {
   onOpenReportByContact: (contactName: string) => void;
   refreshHint?: string | null;
+  headerNumber?: string;
 }
 
 type AlertTypeFilter = "all" | "insatisfacao_hile" | "insatisfacao_atendimento";
@@ -45,7 +46,11 @@ function typeColor(type: AlertTypeFilter): string {
   return "var(--azul-line)";
 }
 
-export function DissatisfactionOverallView({ onOpenReportByContact, refreshHint }: DissatisfactionOverallViewProps) {
+export function DissatisfactionOverallView({
+  onOpenReportByContact,
+  refreshHint,
+  headerNumber = "01",
+}: DissatisfactionOverallViewProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [payload, setPayload] = useState<DissatisfactionOverallResponse | null>(null);
@@ -101,7 +106,7 @@ export function DissatisfactionOverallView({ onOpenReportByContact, refreshHint 
     <section className="accounts-shell dissatisfaction-shell">
       <div className="section-inner reveal" id="dissatisfaction-overview">
         <div className="section-header">
-          <span className="section-num">01</span>
+          <span className="section-num">{headerNumber}</span>
           <div className="section-title">
             <h2>Registro de Insatisfação (Geral)</h2>
             <p>

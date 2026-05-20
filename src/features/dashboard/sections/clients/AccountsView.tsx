@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+﻿import { useEffect, useMemo, useRef, useState } from "react";
 import { apiGet } from "@/lib/api";
 import type { ClientPhase, ClientRecordItem, ClientsByDateResponse, Severity } from "../../../../types";
 import { AccountDetailModal } from "./accounts/AccountDetailModal";
@@ -426,4 +426,5 @@ export function AccountsView({ selectedDate, knownRunId = null, refreshHint = nu
     </section>
   );
 }
+
 

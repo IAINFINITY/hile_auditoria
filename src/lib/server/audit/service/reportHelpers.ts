@@ -22,13 +22,8 @@ function toArray(value) {
     .map((item) => {
       if (item === null || item === undefined) return "";
 
-      if (typeof item === "string") {
-        return item.trim();
-      }
-
-      if (typeof item === "number" || typeof item === "boolean") {
-        return String(item);
-      }
+      if (typeof item === "string") return item.trim();
+      if (typeof item === "number" || typeof item === "boolean") return String(item);
 
       if (typeof item === "object") {
         const flatEntries = Object.entries(item).filter(
@@ -68,12 +63,27 @@ function pickFirstText(source, keys) {
 }
 
 function normalizeSeverity(raw) {
-  const value = String(raw || "").trim().toLowerCase();
+  const value = String(raw || "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+
   if (!value) return "Não informado";
-  if (value.startsWith("alt")) return "Alta";
-  if (value.startsWith("med")) return "Média";
-  if (value.startsWith("baix")) return "Baixa";
+  if (value.startsWith("crit") || value === "critical") return "Crítico";
+  if (value.startsWith("alt") || value === "high") return "Alto";
+  if (value.startsWith("med") || value === "medium") return "Médio";
+  if (value.startsWith("baix") || value === "low") return "Baixo";
+  if (value.startsWith("info")) return "Informativo";
   return String(raw).trim();
+}
+
+function normalizeGapName(raw) {
+  return String(raw || "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
 }
 
 function toChatwootAppBase(baseUrl) {
@@ -193,18 +203,69 @@ function buildGapSection(gap) {
   return lines.join("\n");
 }
 
+function resolveStatusLabel(parsed, gaps, firstState) {
+  const parsedStatus = String(parsed?.status_encerramento || "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+
+  const hasAbandonmentGap = gaps.some((gap) => normalizeGapName(gap.name).includes("abandono"));
+
+  if (parsedStatus === "abandonado" || hasAbandonmentGap) {
+    return "**Abandonado**";
+  }
+  if (parsedStatus === "aguardando_retorno_cliente") {
+    return "**Aguardando retorno do cliente**";
+  }
+  if (parsedStatus === "sem_resposta") {
+    return "**Sem resposta**";
+  }
+
+  if (firstState) {
+    if (firstState.finalization_status === "finalizada") {
+      if (firstState.finalization_actor) {
+        return `**Finalizada por ${firstState.finalization_actor}**`;
+      }
+      return `**Finalizada (${firstState.finalization_reason || "motivo não informado"})**`;
+    }
+    if (firstState.waiting_on_agent) return "**Aguardando resposta da IA/atendente**";
+    if (firstState.waiting_on_customer) return "**Aguardando retorno do cliente**";
+    return "**Em andamento**";
+  }
+
+  return "**Estado não identificado**";
+}
+
+function resolveSummary(parsed, item, gaps) {
+  const summary = String(parsed?.resumo || "").trim();
+  if (summary) return summary;
+
+  const context = toArray(parsed?.contexto_informativo);
+  if (context.length > 0) return context[0];
+
+  if (gaps.length > 0) {
+    return `Ocorreram ${gaps.length} gap(s) operacional(is) com evidência nesta conversa.`;
+  }
+
+  if (Number(item?.message_count_day || 0) === 0) {
+    return "Sem mensagens do dia para este contato no recorte selecionado.";
+  }
+
+  return "Sem evidência textual suficiente para montar resumo nesta execução.";
+}
+
 function buildItemSection(
   item,
   index,
-  options: { chatwootAppBase?: string; accountId?: number | null; inboxId?: number | null } = {},
+  options = {},
 ) {
   const parsed = tryParseJson(item?.analysis?.answer);
   const contactName = item?.contact?.name || item?.contact?.identifier || item?.contact_key || "Contato sem nome";
-  const resumo = parsed?.resumo || "Sem resumo estruturado.";
   const melhorias = toArray(parsed?.pontos_melhoria);
   const gaps = extractGapEntriesFromAnalysis(item);
   const proximos = toArray(parsed?.proximos_passos);
-  const risco = Boolean(parsed?.risco_critico);
+  const risco = Boolean(parsed?.risco_critico || gaps.some((gap) => normalizeSeverity(gap.severity) === "Crítico"));
   const links = (item?.conversation_ids || [])
     .map((conversationId) =>
       buildConversationLink(options.chatwootAppBase, options.accountId, options.inboxId, Number(conversationId)),
@@ -212,17 +273,8 @@ function buildItemSection(
     .filter(Boolean);
   const operational = Array.isArray(item?.conversation_operational) ? item.conversation_operational : [];
   const firstState = operational[0]?.state || null;
-  const finalizationLabel = firstState
-    ? firstState.finalization_status === "finalizada"
-      ? firstState.finalization_actor
-        ? `**Finalizada por ${firstState.finalization_actor}**`
-        : `**Finalizada (${firstState.finalization_reason || "motivo não informado"})**`
-      : firstState.waiting_on_agent
-        ? "**Aguardando resposta da IA/atendente**"
-        : firstState.waiting_on_customer
-          ? "**Aguardando retorno do cliente**"
-          : "**Em andamento**"
-    : "**Estado não identificado**";
+  const finalizationLabel = resolveStatusLabel(parsed, gaps, firstState);
+  const resumo = resolveSummary(parsed, item, gaps);
 
   const lines = [];
   lines.push(`### ${index}. ${contactName}`);
@@ -240,6 +292,4 @@ function buildItemSection(
   return lines.join("\n");
 }
 
-
 export { buildGapSection, buildItemSection, extractGapEntriesFromAnalysis, toArray, toChatwootAppBase, tryParseJson };
-

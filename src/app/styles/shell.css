@@ -893,7 +893,20 @@
 .report-list-animated .report-card:nth-child(3){animation-delay:.12s}
 .report-list-animated .report-card:nth-child(4){animation-delay:.17s}
 .report-list-animated .report-card:nth-child(5){animation-delay:.22s}
-.report-card-dot{width:8px;height:8px;margin-top:10px;flex-shrink:0}
+.report-card-dot{
+  width:9px;
+  height:9px;
+  margin-top:10px;
+  flex-shrink:0;
+  border-radius:2px;
+  background:var(--azul-line);
+}
+.report-card-dot-default{background:var(--azul-line)}
+.report-card-dot-critical{background:var(--critical)}
+.report-card-dot-high{background:var(--high)}
+.report-card-dot-medium{background:var(--medium)}
+.report-card-dot-low{background:var(--low)}
+.report-card-dot-info{background:var(--azul-line)}
 .report-card-content h4{margin:0;font-size:var(--fs-h3);color:var(--navy)}
 .report-card-content p{margin:4px 0 0;font-size:var(--fs-body);color:var(--muted);line-height:1.55}
 

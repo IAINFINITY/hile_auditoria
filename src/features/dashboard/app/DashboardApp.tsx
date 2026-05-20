@@ -103,6 +103,7 @@ export function DashboardApp() {
     notifyClient: notifyPrefs.client,
     currentDate: controller.date,
     runCompletedCount: controller.overviewRunCount,
+    isRunningOverview: controller.isRunningOverview,
   });
 
   const clientsSnapshotDate = useMemo(() => controller.reportHistory[0]?.date_ref || controller.date, [controller.date, controller.reportHistory]);

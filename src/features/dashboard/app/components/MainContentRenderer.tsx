@@ -173,13 +173,13 @@ export function MainContentRenderer({
         </section>
 
         {analysisScope === "overall" ? (
-          <AnalysisOverallView refreshHint={controller.lastRunAt} />
+          <AnalysisOverallView refreshHint={controller.lastRunAt} sectionStart={2} />
         ) : (
           <>
             <div className="section reveal" id="analysis-overview">
               <div className="section-inner">
                 <div className="section-header">
-                  <span className="section-num">01</span>
+                  <span className="section-num">02</span>
                   <div className="section-title">
                     <h2>Análise Geral do Dia</h2>
                     <p>Esta análise geral reflete exatamente os dados do dia selecionado: {controller.date}.</p>
@@ -211,13 +211,13 @@ export function MainContentRenderer({
               totalMessagesDay={controller.overview?.overview.total_messages_day ?? 0}
               totalConversationsDay={controller.overview?.overview.conversations_total_analyzed_day ?? 0}
               sectionId="analysis-movimentacao"
-              sectionNumber="02"
+              sectionNumber="03"
             />
 
             <div className="section reveal" id="analysis-conteudo">
               <div className="section-inner">
                 <div className="section-header">
-                  <span className="section-num">03</span>
+                  <span className="section-num">04</span>
                   <div className="section-title">
                     <h2>Produtos e Contexto</h2>
                     <p>Produtos procurados e insights informativos do dia selecionado</p>
@@ -293,12 +293,17 @@ export function MainContentRenderer({
         </section>
 
         {dissatisfactionScope === "overall" ? (
-          <DissatisfactionOverallView onOpenReportByContact={controller.focusReportByContact} refreshHint={controller.lastRunAt} />
+          <DissatisfactionOverallView
+            onOpenReportByContact={controller.focusReportByContact}
+            refreshHint={controller.lastRunAt}
+            headerNumber="02"
+          />
         ) : (
           <DissatisfactionView
             selectedDate={controller.date}
             alerts={controller.operationalAlerts}
             onOpenReportByContact={controller.focusReportByContact}
+            headerNumber="02"
           />
         )}
       </div>

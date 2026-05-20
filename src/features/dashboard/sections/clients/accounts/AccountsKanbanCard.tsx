@@ -1,4 +1,4 @@
-import { FiMapPin, FiStar } from "react-icons/fi";
+﻿import { FiMapPin, FiStar } from "react-icons/fi";
 import type { ClientRecordItem } from "../../../../../types";
 import { labelClass } from "../../report/utils";
 import {
@@ -44,7 +44,7 @@ export function AccountsKanbanCard({
 }: AccountsKanbanCardProps) {
   return (
     <article className={`settings-card ${shouldDimKanban ? "data-dim" : ""}`} id="clients-kanban">
-      <div className="settings-card-head">Kanban ? {filteredRecords.length} cliente(s)</div>
+      <div className="settings-card-head">Kanban - {filteredRecords.length} cliente(s)</div>
       <div className="settings-card-body accounts-list-wrap">
         {loading ? <p className="empty-state">Carregando clientes do banco...</p> : null}
         {!loading && errorMessage ? <p className="empty-state">{errorMessage}</p> : null}
@@ -153,4 +153,3 @@ export function AccountsKanbanCard({
     </article>
   );
 }
-

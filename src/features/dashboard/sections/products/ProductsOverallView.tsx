@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+﻿import { useEffect, useMemo, useRef, useState } from "react";
 import { apiGet } from "@/lib/api";
 
 type ProductOverallItem = {
@@ -16,6 +16,7 @@ type ProductsOverallResponse = {
 
 type ProductsOverallViewProps = {
   refreshHint?: string | null;
+  showHeader?: boolean;
 };
 
 type SortMode = "count" | "contacts" | "days" | "name";
@@ -65,7 +66,7 @@ function readProductsOverallCache(cacheKey: string): ProductsOverallResponse | n
   }
 }
 
-export function ProductsOverallView({ refreshHint = null }: ProductsOverallViewProps) {
+export function ProductsOverallView({ refreshHint = null, showHeader = true }: ProductsOverallViewProps) {
   const cacheKey = `hile_products_overall_cache_${PRODUCTS_OVERALL_CACHE_VERSION}`;
   const fetchMetaKey = `hile_products_overall_fetch_meta_${PRODUCTS_OVERALL_CACHE_VERSION}`;
   const handledRefreshHintRef = useRef<string | null>(null);
@@ -212,17 +213,21 @@ export function ProductsOverallView({ refreshHint = null }: ProductsOverallViewP
     setPage((current) => Math.min(totalPages, current + 1));
   }
 
+  const rootClass = `${showHeader ? "settings-shell" : "products-scope-shell"} reveal ${isSingleItem ? "products-overall-single" : ""}`;
+
   return (
-    <section className={`settings-shell reveal ${isSingleItem ? "products-overall-single" : ""}`} id="products-overview">
-      <div className="section-inner">
-        <div className="section-header">
-          <span className="section-num">01</span>
-          <div className="section-title">
-            <h2>Produtos mais procurados</h2>
-            <p>Consolidado de todos os produtos mencionados em todas as execuções salvas.</p>
+    <section className={rootClass} id={showHeader ? "products-overview" : undefined}>
+      {showHeader ? (
+        <div className="section-inner">
+          <div className="section-header">
+            <span className="section-num">01</span>
+            <div className="section-title">
+              <h2>Produtos mais procurados</h2>
+              <p>Consolidado de todos os produtos mencionados em todas as execuções salvas.</p>
+            </div>
           </div>
         </div>
-      </div>
+      ) : null}
 
       <article className="settings-card products-overall-summary-card">
         <div className="products-overall-summary">
@@ -254,14 +259,17 @@ export function ProductsOverallView({ refreshHint = null }: ProductsOverallViewP
         <div className="settings-card-body">
           {loading ? <p className="empty-state">Carregando produtos...</p> : null}
           {!loading && error ? <p className="empty-state">{error}</p> : null}
-          {!loading && !error ? (
+          {!loading && !error && showDim ? <p className="empty-state">Ainda não há produtos mapeados no consolidado.</p> : null}
+          {!loading && !error && !showDim ? (
             <div className="products-overall-podium">
               {podiumItems.map(({ item, rank }) => (
                 <article
                   className={`products-overall-podium-card rank-${rank} ${rank === 1 ? "is-primary" : ""} ${item ? "" : "is-placeholder"}`}
                   key={`podium-slot-${rank}`}
                 >
-                  <div className="products-overall-medal">{rank === 1 ? "🥇" : rank === 2 ? "🥈" : "🥉"}</div>
+                  <div className="products-overall-medal">
+                    {rank === 1 ? "\u{1F947}" : rank === 2 ? "\u{1F948}" : "\u{1F949}"}
+                  </div>
                   <span className="products-overall-podium-rank">#{rank}</span>
                   <h4>{item?.name || "Sem dados"}</h4>
                   <div className="products-overall-podium-stats">
@@ -288,34 +296,36 @@ export function ProductsOverallView({ refreshHint = null }: ProductsOverallViewP
       <article className={`settings-card ${showDim ? "data-dim" : ""}`}>
         <div className="settings-card-head">Ranking Geral</div>
         <div className="settings-card-body">
-          <div className="products-overall-filters">
-            <input
-              type="text"
-              value={query}
-              onChange={(event) => {
-                setQuery(event.target.value);
-                setPage(1);
-              }}
-              className="products-overall-search"
-              placeholder="Buscar produto..."
-            />
-            <select
-              value={sortMode}
-              onChange={(event) => {
-                setSortMode(event.target.value as SortMode);
-                setPage(1);
-              }}
-              className="products-overall-sort"
-            >
-              <option value="count">Ordenar por: Ocorrências</option>
-              <option value="contacts">Ordenar por: Contatos</option>
-              <option value="days">Ordenar por: Dias com ocorrência</option>
-              <option value="name">Ordenar por: Nome (A-Z)</option>
-            </select>
-            <span className="products-overall-filter-count">
-              Mostrando {pagedItems.length} de {sortedAndFiltered.length}
-            </span>
-          </div>
+          {!showDim ? (
+            <div className="products-overall-filters">
+              <input
+                type="text"
+                value={query}
+                onChange={(event) => {
+                  setQuery(event.target.value);
+                  setPage(1);
+                }}
+                className="products-overall-search"
+                placeholder="Buscar produto..."
+              />
+              <select
+                value={sortMode}
+                onChange={(event) => {
+                  setSortMode(event.target.value as SortMode);
+                  setPage(1);
+                }}
+                className="products-overall-sort"
+              >
+                <option value="count">Ordenar por: Ocorrências</option>
+                <option value="contacts">Ordenar por: Contatos</option>
+                <option value="days">Ordenar por: Dias com ocorrência</option>
+                <option value="name">Ordenar por: Nome (A-Z)</option>
+              </select>
+              <span className="products-overall-filter-count">
+                Mostrando {pagedItems.length} de {sortedAndFiltered.length}
+              </span>
+            </div>
+          ) : null}
 
           {sortedAndFiltered.length === 0 ? (
             <p className="empty-state">Nenhum produto encontrado com os filtros atuais.</p>
@@ -413,14 +423,7 @@ export function ProductsOverallView({ refreshHint = null }: ProductsOverallViewP
               <div className="products-overall-donut-wrap">
                 <svg viewBox="0 0 220 220" className="products-overall-donut">
                   {donutEntries.length === 1 ? (
-                    <circle
-                      cx="110"
-                      cy="110"
-                      r="64"
-                      stroke={donutEntries[0].color}
-                      strokeWidth={38}
-                      fill="none"
-                    />
+                    <circle cx="110" cy="110" r="64" stroke={donutEntries[0].color} strokeWidth={38} fill="none" />
                   ) : (
                     (() => {
                       let acc = 0;
@@ -461,6 +464,3 @@ export function ProductsOverallView({ refreshHint = null }: ProductsOverallViewP
     </section>
   );
 }
-
-
-

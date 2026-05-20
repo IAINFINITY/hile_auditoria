@@ -1,4 +1,4 @@
-interface AppModalsProps {
+﻿interface AppModalsProps {
   showConfirmModal: boolean;
   showLogoutConfirmModal: boolean;
   isDashboardView: boolean;

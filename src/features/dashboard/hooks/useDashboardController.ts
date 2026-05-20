@@ -440,7 +440,7 @@ export function useDashboardController(options?: { enabled?: boolean; syncNavOnS
     return () => {
       cancelled = true;
     };
-  }, [date, enabled, hasLoadedAvailableDates, isDateHydrated, isRunningOverview, isPeriodMode]);
+  }, [availableReportDates, date, enabled, hasLoadedAvailableDates, isDateHydrated, isRunningOverview, isPeriodMode]);
 
   const informationalInsights = useMemo(() => {
     return buildInformationalInsights(report, insights);
@@ -704,10 +704,43 @@ export function useDashboardController(options?: { enabled?: boolean; syncNavOnS
           }
           finalRawOutput = mappedSnapshot.rawOutput || reportData.report_markdown || JSON.stringify(reportData, null, 2);
         } else if (reportData) {
-          finalOverviewData = overview;
-          finalInsights = insights;
+          finalOverviewData = {
+            date: reportData.date || safeDate,
+            timezone: "America/Fortaleza",
+            generated_at: new Date().toISOString(),
+            account: {
+              id: Number(reportData.account?.id || 0),
+              name: reportData.account?.name || null,
+              role: reportData.account?.role || null,
+            },
+            inbox: {
+              id: Number(reportData.inbox?.id || 0),
+              name: reportData.inbox?.name || null,
+              provider: reportData.inbox?.provider || null,
+              channel_type: reportData.inbox?.channel_type || null,
+              phone_number: reportData.inbox?.phone_number || null,
+            },
+            overview: {
+              conversations_scanned: Number(reportData.summary?.total_to_process || 0),
+              conversations_entered_today: Number(reportData.summary?.conversations_entered_today || 0),
+              unique_contacts_today: Number(reportData.summary?.unique_contacts_today || 0),
+              conversations_total_analyzed_day: Number(reportData.summary?.processed || 0),
+              total_analysis_count: Number(reportData.summary?.analyses_count || 0),
+              total_messages_day: 0,
+              repeated_identifier_count: 0,
+              finalized_count: 0,
+              continued_count: 0,
+              trigger_ready_count: 0,
+              critical_insights_count: Number(reportData.summary?.critical_count || 0),
+              non_critical_insights_count: 0,
+              insights_total: 0,
+            },
+            insights: [],
+            conversation_operational: [],
+          };
+          finalInsights = [];
           finalReportData = reportData;
-          finalFailures = [];
+          finalFailures = reportData.raw_analysis?.failures || [];
           finalRawOutput = reportData.report_markdown || JSON.stringify(reportData, null, 2);
           pushRunStep("Relatório concluído e exibido a partir do retorno imediato; persistência finalizando em background.");
         } else {

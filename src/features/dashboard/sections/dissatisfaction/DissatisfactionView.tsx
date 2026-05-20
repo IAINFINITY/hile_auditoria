@@ -6,6 +6,7 @@ interface DissatisfactionViewProps {
   selectedDate: string;
   alerts: OperationalAlertItem[];
   onOpenReportByContact: (contactName: string) => void;
+  headerNumber?: string;
 }
 
 type AlertTypeFilter = "all" | "insatisfacao_hile" | "insatisfacao_atendimento";
@@ -44,7 +45,12 @@ function typeColor(type: AlertTypeFilter): string {
   return "var(--azul-line)";
 }
 
-export function DissatisfactionView({ selectedDate, alerts, onOpenReportByContact }: DissatisfactionViewProps) {
+export function DissatisfactionView({
+  selectedDate,
+  alerts,
+  onOpenReportByContact,
+  headerNumber = "01",
+}: DissatisfactionViewProps) {
   const [typeFilter, setTypeFilter] = useState<AlertTypeFilter>("all");
   const [severityFilter, setSeverityFilter] = useState<AlertSeverityFilter>("all");
   const [page, setPage] = useState(1);
@@ -86,7 +92,7 @@ export function DissatisfactionView({ selectedDate, alerts, onOpenReportByContac
     <section className="accounts-shell dissatisfaction-shell">
       <div className="section-inner reveal" id="dissatisfaction-overview">
         <div className="section-header">
-          <span className="section-num">01</span>
+          <span className="section-num">{headerNumber}</span>
           <div className="section-title">
             <h2>Registro de Insatisfação</h2>
             <p>Visão auditável dos sinais de insatisfação detectados no dia {selectedDate}.</p>

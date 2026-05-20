@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { FiCheckCircle, FiClock, FiXCircle } from "react-icons/fi";
 import type { ReportHistoryItem, SystemCheckResponse } from "../../../../types";
 
@@ -54,8 +54,6 @@ export function LogsView({
   runCurrentContact,
   runTimeline,
 }: LogsViewProps) {
-  const [copiedRunId, setCopiedRunId] = useState<string | null>(null);
-
   const runsByDate = useMemo(() => {
     const map = new Map<string, ReportHistoryItem[]>();
     for (const run of reportHistory) {
@@ -69,16 +67,6 @@ export function LogsView({
   const hasRecentRuns = runsByDate.length > 0;
   const dimExec = !isRunningOverview;
   const dimRecent = !hasRecentRuns;
-
-  async function copyRunId(value: string) {
-    try {
-      await navigator.clipboard.writeText(value);
-      setCopiedRunId(value);
-      window.setTimeout(() => setCopiedRunId((current) => (current === value ? null : current)), 1600);
-    } catch {
-      setCopiedRunId(null);
-    }
-  }
 
   return (
     <div className="settings-shell">
@@ -115,12 +103,7 @@ export function LogsView({
           ) : (
             <>
               <p>
-                <strong>Run:</strong> {currentRunId ? currentRunId : "em criação..."}{" "}
-                {currentRunId ? (
-                  <button type="button" className="link-btn" onClick={() => void copyRunId(currentRunId)}>
-                    {copiedRunId === currentRunId ? "copiado" : "copiar"}
-                  </button>
-                ) : null}
+                <strong>Run:</strong> {currentRunId ? currentRunId : "em criação..."}
               </p>
               <p><strong>Contato atual:</strong> {runCurrentContact || "preparando execução..."}</p>
               <p><strong>Progresso:</strong> {runProgress}%</p>
@@ -172,9 +155,6 @@ export function LogsView({
                         </strong>
                         <span style={{ fontSize: "var(--fs-tiny)", color: "var(--azul)", fontFamily: "var(--font-mono)", display: "inline-flex", alignItems: "center", gap: 8 }}>
                           {run.id.slice(0, 8)}
-                          <button type="button" className="link-btn" onClick={() => void copyRunId(run.id)}>
-                            {copiedRunId === run.id ? "copiado" : "copiar"}
-                          </button>
                         </span>
                         {run.has_report && (
                           <span style={{ fontSize: "var(--fs-tiny)", color: "var(--low)", fontWeight: 600 }}>c/ relatório</span>

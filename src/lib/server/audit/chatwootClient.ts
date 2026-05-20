@@ -100,8 +100,42 @@ export function createChatwootClient({ baseUrl, apiAccessToken, accountId, timeo
     if (!account) {
       throw new Error("accountId ausente para getConversationMessages.");
     }
-    const data = await apiGet(`/api/v1/accounts/${account}/conversations/${conversationId}/messages`);
-    return Array.isArray(data?.payload) ? data.payload : [];
+    const collected: any[] = [];
+    const seenIds = new Set<number>();
+    let beforeId: number | null = null;
+    let safety = 0;
+
+    // Chatwoot devolve mensagens mais recentes; usamos `before` para paginar para trás.
+    while (safety < 50) {
+      safety += 1;
+      const query = beforeId ? { before: beforeId } : {};
+      const data = await apiGet(`/api/v1/accounts/${account}/conversations/${conversationId}/messages`, query);
+      const batch = Array.isArray(data?.payload) ? data.payload : [];
+      if (batch.length === 0) break;
+
+      let minBatchId = Number.MAX_SAFE_INTEGER;
+      let appended = 0;
+
+      for (const message of batch) {
+        const id = Number(message?.id || 0);
+        if (id > 0) {
+          if (seenIds.has(id)) continue;
+          seenIds.add(id);
+          minBatchId = Math.min(minBatchId, id);
+        }
+        collected.push(message);
+        appended += 1;
+      }
+
+      if (appended === 0) break;
+      if (!Number.isFinite(minBatchId) || minBatchId === Number.MAX_SAFE_INTEGER) break;
+
+      const nextBefore = minBatchId;
+      if (beforeId !== null && nextBefore >= beforeId) break;
+      beforeId = nextBefore;
+    }
+
+    return collected;
   }
 
   return {

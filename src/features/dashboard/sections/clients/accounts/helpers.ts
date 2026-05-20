@@ -1,4 +1,4 @@
-import type { ClientPhase, ClientRecordItem, Severity } from "../../../../../types";
+﻿import type { ClientPhase, ClientRecordItem, Severity } from "../../../../../types";
 import type { AccountStatus } from "./types";
 
 export function normalizeFilterText(value: unknown): string {
@@ -126,4 +126,5 @@ export function mapStatus(record: ClientRecordItem): AccountStatus {
 export function dateKeyNowFortaleza(): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Fortaleza" }).format(new Date());
 }
+
 

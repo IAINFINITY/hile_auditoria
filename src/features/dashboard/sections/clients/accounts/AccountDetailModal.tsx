@@ -1,4 +1,4 @@
-import { FiExternalLink } from "react-icons/fi";
+﻿import { FiExternalLink } from "react-icons/fi";
 import type { ClientRecordItem } from "../../../../../types";
 import { labelClass } from "../../report/utils";
 import {
@@ -30,7 +30,7 @@ export function AccountDetailModal({ record, onClose }: AccountDetailModalProps)
             <p>{record.companyName || "Empresa não informada"}</p>
           </div>
           <button className="modal-close" aria-label="Fechar modal de detalhes" onClick={onClose}>
-            ?
+            ×
           </button>
         </div>
 
@@ -181,4 +181,3 @@ export function AccountDetailModal({ record, onClose }: AccountDetailModalProps)
     </div>
   );
 }
-

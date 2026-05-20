@@ -2,15 +2,19 @@ import { createHash } from "node:crypto";
 import { unique } from "../dateUtils";
 
 function extractEnteredToday(conversations, date, toYmd) {
-  return conversations.filter((item) => {
-    const createdAt = Number(item?.created_at || 0);
+  const toUnixSecondsSafe = (value) => {
+    if (value === null || value === undefined || value === "") return 0;
+    const asNumber = Number(value);
+    if (Number.isFinite(asNumber) && asNumber > 0) {
+      return asNumber > 1e12 ? Math.floor(asNumber / 1000) : Math.floor(asNumber);
+    }
+    const parsed = new Date(String(value)).getTime();
+    if (!Number.isFinite(parsed) || parsed <= 0) return 0;
+    return Math.floor(parsed / 1000);
+  };
 
-    const toUnixSecondsSafe = (value) => {
-      const n = Number(value || 0);
-      if (!n || !Number.isFinite(n)) return 0;
-      // Chatwoot normalmente retorna epoch em segundos, mas alguns payloads podem vir em ms.
-      return n > 1e12 ? Math.floor(n / 1000) : Math.floor(n);
-    };
+  return conversations.filter((item) => {
+    const createdAt = item?.created_at;
 
     const createdYmd = toUnixSecondsSafe(createdAt) ? toYmd(toUnixSecondsSafe(createdAt)) : null;
     return createdYmd === date;
@@ -18,13 +22,18 @@ function extractEnteredToday(conversations, date, toYmd) {
 }
 
 function extractActiveOnDay(conversations, date, toYmd) {
-  return conversations.filter((item) => {
-    const toUnixSecondsSafe = (value) => {
-      const n = Number(value || 0);
-      if (!n || !Number.isFinite(n)) return 0;
-      return n > 1e12 ? Math.floor(n / 1000) : Math.floor(n);
-    };
+  const toUnixSecondsSafe = (value) => {
+    if (value === null || value === undefined || value === "") return 0;
+    const asNumber = Number(value);
+    if (Number.isFinite(asNumber) && asNumber > 0) {
+      return asNumber > 1e12 ? Math.floor(asNumber / 1000) : Math.floor(asNumber);
+    }
+    const parsed = new Date(String(value)).getTime();
+    if (!Number.isFinite(parsed) || parsed <= 0) return 0;
+    return Math.floor(parsed / 1000);
+  };
 
+  return conversations.filter((item) => {
     const candidates = [
       toUnixSecondsSafe(item?.last_activity_at),
       toUnixSecondsSafe(item?.updated_at),
