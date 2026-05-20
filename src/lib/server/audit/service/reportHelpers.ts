@@ -258,7 +258,11 @@ function resolveSummary(parsed, item, gaps) {
 function buildItemSection(
   item,
   index,
-  options = {},
+  options: {
+    chatwootAppBase?: string;
+    accountId?: number | null;
+    inboxId?: number | null;
+  } = {},
 ) {
   const parsed = tryParseJson(item?.analysis?.answer);
   const contactName = item?.contact?.name || item?.contact?.identifier || item?.contact_key || "Contato sem nome";

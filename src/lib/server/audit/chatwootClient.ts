@@ -19,23 +19,63 @@ interface ChatwootClientInput {
 
 export function createChatwootClient({ baseUrl, apiAccessToken, accountId, timeoutMs = 45000 }: ChatwootClientInput) {
   const normalizedBaseUrl = baseUrl.replace(/\/$/, "");
+  const maxRetries = 3;
 
-  async function apiGet(pathname: string, query: Record<string, unknown> = {}): Promise<any> {
-    const response = await fetch(`${normalizedBaseUrl}${pathname}${buildQueryString(query)}`, {
-      method: "GET",
-      signal: AbortSignal.timeout(timeoutMs),
-      headers: {
-        "Content-Type": "application/json",
-        api_access_token: apiAccessToken,
-      },
+  const sleep = (ms: number) =>
+    new Promise<void>((resolve) => {
+      setTimeout(resolve, ms);
     });
 
-    if (!response.ok) {
-      const text = await response.text();
-      throw new Error(`Chatwoot ${response.status} em ${pathname}. Body: ${text || "(vazio)"}`);
-    }
+  function isRetryableNetworkError(error: unknown): boolean {
+    const code = String((error as { code?: string } | null)?.code || "").toUpperCase();
+    const message = String((error as Error | null)?.message || "").toLowerCase();
+    if (code === "ECONNRESET" || code === "ETIMEDOUT" || code === "ENOTFOUND" || code === "EAI_AGAIN") return true;
+    if (code.includes("UND_ERR_CONNECT_TIMEOUT")) return true;
+    return (
+      message.includes("fetch failed") ||
+      message.includes("connect timeout") ||
+      message.includes("econnreset") ||
+      message.includes("network")
+    );
+  }
 
-    return response.json();
+  function isRetryableHttpStatus(status: number): boolean {
+    return status === 408 || status === 425 || status === 429 || (status >= 500 && status <= 504);
+  }
+
+  async function apiGet(pathname: string, query: Record<string, unknown> = {}): Promise<any> {
+    let lastError: unknown = null;
+    for (let attempt = 1; attempt <= maxRetries; attempt += 1) {
+      try {
+        const response = await fetch(`${normalizedBaseUrl}${pathname}${buildQueryString(query)}`, {
+          method: "GET",
+          signal: AbortSignal.timeout(timeoutMs),
+          headers: {
+            "Content-Type": "application/json",
+            api_access_token: apiAccessToken,
+          },
+        });
+
+        if (!response.ok) {
+          const text = await response.text();
+          if (attempt < maxRetries && isRetryableHttpStatus(response.status)) {
+            await sleep(400 * attempt);
+            continue;
+          }
+          throw new Error(`Chatwoot ${response.status} em ${pathname}. Body: ${text || "(vazio)"}`);
+        }
+
+        return response.json();
+      } catch (error) {
+        lastError = error;
+        if (attempt < maxRetries && isRetryableNetworkError(error)) {
+          await sleep(400 * attempt);
+          continue;
+        }
+        throw error;
+      }
+    }
+    throw lastError instanceof Error ? lastError : new Error("Falha de rede ao consultar Chatwoot.");
   }
 
   async function listInboxes(): Promise<any[]> {

@@ -88,6 +88,29 @@ function textFromMessage(message: any): string {
   return "[mensagem sem conteúdo textual]";
 }
 
+
+function normalizeActivityText(value: unknown): string {
+  return String(value || "")
+    .toLowerCase()
+    .trim()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
+function shouldIgnoreSystemAssignmentMessage(message: NormalizedMessage): boolean {
+  if (message.role !== "SYSTEM") return false;
+  const text = normalizeActivityText(message.text);
+  if (!text) return false;
+
+  // Ignore default assignment system events to avoid polluting the audit analysis.
+  return (
+    /conversa\s+foi\s+atribuida\s+a/.test(text) ||
+    /conversa\s+atribuida\s+a/.test(text) ||
+    /\batribuida\b/.test(text) ||
+    /\batribuido\b/.test(text) ||
+    /\bassigned\b/.test(text)
+  );
+}
 function normalizeMessage(message: any): NormalizedMessage {
   return {
     id: Number(message?.id || 0),
@@ -182,6 +205,7 @@ export function normalizeConversationLog({ conversation, messages }: { conversat
   const allMessages = mergeConversationMessages(conversation, messages)
     .map(normalizeMessage)
     .filter((item) => item.created_at > 0)
+    .filter((item) => !shouldIgnoreSystemAssignmentMessage(item))
     .sort((a, b) => a.created_at - b.created_at);
 
   return {
@@ -218,3 +242,4 @@ export function renderLogForPrompt(log: { messages: NormalizedMessage[] }): stri
 
   return lines.join("\n");
 }
+

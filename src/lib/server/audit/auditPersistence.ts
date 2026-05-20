@@ -49,6 +49,39 @@ function pickTimelineEventType(params: {
   return "issue_updated";
 }
 
+function isSystemAssignmentReason(value: unknown): boolean {
+  const normalized = String(value || "")
+    .toLowerCase()
+    .trim()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+  if (!normalized) return false;
+  return (
+    /conversa\s+foi\s+atribuida\s+a/.test(normalized) ||
+    /conversa\s+atribuida\s+a/.test(normalized) ||
+    /\batribuida\b/.test(normalized) ||
+    /\batribuido\b/.test(normalized) ||
+    /\bassigned\b/.test(normalized)
+  );
+}
+
+function pickTimelineReason(params: {
+  gaps: string[];
+  attentions: string[];
+  movedOutOfAi: boolean;
+  fallback: string;
+}): string {
+  const candidates = [...(params.gaps || []), ...(params.attentions || [])];
+  for (const candidate of candidates) {
+    const text = String(candidate || "").trim();
+    if (!text) continue;
+    if (isSystemAssignmentReason(text)) continue;
+    return text;
+  }
+  if (params.movedOutOfAi) return "Conversa saiu do fluxo da IA por etiqueta operacional.";
+  return params.fallback;
+}
+
 function hasRenderableReportData(reportJson: Record<string, unknown> | null | undefined): boolean {
   if (!reportJson || typeof reportJson !== "object") return false;
   const rawAnalysis = (reportJson.raw_analysis || {}) as Record<string, unknown>;
@@ -211,7 +244,7 @@ function parseOperationalMessages(logText: string): ParsedOperationalMessage[] {
   const messages: ParsedOperationalMessage[] = [];
   for (const line of lines) {
     const match = line.match(
-      /^\[(.*?)\]\s*(?:\[[^\]]+\]\s*)?([A-Z_À-ÿ ]+?)(?:\s*\([^)]+\))?\s*[:\-]\s*(.*)$/i,
+      /^\[(.*?)\]\s*(?:\[[^\]]+\]\s*)?([A-Z_\u00C0-\u00FF ]+?)(?:\s*\([^)]+\))?\s*[:\-]\s*(.*)$/i,
     );
     if (!match) continue;
     const roleRaw = String(match[2] || "")
@@ -1044,10 +1077,12 @@ export async function persistCompletedRun(params: {
                 movedOutOfAi,
               }),
               severity: record.severity,
-              reason:
-                (record.gaps || [])[0] ||
-                (record.attentions || [])[0] ||
-                (movedOutOfAi ? "Conversa saiu do fluxo da IA por etiqueta operacional." : "Registro inicial da conversa."),
+              reason: pickTimelineReason({
+                gaps: record.gaps || [],
+                attentions: record.attentions || [],
+                movedOutOfAi,
+                fallback: "Registro inicial da conversa.",
+              }),
               source: "full",
             },
           });
@@ -1098,12 +1133,12 @@ export async function persistCompletedRun(params: {
               movedOutOfAi,
             }),
             severity: record.severity,
-            reason:
-              (record.gaps || [])[0] ||
-              (record.attentions || [])[0] ||
-              (movedOutOfAi
-                ? "Conversa saiu do fluxo da IA por etiqueta operacional."
-                : `Atualização operacional de status: ${existing.currentStatus} -> ${normalizedNextStatus}.`),
+            reason: pickTimelineReason({
+              gaps: record.gaps || [],
+              attentions: record.attentions || [],
+              movedOutOfAi,
+              fallback: `Atualizacao operacional de status: ${existing.currentStatus} -> ${normalizedNextStatus}.`,
+            }),
             source: "full",
           },
         });
@@ -1151,14 +1186,65 @@ export async function persistCompletedRun(params: {
 }
 
 export async function markRunFailed(runId: string, finishedAtIso: string, message: string) {
-  await prisma.analysisRun.update({
-    where: { id: runId },
-    data: {
-      status: RunStatus.failed,
-      finishedAt: new Date(finishedAtIso),
-    },
-  });
-  await appendRunEvent(runId, "run_failed", { message });
+  const sleep = (ms: number) =>
+    new Promise<void>((resolve) => {
+      setTimeout(resolve, ms);
+    });
+
+  const isTransientDbError = (error: unknown): boolean => {
+    const code = String((error as { code?: string } | null)?.code || "").toUpperCase();
+    const text = String((error as Error | null)?.message || "").toLowerCase();
+    return (
+      code === "P2024" ||
+      code === "P1001" ||
+      code === "P1008" ||
+      text.includes("connection pool") ||
+      text.includes("server has closed the connection") ||
+      text.includes("connectionreset") ||
+      text.includes("econnreset") ||
+      text.includes("connect timeout")
+    );
+  };
+
+  const retry = async <T>(fn: () => Promise<T>, label: string): Promise<T> => {
+    let lastError: unknown = null;
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      try {
+        return await fn();
+      } catch (error) {
+        lastError = error;
+        if (attempt < 3 && isTransientDbError(error)) {
+          await sleep(350 * attempt);
+          continue;
+        }
+        throw error;
+      }
+    }
+    throw lastError instanceof Error ? lastError : new Error(`Falha ao executar ${label}.`);
+  };
+
+  try {
+    await retry(
+      () =>
+        prisma.analysisRun.update({
+          where: { id: runId },
+          data: {
+            status: RunStatus.failed,
+            finishedAt: new Date(finishedAtIso),
+          },
+        }),
+      "analysisRun.update",
+    );
+  } catch (error) {
+    console.error("[audit-persistence] não foi possível atualizar run para failed:", error);
+    return;
+  }
+
+  try {
+    await retry(() => appendRunEvent(runId, "run_failed", { message }), "appendRunEvent(run_failed)");
+  } catch (error) {
+    console.warn("[audit-persistence] falha ao registrar evento run_failed:", error);
+  }
 }
 
 export async function listRecentRuns(limit: number) {
@@ -2753,3 +2839,4 @@ export async function listClientsByDate(date: string) {
     items: contactItems,
   };
 }
+

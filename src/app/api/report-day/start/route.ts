@@ -102,6 +102,12 @@ export async function POST(request: Request) {
       throw error;
     }
 
+    const fireAndForget = (promise: Promise<unknown>, label: string) => {
+      void promise.catch((error) => {
+        console.warn(`[report-day/start] falha assíncrona em ${label}:`, error);
+      });
+    };
+
     void (async () => {
       try {
         const output = await buildDailyReport({
@@ -116,7 +122,7 @@ export async function POST(request: Request) {
 
             if (event?.type === "contact_start") {
               if (state.db_run_id) {
-                void appendRunEvent(state.db_run_id, "contact_start", event);
+                fireAndForget(appendRunEvent(state.db_run_id, "contact_start", event), "appendRunEvent(contact_start)");
               }
               state.current_contact = {
                 sequence: Number(event?.sequence || 0),
@@ -147,13 +153,16 @@ export async function POST(request: Request) {
               const successCount = state.execution_order.filter((item) => item.success).length;
               const failureCount = Math.max(0, processed - successCount);
               if (state.db_run_id) {
-                void appendRunEvent(state.db_run_id, "contact_done", event);
-                void updateRunProgress(state.db_run_id, {
-                  total: Number(event?.total || state.total || 0),
-                  processed,
-                  successCount,
-                  failureCount,
-                });
+                fireAndForget(appendRunEvent(state.db_run_id, "contact_done", event), "appendRunEvent(contact_done)");
+                fireAndForget(
+                  updateRunProgress(state.db_run_id, {
+                    total: Number(event?.total || state.total || 0),
+                    processed,
+                    successCount,
+                    failureCount,
+                  }),
+                  "updateRunProgress",
+                );
               }
               state.current_contact = null;
             }
@@ -198,7 +207,11 @@ export async function POST(request: Request) {
         state.error = error instanceof Error ? error.message : "Falha ao gerar relatório.";
         state.current_contact = null;
         if (state.db_run_id) {
-          await markRunFailed(state.db_run_id, finishedAt, state.error);
+          try {
+            await markRunFailed(state.db_run_id, finishedAt, state.error);
+          } catch (markError) {
+            console.error("[report-day/start] falha ao marcar execução como failed:", markError);
+          }
         }
       }
     })();
