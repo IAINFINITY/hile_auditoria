@@ -43,8 +43,20 @@ export async function POST(request: Request) {
     const previousRun = await getLatestRunByDate(date);
     const jobs = getReportJobsStore();
 
+    const runningStaleMinutesRaw = Number(process.env.REPORT_JOB_RUNNING_STALE_MINUTES || 30);
+    const runningStaleMinutes = Number.isFinite(runningStaleMinutesRaw)
+      ? Math.min(240, Math.max(5, Math.floor(runningStaleMinutesRaw)))
+      : 30;
+    const runningStaleMs = runningStaleMinutes * 60 * 1000;
+
     const runningForDate = [...jobs.values()].find((job) => job.status === "running" && job.date === date);
     if (runningForDate) {
+      const updatedAtMs = new Date(runningForDate.updated_at).getTime();
+      const isStaleInMemory =
+        Number.isFinite(updatedAtMs) && updatedAtMs > 0 && Date.now() - updatedAtMs > runningStaleMs;
+      if (isStaleInMemory) {
+        jobs.delete(runningForDate.job_id);
+      } else {
       return NextResponse.json(
         {
           ok: true,
@@ -56,6 +68,7 @@ export async function POST(request: Request) {
         },
         { status: 202 },
       );
+      }
     }
 
     const jobId = randomUUID();

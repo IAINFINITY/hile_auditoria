@@ -361,6 +361,10 @@ export async function createRunRecord(params: {
   account?: { id: number; name: string | null };
   inbox?: { id: number; name: string | null; provider: string | null };
 }) {
+  const staleMinutesRaw = Number(process.env.ANALYSIS_RUNNING_STALE_MINUTES || 30);
+  const staleMinutes = Number.isFinite(staleMinutesRaw)
+    ? Math.min(240, Math.max(5, Math.floor(staleMinutesRaw)))
+    : 30;
   const baseReportLike = {
     account: params.account || { id: params.config.chatwoot.accountId || 0, name: params.config.chatwoot.groupName },
     inbox: params.inbox || {
@@ -377,7 +381,7 @@ export async function createRunRecord(params: {
 
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`;
 
-    const staleBefore = new Date(Date.now() - 3 * 60 * 60 * 1000);
+    const staleBefore = new Date(Date.now() - staleMinutes * 60 * 1000);
     const now = new Date(params.startedAtIso);
 
     await tx.analysisRun.updateMany({
@@ -402,13 +406,43 @@ export async function createRunRecord(params: {
         status: RunStatus.running,
       },
       orderBy: { startedAt: "desc" },
-      select: { id: true },
+      select: {
+        id: true,
+        startedAt: true,
+        events: {
+          select: { createdAt: true },
+          orderBy: { createdAt: "desc" },
+          take: 1,
+        },
+      },
     });
 
     if (activeRun?.id) {
-      const error = new Error("Já existe uma execução em andamento para essa data e canal.");
-      (error as Error & { code?: string }).code = "RUN_ALREADY_IN_PROGRESS";
-      throw error;
+      const lastHeartbeat = activeRun.events?.[0]?.createdAt || activeRun.startedAt;
+      if (lastHeartbeat < staleBefore) {
+        await tx.analysisRun.update({
+          where: { id: activeRun.id },
+          data: {
+            status: RunStatus.failed,
+            finishedAt: now,
+          },
+        });
+        await tx.jobEvent.create({
+          data: {
+            runId: activeRun.id,
+            eventType: "run_failed_stale",
+            payloadJson: {
+              message: `Execução marcada como stale após ${staleMinutes} min sem heartbeat.`,
+              stale_minutes: staleMinutes,
+              stale_before: staleBefore.toISOString(),
+            },
+          },
+        });
+      } else {
+        const error = new Error("Já existe uma execução em andamento para essa data e canal.");
+        (error as Error & { code?: string }).code = "RUN_ALREADY_IN_PROGRESS";
+        throw error;
+      }
     }
 
     const run = await tx.analysisRun.create({
@@ -2839,4 +2873,3 @@ export async function listClientsByDate(date: string) {
     items: contactItems,
   };
 }
-
