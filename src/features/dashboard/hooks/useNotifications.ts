@@ -51,6 +51,16 @@ export function useNotifications(options: UseNotificationsOptions) {
     setState(EMPTY_STATE);
   }, []);
 
+  const clearOne = useCallback((eventId: string) => {
+    const targetId = String(eventId || "").trim();
+    if (!targetId) return;
+    setState((prev) => {
+      const nextEvents = prev.events.filter((event) => event.id !== targetId);
+      if (nextEvents.length === prev.events.length) return prev;
+      return { events: nextEvents, total: nextEvents.length };
+    });
+  }, []);
+
   useEffect(() => {
     if (lastDateRef.current === options.currentDate) return;
     lastDateRef.current = options.currentDate;
@@ -185,6 +195,5 @@ export function useNotifications(options: UseNotificationsOptions) {
     options.runCompletedCount,
   ]);
 
-  return { state, clear };
+  return { state, clear, clearOne };
 }
-

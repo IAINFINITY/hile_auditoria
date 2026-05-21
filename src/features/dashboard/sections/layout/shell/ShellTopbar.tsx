@@ -8,7 +8,7 @@ interface ShellTopbarProps {
   notifyOpen: boolean;
   onToggleNotify: () => void;
   onClearAndClose: () => void;
-  onNotifyItemClick: (view: "clients" | "logs") => void;
+  onNotifyItemClick: (eventId: string, view: "clients" | "logs") => void;
   notifyRef: React.RefObject<HTMLDivElement | null>;
   sidebarCollapsed: boolean;
   onToggleSidebar: () => void;
@@ -52,12 +52,14 @@ export function ShellTopbar({
                 position: "absolute",
                 top: "calc(100% + 6px)",
                 right: 0,
-                width: 280,
+                width: "min(340px, calc(100vw - 24px))",
                 background: "#fff",
                 border: "1px solid var(--line)",
                 boxShadow: "0 4px 20px rgba(0,0,0,.1)",
                 zIndex: 1200,
                 padding: 0,
+                borderRadius: 12,
+                overflow: "hidden",
               }}
             >
               <div
@@ -81,7 +83,7 @@ export function ShellTopbar({
                     <button
                       key={event.id}
                       type="button"
-                      onClick={() => onNotifyItemClick(event.targetView)}
+                      onClick={() => onNotifyItemClick(event.id, event.targetView)}
                       style={{
                         display: "flex",
                         alignItems: "center",

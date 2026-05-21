@@ -4,7 +4,7 @@
 
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 html{scroll-behavior:smooth}
-body{margin:0;font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--preto)}
+body{margin:0;font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--preto);line-height:1.5}
 img{max-width:100%;display:block}
 
 :root{
@@ -31,13 +31,13 @@ img{max-width:100%;display:block}
   --low-bg:#f0fdf4;
   --info-bg:#eff6ff;
 
-  --fs-hero:clamp(2rem,1.45rem + 1.8vw,3rem);
-  --fs-h1:clamp(1.6rem,1.2rem + 1.1vw,2.2rem);
-  --fs-h2:clamp(1.24rem,1rem + 0.55vw,1.55rem);
-  --fs-h3:clamp(1.02rem,0.92rem + 0.32vw,1.2rem);
-  --fs-body:clamp(0.98rem,0.93rem + 0.16vw,1.06rem);
-  --fs-small:clamp(0.86rem,0.82rem + 0.14vw,0.94rem);
-  --fs-tiny:clamp(0.74rem,0.72rem + 0.08vw,0.8rem);
+  --fs-hero:clamp(1.9rem,1.4rem + 1.5vw,2.6rem);
+  --fs-h1:clamp(1.45rem,1.15rem + 0.8vw,1.95rem);
+  --fs-h2:clamp(1.16rem,0.98rem + 0.42vw,1.38rem);
+  --fs-h3:clamp(1rem,0.92rem + 0.2vw,1.12rem);
+  --fs-body:clamp(0.96rem,0.92rem + 0.11vw,1.01rem);
+  --fs-small:clamp(0.84rem,0.8rem + 0.1vw,0.9rem);
+  --fs-tiny:clamp(0.72rem,0.7rem + 0.06vw,0.78rem);
 
   --shell-max:2400px;
   --shell-gutter:clamp(16px,2.6vw,64px);

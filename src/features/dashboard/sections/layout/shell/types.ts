@@ -40,6 +40,7 @@ export interface ShellNavigationProps {
   onLogout: () => void;
   notificationState: NotificationState;
   onClearNotifications: () => void;
+  onClearNotification: (eventId: string) => void;
   onOpenView: (view: "clients" | "logs") => void;
   sidebarCollapsed: boolean;
   onToggleSidebar: () => void;

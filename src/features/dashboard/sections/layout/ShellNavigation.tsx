@@ -39,6 +39,7 @@ export function ShellNavigation({
   onLogout,
   notificationState,
   onClearNotifications,
+  onClearNotification,
   onOpenView,
   sidebarCollapsed,
   onToggleSidebar,
@@ -68,11 +69,12 @@ export function ShellNavigation({
   }, [onClearNotifications]);
 
   const handleNotifyItemClick = useCallback(
-    (view: "clients" | "logs") => {
+    (eventId: string, view: "clients" | "logs") => {
+      onClearNotification(eventId);
       onOpenView(view);
-      handleClearAndClose();
+      setNotifyOpen(false);
     },
-    [handleClearAndClose, onOpenView],
+    [onClearNotification, onOpenView],
   );
 
   const currentBreadcrumb = resolveCurrentBreadcrumb(activeView, navClass);

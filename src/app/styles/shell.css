@@ -42,6 +42,7 @@
   border-bottom:1px solid var(--line);
   cursor:pointer;
   transition:background .2s ease;
+  min-width:0;
 }
 
 .side-brand-logo{
@@ -67,6 +68,8 @@
   display:inline-flex;
   align-items:center;
   gap:0;
+  min-width:0;
+  white-space:nowrap;
 }
 
 .side-brand-text-expand{
@@ -314,6 +317,7 @@
   display:flex;
   align-items:center;
   justify-content:space-between;
+  gap:12px;
   padding:0 var(--shell-gutter);
   z-index:1050;
   animation:slideTopIn .35s ease;
@@ -325,6 +329,10 @@
   gap:8px;
   color:var(--muted);
   font-size:var(--fs-tiny);
+  min-width:0;
+  flex:1;
+  overflow:hidden;
+  white-space:nowrap;
 }
 
 .topbar-sidebar-toggle{
@@ -357,6 +365,10 @@
 
 .topbar-breadcrumb strong{
   color:var(--navy);
+  min-width:0;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
 }
 
 .topbar-user{
@@ -369,6 +381,7 @@
   display:flex;
   align-items:center;
   gap:10px;
+  flex-shrink:0;
 }
 
 .topbar-notify{
@@ -482,10 +495,16 @@
 }
 .section-num{
   font-family:var(--font-mono);color:var(--azul);font-weight:700;
-  font-size:var(--fs-h2);display:block;margin-bottom:2px;
+  font-size:var(--fs-h2);display:none;margin-bottom:2px;
 }
-.section-title h2{margin:0;font-size:var(--fs-h1);font-weight:700;color:var(--navy);letter-spacing:-0.02em}
-.section-title p{margin:2px 0 0;color:var(--muted);font-size:var(--fs-small)}
+.section-title h2{margin:0;font-size:var(--fs-h1);font-weight:700;color:var(--navy);letter-spacing:-0.02em;line-height:1.18}
+.section-title p{
+  margin:4px 0 0;
+  color:var(--muted);
+  font-size:var(--fs-small);
+  line-height:1.5;
+  max-width:74ch;
+}
 
 .metrics-block{
   border:1px solid var(--line);background:var(--branco);
@@ -598,7 +617,7 @@
   display:grid;
   gap:10px;
   flex:1;
-  min-width:520px;
+  min-width:0;
 }
 .orq-exec-main{
   align-items:center;
@@ -981,6 +1000,12 @@
 .risk-table{width:100%;border-collapse:collapse}
 .risk-table th,.risk-table td{border-bottom:1px solid var(--line);padding:10px 8px;font-size:var(--fs-small)}
 .risk-table th{color:var(--muted);text-transform:uppercase;font-size:var(--fs-tiny);letter-spacing:.05em;text-align:left}
+
+@media (max-width: 1360px){
+  .report-filters-grid{
+    grid-template-columns:repeat(2,minmax(220px,1fr));
+  }
+}
 .risk-table td{color:var(--navy)}
 .sev-dot{width:8px;height:8px;display:inline-block;margin-right:6px}
 

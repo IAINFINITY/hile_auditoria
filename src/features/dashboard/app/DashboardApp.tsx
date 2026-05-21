@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react";
 import { useDashboardController } from "@/features/dashboard/hooks/useDashboardController";
 import { useNotifications } from "@/features/dashboard/hooks/useNotifications";
 import { useRevealOnScroll } from "@/features/dashboard/hooks/useRevealOnScroll";
@@ -59,7 +59,14 @@ export function DashboardApp() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [rememberMe, setRememberMe] = useState(true);
+  const [rememberMe, setRememberMe] = useState(() => {
+    if (typeof window === "undefined") return true;
+    try {
+      return localStorage.getItem("hile_remember") !== "false";
+    } catch {
+      return true;
+    }
+  });
   const [isAuthenticating, setIsAuthenticating] = useState(false);
   const [loginError, setLoginError] = useState("");
   const [showForgotPasswordModal, setShowForgotPasswordModal] = useState(false);
@@ -96,7 +103,7 @@ export function DashboardApp() {
     }
   }, []);
 
-  const { state: notificationState, clear: clearNotifications } = useNotifications({
+  const { state: notificationState, clear: clearNotifications, clearOne: clearNotification } = useNotifications({
     enabled: stage === "app",
     notifyReport: notifyPrefs.report,
     notifyLog: notifyPrefs.log,
@@ -107,6 +114,12 @@ export function DashboardApp() {
   });
 
   const clientsSnapshotDate = useMemo(() => controller.reportHistory[0]?.date_ref || controller.date, [controller.date, controller.reportHistory]);
+
+  const forceScrollTop = useCallback(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
+  }, []);
 
   const selectedDateKnownRunId = useMemo(() => {
     let bestRun: { id: string; started_at: string } | null = null;
@@ -145,6 +158,14 @@ export function DashboardApp() {
   }
 
   useEffect(() => {
+    try {
+      localStorage.setItem("hile_remember", rememberMe ? "true" : "false");
+    } catch {
+      // noop
+    }
+  }, [rememberMe]);
+
+  useEffect(() => {
     let cancelled = false;
     let splashTimer: number | null = null;
     const shouldShowSplash = window.sessionStorage.getItem("hile_splash_seen") !== "1";
@@ -162,7 +183,11 @@ export function DashboardApp() {
           const normalized = String(error.message || "").toLowerCase();
           if (normalized.includes("refresh token")) {
             clearStaleAuthStorage();
-            await supabaseBrowser.auth.signOut({ scope: "local" });
+            try {
+              await supabaseBrowser.auth.signOut({ scope: "local" });
+            } catch {
+              // noop
+            }
           }
           if (!cancelled) setStage("login");
           return;
@@ -294,14 +319,14 @@ export function DashboardApp() {
     };
   }, [activeView, stage]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (stage !== "app") return;
-    window.scrollTo({ top: 0, behavior: "auto" });
+    forceScrollTop();
     requestAnimationFrame(() => {
-      window.scrollTo({ top: 0, behavior: "auto" });
-      requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "auto" }));
+      forceScrollTop();
+      requestAnimationFrame(forceScrollTop);
     });
-  }, [activeView, stage]);
+  }, [activeView, forceScrollTop, stage]);
 
   useEffect(() => {
     if (stage !== "app" || !controller.isRunningOverview) {
@@ -367,10 +392,11 @@ export function DashboardApp() {
 
   function openViewAndScrollTop(view: AppView, subNavKey?: string) {
     if (subNavKey) setActiveSubNavKey(subNavKey);
+    forceScrollTop();
     setActiveView(view);
     requestAnimationFrame(() => {
-      window.scrollTo({ top: 0, behavior: "auto" });
-      requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "auto" }));
+      forceScrollTop();
+      requestAnimationFrame(forceScrollTop);
     });
   }
 
@@ -582,6 +608,7 @@ export function DashboardApp() {
         onLogout={() => setShowLogoutConfirmModal(true)}
         notificationState={notificationState}
         onClearNotifications={clearNotifications}
+        onClearNotification={clearNotification}
         onOpenView={(view) => openViewAndScrollTop(view)}
         sidebarCollapsed={sidebarCollapsed}
         onToggleSidebar={() => setSidebarCollapsed((value) => !value)}
