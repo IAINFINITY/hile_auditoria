@@ -400,6 +400,21 @@ export function DashboardApp() {
     });
   }
 
+  function handleOpenReportByContact(contactName: string) {
+    const clean = String(contactName || "").trim();
+    if (!clean) return;
+
+    if (activeView !== "dashboard") {
+      openViewAndScrollTop("dashboard");
+      window.setTimeout(() => {
+        controller.focusReportByContact(clean);
+      }, 140);
+      return;
+    }
+
+    controller.focusReportByContact(clean);
+  }
+
   function handleNavigate(section: string) {
     setActiveSubNavKey(section);
     if (activeView !== "dashboard") {
@@ -626,6 +641,7 @@ export function DashboardApp() {
             currentUser={currentUser}
             onRequestOverview={() => setShowConfirmModal(true)}
             onOpenLogs={() => openViewAndScrollTop("logs")}
+            onOpenReportByContact={handleOpenReportByContact}
             onSetAnalysisScope={setAnalysisScope}
             onSetDissatisfactionScope={setDissatisfactionScope}
             onUpdateProfile={handleUpdateProfile}

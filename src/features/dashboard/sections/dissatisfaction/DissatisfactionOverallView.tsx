@@ -2,11 +2,15 @@ import { useEffect, useMemo, useState } from "react";
 import type { DissatisfactionOverallResponse } from "../../../../types";
 import { apiGet } from "@/lib/api";
 import { toTitleCaseName } from "../../hooks/controller/common";
+import { buildConversationUrl, normalizeChatwootAppBase } from "../../shared/helpers";
 import type { OperationalAlertItem } from "../../shared/types";
 
 interface DissatisfactionOverallViewProps {
   onOpenReportByContact: (contactName: string) => void;
   refreshHint?: string | null;
+  chatwootBaseUrl?: string;
+  chatwootAccountId?: number;
+  chatwootInboxId?: number;
   headerNumber?: string;
 }
 
@@ -49,6 +53,9 @@ function typeColor(type: AlertTypeFilter): string {
 export function DissatisfactionOverallView({
   onOpenReportByContact,
   refreshHint,
+  chatwootBaseUrl = "",
+  chatwootAccountId = 0,
+  chatwootInboxId = 0,
   headerNumber = "01",
 }: DissatisfactionOverallViewProps) {
   const [loading, setLoading] = useState(true);
@@ -101,6 +108,7 @@ export function DissatisfactionOverallView({
   const safePage = Math.min(page, totalPages);
   const paged = filteredAlerts.slice((safePage - 1) * perPage, safePage * perPage);
   const summary = payload?.summary || { total: 0, critical: 0, high: 0, medium: 0, unique_contacts: 0 };
+  const normalizedChatwootBase = normalizeChatwootAppBase(chatwootBaseUrl);
 
   return (
     <section className="accounts-shell dissatisfaction-shell">
@@ -170,6 +178,11 @@ export function DissatisfactionOverallView({
               {paged.map((item) => {
                 const alertType: AlertTypeFilter =
                   item.category === "insatisfacao_hile" ? "insatisfacao_hile" : "insatisfacao_atendimento";
+                const conversationId = Number(item.conversationId || 0);
+                const chatwootLink =
+                  normalizedChatwootBase && chatwootAccountId > 0 && chatwootInboxId > 0 && conversationId > 0
+                    ? buildConversationUrl(normalizedChatwootBase, chatwootAccountId, chatwootInboxId, conversationId)
+                    : null;
                 return (
                   <article className="report-card" key={item.id}>
                     <span className="report-card-dot" style={{ background: severityColor(item.severity) }} />
@@ -191,6 +204,11 @@ export function DissatisfactionOverallView({
                       <button type="button" className="link-btn link-btn-spaced" onClick={() => onOpenReportByContact(item.contactName)}>
                         Ver relatório desta pessoa
                       </button>
+                      {chatwootLink ? (
+                        <a className="link-btn link-btn-spaced" href={chatwootLink} target="_blank" rel="noreferrer">
+                          Ver no Chatwoot →
+                        </a>
+                      ) : null}
                     </div>
                   </article>
                 );

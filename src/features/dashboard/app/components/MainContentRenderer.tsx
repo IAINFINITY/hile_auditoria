@@ -26,6 +26,7 @@ interface MainContentRendererProps {
   onUpdateProfile: (updates: { name?: string; role?: string }) => void;
   onRequestOverview: () => void;
   onOpenLogs: () => void;
+  onOpenReportByContact: (contactName: string) => void;
   onSetAnalysisScope: (scope: "day" | "overall") => void;
   onSetDissatisfactionScope: (scope: "day" | "overall") => void;
 }
@@ -40,6 +41,7 @@ export function MainContentRenderer({
   currentUser,
   onRequestOverview,
   onOpenLogs,
+  onOpenReportByContact,
   onSetAnalysisScope,
   onSetDissatisfactionScope,
   onUpdateProfile,
@@ -294,15 +296,21 @@ export function MainContentRenderer({
 
         {dissatisfactionScope === "overall" ? (
           <DissatisfactionOverallView
-            onOpenReportByContact={controller.focusReportByContact}
+            onOpenReportByContact={onOpenReportByContact}
             refreshHint={controller.lastRunAt}
+            chatwootBaseUrl={controller.apiConfig?.chatwoot_base_url || ""}
+            chatwootAccountId={Number(controller.apiConfig?.chatwoot_account_id || controller.overview?.account?.id || 0)}
+            chatwootInboxId={Number(controller.apiConfig?.chatwoot_inbox_id || controller.overview?.inbox?.id || 0)}
             headerNumber="02"
           />
         ) : (
           <DissatisfactionView
             selectedDate={controller.date}
             alerts={controller.operationalAlerts}
-            onOpenReportByContact={controller.focusReportByContact}
+            onOpenReportByContact={onOpenReportByContact}
+            chatwootBaseUrl={controller.apiConfig?.chatwoot_base_url || ""}
+            chatwootAccountId={Number(controller.apiConfig?.chatwoot_account_id || controller.overview?.account?.id || 0)}
+            chatwootInboxId={Number(controller.apiConfig?.chatwoot_inbox_id || controller.overview?.inbox?.id || 0)}
             headerNumber="02"
           />
         )}

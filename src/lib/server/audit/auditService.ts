@@ -186,6 +186,8 @@ function parseIsoTimestampsFromReference(reference: unknown): number[] {
   return values;
 }
 
+const MIN_VALID_LATENCY_GAP_SECONDS = 120;
+
 function findMessageByTimestamp(messages: any[], unixSeconds: number) {
   const exact = messages.find((item) => Number(item?.created_at || 0) === unixSeconds);
   if (exact) return exact;
@@ -204,34 +206,32 @@ function isValidLatencyGapReference(gap: any, messages: any[]): boolean {
         .sort((a, b) => a.created_at - b.created_at)
     : [];
   if (safeMessages.length === 0) return false;
-
   const refTimes = parseIsoTimestampsFromReference(
     gap?.mensagem_referencia || gap?.message_reference || gap?.referencia || null,
   );
-
-  if (refTimes.length >= 2) {
-    const first = findMessageByTimestamp(safeMessages, refTimes[0]);
-    const second = findMessageByTimestamp(safeMessages, refTimes[1]);
-    if (!first || !second) return false;
-    if (first.role !== "USER" || second.role !== "AGENT") return false;
-    return Number(second.created_at) > Number(first.created_at);
+  if (refTimes.length < 2) {
+    return false;
   }
+  const first = findMessageByTimestamp(safeMessages, refTimes[0]);
+  const second = findMessageByTimestamp(safeMessages, refTimes[1]);
+  if (!first || !second) return false;
+  if (first.role !== "USER" || second.role !== "AGENT") return false;
+  const delta = Number(second.created_at) - Number(first.created_at);
+  return delta >= MIN_VALID_LATENCY_GAP_SECONDS;
+}
 
-  // Fallback: valida se existe ao menos um par USER -> AGENT em ordem temporal no dia
-  for (let i = 0; i < safeMessages.length; i += 1) {
-    const current = safeMessages[i];
-    if (current.role !== "USER") continue;
-    for (let j = i + 1; j < safeMessages.length; j += 1) {
-      const next = safeMessages[j];
-      if (next.role === "SYSTEM") continue;
-      if (next.role === "AGENT") {
-        return next.created_at > current.created_at;
-      }
-      break;
-    }
-  }
-
-  return false;
+function isValidAbandonmentGap(messages: any[]): boolean {
+  const safeMessages = Array.isArray(messages)
+    ? [...messages]
+        .map((item) => ({
+          created_at: Number(item?.created_at || 0),
+          role: String(item?.role || "").toUpperCase(),
+        }))
+        .filter((item) => item.created_at > 0 && item.role !== "SYSTEM")
+        .sort((a, b) => a.created_at - b.created_at)
+    : [];
+  if (safeMessages.length === 0) return false;
+  return safeMessages[safeMessages.length - 1].role === "USER";
 }
 
 function recomputeCriticalAndReviewFlags(parsed: any) {
@@ -263,48 +263,51 @@ function recomputeCriticalAndReviewFlags(parsed: any) {
 function sanitizeAnalysisAnswer(answer: string, messages: any[]): string {
   const parsed = tryParseJson(answer);
   if (!parsed || typeof parsed !== "object") return answer;
-
   const gaps = Array.isArray(parsed.gaps_operacionais) ? parsed.gaps_operacionais : null;
   if (!gaps) return answer;
-
   const cleanedGaps: any[] = [];
   const removedLatencyNotes: string[] = [];
-
+  const removedAbandonmentNotes: string[] = [];
+  const includeSanitizationNotes = process.env.AUDIT_INCLUDE_SANITIZATION_NOTES === "1";
   for (const gap of gaps) {
     if (!gap || typeof gap !== "object") {
       cleanedGaps.push(gap);
       continue;
     }
-    const nameToken = normalizeGapToken(
-      (gap as any).nome_gap || (gap as any).name || (gap as any).tipo || "",
-    );
+    const nameToken = normalizeGapToken((gap as any).nome_gap || (gap as any).name || (gap as any).tipo || "");
     const isLatencyGap =
       nameToken === "lentidao_resposta" ||
       nameToken === "lentidao" ||
       nameToken.includes("lentidao_resposta");
-
-    if (!isLatencyGap) {
+    const isAbandonmentGap = nameToken === "abandono" || nameToken.includes("abandono");
+    if (!isLatencyGap && !isAbandonmentGap) {
       cleanedGaps.push(gap);
       continue;
     }
-
-    if (isValidLatencyGapReference(gap, messages)) {
+    if (isLatencyGap) {
+      if (isValidLatencyGapReference(gap, messages)) {
+        cleanedGaps.push(gap);
+        continue;
+      }
+      removedLatencyNotes.push(
+        "Alerta de tempo de resposta removido automaticamente por falta de evidência consistente no log.",
+      );
+      continue;
+    }
+    if (isValidAbandonmentGap(messages)) {
       cleanedGaps.push(gap);
       continue;
     }
-
-    removedLatencyNotes.push(
-      "Gap 'lentidao_resposta' removido automaticamente por inconsistência de evidência (par não USER->AGENT).",
+    removedAbandonmentNotes.push(
+      "Alerta de abandono removido automaticamente por falta de evidência consistente no log.",
     );
   }
-
   parsed.gaps_operacionais = cleanedGaps;
-  if (removedLatencyNotes.length > 0) {
+  if (includeSanitizationNotes && (removedLatencyNotes.length > 0 || removedAbandonmentNotes.length > 0)) {
     const currentImprovements = Array.isArray(parsed.pontos_melhoria) ? parsed.pontos_melhoria : [];
-    parsed.pontos_melhoria = [...currentImprovements, ...removedLatencyNotes];
+    parsed.pontos_melhoria = [...currentImprovements, ...removedLatencyNotes, ...removedAbandonmentNotes];
   }
   recomputeCriticalAndReviewFlags(parsed);
-
   return JSON.stringify(parsed, null, 2);
 }
 
@@ -402,10 +405,6 @@ async function listAllConversations({ chatwootClient, accountId, inboxId, maxPag
 
   return all;
 }
-
-
-
-
 export async function buildDailyConversationLogs({ config, date }) {
   assertYmd(date);
 
@@ -1184,6 +1183,8 @@ export async function buildDailyReport({
     },
   };
 }
+
+
 
 
 

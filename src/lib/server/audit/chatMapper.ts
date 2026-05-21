@@ -65,6 +65,10 @@ function resolveRole(message: any): string {
   const senderType = normalizeSenderType(message?.sender_type || message?.sender?.type);
   const messageType = Number(message?.message_type);
 
+  if (senderType === "0") return "USER";
+  if (senderType === "1") return "AGENT";
+  if (senderType === "2") return "SYSTEM";
+
   if (messageType === 0 || senderType === "contact") return "USER";
   if (messageType === 1 || senderType === "user" || senderType === "agent") return "AGENT";
 

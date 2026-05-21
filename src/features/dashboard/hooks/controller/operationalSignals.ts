@@ -148,6 +148,16 @@ const STRONG_DISSATISFACTION_KEYWORDS = [
   "não gostei",
 ];
 
+const SELF_DELAY_APOLOGY_PATTERNS = [
+  "desculpa a demora",
+  "desculpe a demora",
+  "foi mal a demora",
+  "demorei para responder",
+  "demorei pra responder",
+  "eu demorei",
+  "atrasou aqui comigo",
+];
+
 function normalizeText(value: string): string {
   return String(value || "")
     .toLowerCase()
@@ -389,6 +399,10 @@ function classifyDissatisfactionSeverity(text: string): "critical" | "high" {
   return "high";
 }
 
+function looksLikeSelfDelayApology(text: string): boolean {
+  return includesAny(text, SELF_DELAY_APOLOGY_PATTERNS);
+}
+
 function parseTimestampFromReference(value: unknown): string | null {
   const raw = String(value || "").trim();
   if (!raw) return null;
@@ -440,6 +454,10 @@ export function extractOperationalAlerts(analyses: AnalysisItem[]): OperationalA
         });
       }
       if (includesAny(text, DISENGAGEMENT_KEYWORDS)) {
+        // Heuristic fallback: only keep very explicit complaints. General delay phrases
+        // should come from structured AI signals to avoid false positives.
+        if (looksLikeSelfDelayApology(text)) continue;
+        if (!includesAny(text, STRONG_DISSATISFACTION_KEYWORDS)) continue;
         const category = classifyDissatisfactionCategory(text);
         const severity = classifyDissatisfactionSeverity(text);
         index += 1;
