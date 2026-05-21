@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import type { InsightItem } from "../../../../types";
 import { Gauge } from "../../charts/Gauge";
+import { useEnterViewport } from "../../hooks/useEnterViewport";
 import type { InsightFilter, RiskRow } from "../../shared/types";
 import { toTitleCaseName } from "../../hooks/controller/common";
 
@@ -42,6 +43,7 @@ export function InsightsSection({
   onOpenReportByContact,
 }: InsightsSectionProps) {
   const [animationSeed, setAnimationSeed] = useState(0);
+  const { rootRef: riskTableRef, hasEntered: riskTableEntered } = useEnterViewport<HTMLDivElement>();
   const hasInsightsData = insightsReady && riskRows.total > 0;
   const improvements = useMemo(() => visibleInsights, [visibleInsights]);
 
@@ -120,6 +122,7 @@ export function InsightsSection({
                 <span>Distribuição de risco</span>
               </div>
               <div className="metrics-block-body">
+                <div ref={riskTableRef} className={`viewport-table ${riskTableEntered ? "is-entered" : ""}`}>
                 <table className="risk-table">
                   <thead>
                     <tr>
@@ -163,6 +166,7 @@ export function InsightsSection({
                     )}
                   </tbody>
                 </table>
+                </div>
               </div>
             </div>
           </div>

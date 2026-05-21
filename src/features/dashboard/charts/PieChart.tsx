@@ -1,4 +1,7 @@
+import { useChartEnterAnimation } from "./useChartEnterAnimation";
+
 export function PieChart({ data }: { data: Array<{ label: string; value: number }> }) {
+  const { rootRef, progress } = useChartEnterAnimation<HTMLDivElement>({ durationMs: 1250, threshold: 0.28 });
   const filtered = data.filter((item) => item.value > 0);
   const total = filtered.reduce((sum, item) => sum + item.value, 0);
 
@@ -23,8 +26,8 @@ export function PieChart({ data }: { data: Array<{ label: string; value: number 
       .reduce((acc, prev) => acc + (prev.value / total) * circ, 0);
     return {
       key: `${item.label}-${item.value}-${idx}`,
-      len,
-      offset: -priorLen,
+      len: len * progress,
+      offset: -(priorLen * progress),
       stroke: palette[idx % palette.length],
       label: item.label,
       value: item.value,
@@ -32,7 +35,7 @@ export function PieChart({ data }: { data: Array<{ label: string; value: number 
   });
 
   return (
-    <div style={{ display: "grid", gap: "0.75rem", alignItems: "center" }}>
+    <div style={{ display: "grid", gap: "0.75rem", alignItems: "center" }} ref={rootRef}>
       <svg viewBox="0 0 140 140" width="210" height="210" style={{ display: "block", margin: "0 auto" }}>
         <circle cx={cx} cy={cy} r={radius} fill="none" stroke="#dfe6ef" strokeWidth="18" />
         {arcs.map((arc) => (

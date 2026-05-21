@@ -48,15 +48,72 @@
   100%{opacity:1;transform:translateX(0)}
 }
 
+@keyframes tableViewportIn{
+  0%{opacity:0;transform:translateY(14px)}
+  100%{opacity:1;transform:translateY(0)}
+}
+
 .reveal{opacity:1;transform:none}
 .reveal.is-pending{opacity:0;transform:translateY(14px);transition:opacity 450ms ease,transform 450ms ease}
 .reveal.is-pending.in{opacity:1;transform:translateY(0)}
+
+.viewport-table .risk-table tbody tr,
+.viewport-table .products-overall-row{
+  opacity:0;
+  transform:translateY(14px);
+}
+
+.viewport-table.is-entered .risk-table tbody tr,
+.viewport-table.is-entered .products-overall-row{
+  animation:tableViewportIn 520ms var(--bounce) both;
+}
+
+.viewport-table.is-entered .risk-table tbody tr:nth-child(1),
+.viewport-table.is-entered .products-overall-row:nth-of-type(1){animation-delay:40ms}
+.viewport-table.is-entered .risk-table tbody tr:nth-child(2),
+.viewport-table.is-entered .products-overall-row:nth-of-type(2){animation-delay:80ms}
+.viewport-table.is-entered .risk-table tbody tr:nth-child(3),
+.viewport-table.is-entered .products-overall-row:nth-of-type(3){animation-delay:120ms}
+.viewport-table.is-entered .risk-table tbody tr:nth-child(4),
+.viewport-table.is-entered .products-overall-row:nth-of-type(4){animation-delay:160ms}
+.viewport-table.is-entered .risk-table tbody tr:nth-child(5),
+.viewport-table.is-entered .products-overall-row:nth-of-type(5){animation-delay:200ms}
+.viewport-table.is-entered .risk-table tbody tr:nth-child(n+6),
+.viewport-table.is-entered .products-overall-row:nth-of-type(n+6){animation-delay:240ms}
 
 @media(max-width:1200px){
   :root{
     --shell-gutter:clamp(14px,2vw,24px);
   }
   .kpi-grid{grid-template-columns:repeat(4,1fr)}
+
+  .login-brand-logo{
+    width:112px;
+  }
+
+  .login-logo-circle{
+    width:64px;
+    height:64px;
+  }
+
+  .login-logo-circle img{
+    width:38px;
+    height:38px;
+  }
+
+  .brand-footer{
+    grid-template-columns:1fr auto;
+    grid-template-areas:
+      "left socials"
+      "center center";
+    row-gap:8px;
+    padding:10px var(--shell-gutter);
+    min-height:72px;
+    letter-spacing:.09em;
+  }
+  .brand-footer-left{grid-area:left}
+  .brand-footer-center{grid-area:center;text-align:center}
+  .brand-footer-right{grid-area:socials}
 }
 @media(max-width:920px){
   :root{--sidebar-w:56px}
@@ -85,6 +142,7 @@
   .account-grid{grid-template-columns:1fr 1fr}
   .account-points-grid{grid-template-columns:1fr}
   .logs-grid{grid-template-columns:1fr}
+  .topbar-breadcrumb .sep{display:none}
 }
 @media(max-width:640px){
   :root{ --shell-gutter: 12px; --nav-h: 62px; --sidebar-w:56px; }

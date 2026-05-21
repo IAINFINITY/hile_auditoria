@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { apiGet } from "@/lib/api";
+import { useEnterViewport } from "../../hooks/useEnterViewport";
 import type { AttendantPerformanceSummary } from "../../shared/types";
 
 interface AttendantsViewProps {
@@ -29,6 +30,7 @@ function formatSeconds(value: number | null): string {
 
 export function AttendantsView({ selectedDate, summary, refreshHint = null }: AttendantsViewProps) {
   const [scope, setScope] = useState<Scope>("day");
+  const { rootRef: comparisonTableRef, hasEntered: comparisonTableEntered } = useEnterViewport<HTMLDivElement>();
   const [overallSummary, setOverallSummary] = useState<AttendantPerformanceSummary>(EMPTY_SUMMARY);
   const [overallLoading, setOverallLoading] = useState(false);
   const [overallError, setOverallError] = useState("");
@@ -187,6 +189,10 @@ export function AttendantsView({ selectedDate, summary, refreshHint = null }: At
       <article className={`settings-card ${hasData ? "" : "data-dim"}`} id="attendants-comparison">
         <div className="settings-card-head">Comparativo rápido</div>
         <div className="settings-card-body">
+          <div
+            ref={comparisonTableRef}
+            className={`viewport-table ${comparisonTableEntered ? "is-entered" : ""}`}
+          >
           <table className="risk-table">
             <thead>
               <tr>
@@ -211,6 +217,7 @@ export function AttendantsView({ selectedDate, summary, refreshHint = null }: At
               ))}
             </tbody>
           </table>
+          </div>
         </div>
       </article>
     </section>

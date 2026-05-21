@@ -1,5 +1,6 @@
 ﻿import { useEffect, useMemo, useRef, useState } from "react";
 import { apiGet } from "@/lib/api";
+import { useChartEnterAnimation } from "../../charts/useChartEnterAnimation";
 
 type ProductOverallItem = {
   name: string;
@@ -67,6 +68,20 @@ function readProductsOverallCache(cacheKey: string): ProductsOverallResponse | n
 }
 
 export function ProductsOverallView({ refreshHint = null, showHeader = true }: ProductsOverallViewProps) {
+  const { rootRef: barsChartRef, progress: barsProgress } = useChartEnterAnimation<HTMLDivElement>({
+    durationMs: 1300,
+    threshold: 0.25,
+  });
+  const { rootRef: donutChartRef, progress: donutProgress } = useChartEnterAnimation<HTMLDivElement>({
+    durationMs: 1250,
+    delayMs: 80,
+    threshold: 0.25,
+  });
+  const { rootRef: rankingListRef, progress: rankingListProgress } = useChartEnterAnimation<HTMLDivElement>({
+    durationMs: 1150,
+    threshold: 0.18,
+  });
+
   const cacheKey = `hile_products_overall_cache_${PRODUCTS_OVERALL_CACHE_VERSION}`;
   const fetchMetaKey = `hile_products_overall_fetch_meta_${PRODUCTS_OVERALL_CACHE_VERSION}`;
   const handledRefreshHintRef = useRef<string | null>(null);
@@ -330,7 +345,10 @@ export function ProductsOverallView({ refreshHint = null, showHeader = true }: P
           {sortedAndFiltered.length === 0 ? (
             <p className="empty-state">Nenhum produto encontrado com os filtros atuais.</p>
           ) : (
-            <div className="products-overall-list">
+            <div
+              ref={rankingListRef}
+              className={`products-overall-list viewport-table ${rankingListProgress > 0 ? "is-entered" : ""}`}
+            >
               <header className="products-overall-head">
                 <span>#</span>
                 <span>Produto</span>
@@ -342,6 +360,7 @@ export function ProductsOverallView({ refreshHint = null, showHeader = true }: P
               {pagedItems.map((item, idx) => {
                 const absoluteRank = (safePage - 1) * PER_PAGE + idx + 1;
                 const widthPercent = Math.max(3, Math.round((item.count / maxCount) * 100));
+                const animatedWidthPercent = Math.round(widthPercent * rankingListProgress);
                 const toneClass = isSingleItem
                   ? "tone-default"
                   : absoluteRank === 1
@@ -357,7 +376,7 @@ export function ProductsOverallView({ refreshHint = null, showHeader = true }: P
                     <div className="products-overall-main">
                       <h4>{item.name}</h4>
                       <div className="products-overall-bar-track">
-                        <span className={`products-overall-bar-fill ${toneClass}`} style={{ width: `${widthPercent}%` }} />
+                        <span className={`products-overall-bar-fill ${toneClass}`} style={{ width: `${animatedWidthPercent}%` }} />
                       </div>
                     </div>
                     <div className="products-overall-cell products-overall-cell-count">{item.count}</div>
@@ -387,7 +406,7 @@ export function ProductsOverallView({ refreshHint = null, showHeader = true }: P
       </article>
 
       <section className={`products-overall-charts ${showDim ? "data-dim" : ""}`} id="products-charts">
-        <article className="settings-card">
+        <article className="settings-card" ref={barsChartRef}>
           <div className="settings-card-body">
             <h3 className="products-overall-chart-title">Distribuição por Ocorrências</h3>
             {barsTop.length === 0 ? (
@@ -396,6 +415,7 @@ export function ProductsOverallView({ refreshHint = null, showHeader = true }: P
               <div className="products-overall-bars">
                 {barsTop.map((item, index) => {
                   const widthPercent = Math.max(4, Math.round((item.count / maxCount) * 100));
+                  const animatedWidthPercent = Math.round(widthPercent * barsProgress);
                   const barColor = isSingleItem ? "#0066cc" : BAR_COLORS[index % BAR_COLORS.length];
                   return (
                     <div className="products-overall-bars-row" key={`bar-${item.name}`}>
@@ -404,7 +424,10 @@ export function ProductsOverallView({ refreshHint = null, showHeader = true }: P
                         <strong>{item.count}</strong>
                       </div>
                       <div className="products-overall-bar-track">
-                        <span className="products-overall-bar-fill" style={{ width: `${widthPercent}%`, backgroundColor: barColor }} />
+                        <span
+                          className="products-overall-bar-fill"
+                          style={{ width: `${animatedWidthPercent}%`, backgroundColor: barColor }}
+                        />
                       </div>
                     </div>
                   );
@@ -414,7 +437,7 @@ export function ProductsOverallView({ refreshHint = null, showHeader = true }: P
           </div>
         </article>
 
-        <article className="settings-card">
+        <article className="settings-card" ref={donutChartRef}>
           <div className="settings-card-body">
             <h3 className="products-overall-chart-title">Proporção por Contatos Únicos</h3>
             {donutEntries.length === 0 || donutTotal <= 0 ? (
@@ -423,7 +446,23 @@ export function ProductsOverallView({ refreshHint = null, showHeader = true }: P
               <div className="products-overall-donut-wrap">
                 <svg viewBox="0 0 220 220" className="products-overall-donut">
                   {donutEntries.length === 1 ? (
-                    <circle cx="110" cy="110" r="64" stroke={donutEntries[0].color} strokeWidth={38} fill="none" />
+                    (() => {
+                      const radius = 64;
+                      const circ = 2 * Math.PI * radius;
+                      const len = circ * donutProgress;
+                      return (
+                        <circle
+                          cx="110"
+                          cy="110"
+                          r={radius}
+                          stroke={donutEntries[0].color}
+                          strokeWidth={38}
+                          fill="none"
+                          strokeDasharray={`${len} ${circ}`}
+                          transform="rotate(-90 110 110)"
+                        />
+                      );
+                    })()
                   ) : (
                     (() => {
                       let acc = 0;
@@ -432,10 +471,12 @@ export function ProductsOverallView({ refreshHint = null, showHeader = true }: P
                         const start = acc;
                         const end = acc + slice;
                         acc = end;
+                        const animatedStart = start * donutProgress;
+                        const animatedEnd = end * donutProgress;
                         return (
                           <path
                             key={`slice-${entry.label}-${idx}`}
-                            d={describeArc(110, 110, 64, start, end)}
+                            d={describeArc(110, 110, 64, animatedStart, animatedEnd)}
                             stroke={entry.color}
                             strokeWidth={38}
                             fill="none"
@@ -464,3 +505,4 @@ export function ProductsOverallView({ refreshHint = null, showHeader = true }: P
     </section>
   );
 }
+

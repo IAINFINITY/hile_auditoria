@@ -1,3 +1,5 @@
+import { useChartEnterAnimation } from "./useChartEnterAnimation";
+
 export interface GroupedHourPoint {
   label: string;
   conversas: number;
@@ -11,6 +13,8 @@ function ceilToStep(value: number, step: number): number {
 }
 
 export function GroupedHourlyChart({ data }: { data: GroupedHourPoint[] }) {
+  const { rootRef, progress } = useChartEnterAnimation<HTMLDivElement>({ durationMs: 1300, threshold: 0.25 });
+
   if (!data.length) {
     return (
       <div className="empty-state" style={{ margin: 0 }}>
@@ -41,7 +45,7 @@ export function GroupedHourlyChart({ data }: { data: GroupedHourPoint[] }) {
   });
 
   return (
-    <div className="chart-wrap">
+    <div className="chart-wrap" ref={rootRef}>
       <svg viewBox={`0 0 ${chartW} ${chartH}`} width="100%" height={chartH} preserveAspectRatio="xMinYMin meet">
         <text
           x={margin.left + plotW / 2}
@@ -102,11 +106,12 @@ export function GroupedHourlyChart({ data }: { data: GroupedHourPoint[] }) {
             <g key={point.label}>
               {bars.map((bar, i) => {
                 const height = yMax > 0 ? (bar.value / yMax) * plotH : 0;
+                const animatedHeight = height * progress;
                 const x = startX + i * (barW + seriesGap);
-                const y = margin.top + plotH - height;
+                const y = margin.top + plotH - animatedHeight;
                 return (
                   <g key={`${point.label}-${bar.key}`}>
-                    <rect x={x} y={y} width={barW} height={Math.max(2, height)} fill={bar.color} rx={0} />
+                    <rect x={x} y={y} width={barW} height={Math.max(0, animatedHeight)} fill={bar.color} rx={0} />
                     <text
                       x={x + barW / 2}
                       y={y - 6}
@@ -114,6 +119,7 @@ export function GroupedHourlyChart({ data }: { data: GroupedHourPoint[] }) {
                       fontSize="9"
                       fill="var(--text-muted)"
                       fontFamily="'JetBrains Mono',monospace"
+                      style={{ opacity: progress }}
                     >
                       {bar.value}
                     </text>
