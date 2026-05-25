@@ -1354,6 +1354,48 @@ export async function getRunSnapshot(runId: string) {
   };
 }
 
+export async function getCurrentContactFromRunEvents(runId: string): Promise<{
+  sequence: number;
+  total: number;
+  contact_name: string;
+  contact_key: string;
+  analysis_key: string | null;
+  conversation_ids: number[];
+} | null> {
+  const lastStart = await prisma.jobEvent.findFirst({
+    where: {
+      runId,
+      eventType: "contact_start",
+    },
+    orderBy: { createdAt: "desc" },
+    select: {
+      payloadJson: true,
+    },
+  });
+
+  if (!lastStart?.payloadJson || typeof lastStart.payloadJson !== "object") return null;
+  const payload = lastStart.payloadJson as Record<string, unknown>;
+  const sequence = Math.max(0, Number(payload.sequence || 0));
+  const total = Math.max(0, Number(payload.total || 0));
+  const contactKey = String(payload.contact_key || "").trim();
+  const contactName = String(payload.contact_name || contactKey || "Contato").trim();
+  const analysisKeyRaw = String(payload.analysis_key || "").trim();
+  const conversationIds = Array.isArray(payload.conversation_ids)
+    ? payload.conversation_ids
+        .map((value) => Number(value))
+        .filter((value) => Number.isFinite(value) && value > 0)
+    : [];
+
+  return {
+    sequence,
+    total,
+    contact_name: contactName,
+    contact_key: contactKey,
+    analysis_key: analysisKeyRaw || null,
+    conversation_ids: conversationIds,
+  };
+}
+
 export async function listAvailableReportDates(limit = 365) {
   const rows = await prisma.analysisRun.findMany({
     where: {

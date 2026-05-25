@@ -216,6 +216,16 @@ function isValidLatencyGapReference(gap: any, messages: any[]): boolean {
   const second = findMessageByTimestamp(safeMessages, refTimes[1]);
   if (!first || !second) return false;
   if (first.role !== "USER" || second.role !== "AGENT") return false;
+  if (Number(second.created_at) <= Number(first.created_at)) return false;
+
+  // Regra operacional: lentidão só existe no primeiro par USER -> AGENT.
+  // Follow-up da IA após silêncio do usuário não entra como latência de resposta.
+  const firstAgentReplyAfterUser = safeMessages.find(
+    (item) => item.role === "AGENT" && Number(item.created_at) > Number(first.created_at),
+  );
+  if (!firstAgentReplyAfterUser) return false;
+  if (Math.abs(Number(firstAgentReplyAfterUser.created_at) - Number(second.created_at)) > 2) return false;
+
   const delta = Number(second.created_at) - Number(first.created_at);
   return delta >= MIN_VALID_LATENCY_GAP_SECONDS;
 }

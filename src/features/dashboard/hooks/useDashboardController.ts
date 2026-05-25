@@ -641,13 +641,17 @@ export function useDashboardController(options?: { enabled?: boolean; syncNavOnS
             const safeTotal = current.total || total || 0;
             const signature = `${current.contact_key}-${current.sequence}-${safeTotal}`;
             const formattedCurrentName = toTitleCaseName(current.contact_name || "");
+            const displayName =
+              formattedCurrentName ||
+              String(current.contact_key || "").trim() ||
+              "Contato";
             setRunCurrentContact(
-              `${formattedCurrentName} (${current.sequence}/${safeTotal > 0 ? safeTotal : "?"})`,
+              `${displayName} (${current.sequence}/${safeTotal > 0 ? safeTotal : "?"})`,
             );
             if (signature !== lastCurrentContactKey) {
               lastCurrentContactKey = signature;
               pushRunStep(
-                `Analisando contato ${current.sequence}/${safeTotal > 0 ? safeTotal : "?"}: ${formattedCurrentName} (${current.contact_key}).`,
+                `Analisando contato ${current.sequence}/${safeTotal > 0 ? safeTotal : "?"}: ${displayName} (${current.contact_key}).`,
               );
             }
           }

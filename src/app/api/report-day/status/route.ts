@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getRunSnapshot, markRunFailed } from "@/lib/server/audit/auditPersistence";
+import { getCurrentContactFromRunEvents, getRunSnapshot, markRunFailed } from "@/lib/server/audit/auditPersistence";
 import { requireAuthorizedApiAccess } from "@/lib/server/apiUtils";
 import { cleanupReportJobs, getReportJobsStore } from "@/lib/server/reportJobs";
 import type { ReportPayload } from "@/types";
@@ -95,6 +95,10 @@ export async function GET(request: Request) {
     }
 
     const status = runStatus === "running" ? "running" : runStatus === "failed" ? "failed" : "completed";
+    const dbCurrentContact =
+      status === "running"
+        ? await getCurrentContactFromRunEvents(runId)
+        : null;
 
     return NextResponse.json({
       job_id: jobId || `db:${runId}`,
@@ -105,7 +109,7 @@ export async function GET(request: Request) {
       updated_at: snapshot.run.last_event_at || snapshot.run.finished_at || snapshot.run.started_at,
       total: snapshot.run.total_conversations || 0,
       processed: snapshot.run.processed || 0,
-      current_contact: null,
+      current_contact: dbCurrentContact,
       execution_order: [],
       result:
         status === "completed" && snapshot.report_json
