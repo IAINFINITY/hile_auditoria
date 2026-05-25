@@ -71,6 +71,7 @@ export function DashboardApp() {
   const [loginError, setLoginError] = useState("");
   const [showForgotPasswordModal, setShowForgotPasswordModal] = useState(false);
   const [showLogoutConfirmModal, setShowLogoutConfirmModal] = useState(false);
+  const [showRunWarningModal, setShowRunWarningModal] = useState(false);
   const [activeSubNavKey, setActiveSubNavKey] = useState<string>("inicio");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     if (typeof window === "undefined") return false;
@@ -490,6 +491,7 @@ export function DashboardApp() {
 
   async function handleConfirmRun() {
     setShowConfirmModal(false);
+    setShowRunWarningModal(true);
     await controller.executeOverview();
   }
 
@@ -652,11 +654,13 @@ export function DashboardApp() {
 
       <AppModals
         showConfirmModal={showConfirmModal}
+        showRunWarningModal={showRunWarningModal}
         showLogoutConfirmModal={showLogoutConfirmModal}
         isDashboardView={activeView === "dashboard"}
         selectedDateHasSavedReport={controller.selectedDateHasSavedReport}
         onCancelConfirmRun={() => setShowConfirmModal(false)}
         onConfirmRun={() => void handleConfirmRun()}
+        onCloseRunWarning={() => setShowRunWarningModal(false)}
         onCancelLogout={() => setShowLogoutConfirmModal(false)}
         onConfirmLogout={() => void handleLogout()}
       />

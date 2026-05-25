@@ -625,7 +625,7 @@ export function useDashboardController(options?: { enabled?: boolean; syncNavOnS
         let lastCurrentContactKey = "";
 
         while (Date.now() - pollStartedAt < maxWaitMs) {
-          await sleep(1200);
+          await sleep(2000);
           const runIdQuery = reportJob.db_run_id ? `&run_id=${encodeURIComponent(reportJob.db_run_id)}` : "";
           const statusData = await apiGet<ReportJobStatusResponse>(
             `/api/report-day/status?job_id=${encodeURIComponent(reportJob.job_id)}${runIdQuery}`,

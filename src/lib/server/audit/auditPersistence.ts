@@ -1326,6 +1326,11 @@ export async function getRunSnapshot(runId: string) {
     where: { id: runId },
     include: {
       report: true,
+      events: {
+        orderBy: { createdAt: "desc" },
+        take: 1,
+        select: { createdAt: true },
+      },
     },
   });
 
@@ -1338,6 +1343,7 @@ export async function getRunSnapshot(runId: string) {
       date_ref: run.dateRef.toISOString().slice(0, 10),
       started_at: run.startedAt.toISOString(),
       finished_at: run.finishedAt ? run.finishedAt.toISOString() : null,
+      last_event_at: run.events?.[0]?.createdAt ? run.events[0].createdAt.toISOString() : null,
       total_conversations: run.totalConversations,
       processed: run.processed,
       success_count: run.successCount,

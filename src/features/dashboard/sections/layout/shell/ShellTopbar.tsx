@@ -42,7 +42,7 @@ export function ShellTopbar({
       </div>
       <div className="topbar-actions">
         <div ref={notifyRef} style={{ position: "relative" }}>
-          <button type="button" className="topbar-notify" aria-label="Notificacoes" onClick={onToggleNotify}>
+          <button type="button" className="topbar-notify" aria-label="Notificações" onClick={onToggleNotify}>
             <FiBell className="topbar-notify-icon" aria-hidden="true" />
             {notificationState.total > 0 ? <span className="topbar-notify-badge">{notificationState.total}</span> : null}
           </button>
@@ -71,11 +71,11 @@ export function ShellTopbar({
                   color: "var(--navy)",
                 }}
               >
-                Notificacoes
+                Notificações
               </div>
               {notificationState.total === 0 ? (
                 <div style={{ padding: "16px 14px", fontSize: "var(--fs-small)", color: "var(--muted)" }}>
-                  Nenhuma notificacao nova.
+                  Nenhuma notificação nova.
                 </div>
               ) : (
                 <div style={{ display: "grid" }}>
@@ -133,7 +133,7 @@ export function ShellTopbar({
                     textAlign: "center",
                   }}
                 >
-                  Limpar notificacoes
+                  Limpar notificações
                 </button>
               ) : null}
             </div>

@@ -1,21 +1,25 @@
-﻿interface AppModalsProps {
+interface AppModalsProps {
   showConfirmModal: boolean;
+  showRunWarningModal: boolean;
   showLogoutConfirmModal: boolean;
   isDashboardView: boolean;
   selectedDateHasSavedReport: boolean;
   onCancelConfirmRun: () => void;
   onConfirmRun: () => void;
+  onCloseRunWarning: () => void;
   onCancelLogout: () => void;
   onConfirmLogout: () => void;
 }
 
 export function AppModals({
   showConfirmModal,
+  showRunWarningModal,
   showLogoutConfirmModal,
   isDashboardView,
   selectedDateHasSavedReport,
   onCancelConfirmRun,
   onConfirmRun,
+  onCloseRunWarning,
   onCancelLogout,
   onConfirmLogout,
 }: AppModalsProps) {
@@ -44,6 +48,21 @@ export function AppModals({
         </div>
       ) : null}
 
+      {showRunWarningModal ? (
+        <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="runWarningTitle">
+          <div className="modal-card">
+            <h3 id="runWarningTitle">Execução em andamento</h3>
+            <p>Não feche, recarregue ou saia desta página enquanto o overview estiver processando.</p>
+            <p>Se a sessão for interrompida durante o processamento, o reprocessamento pode falhar.</p>
+            <div className="modal-actions">
+              <button className="btn btn-primary btn-sm" onClick={onCloseRunWarning}>
+                Entendi
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {showLogoutConfirmModal ? (
         <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="confirmLogoutTitle">
           <div className="modal-card">
@@ -63,3 +82,4 @@ export function AppModals({
     </>
   );
 }
+

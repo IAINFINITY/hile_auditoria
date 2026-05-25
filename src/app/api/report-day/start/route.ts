@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import { buildDailyReport } from "@/lib/server/audit/auditService";
 import {
   appendRunEvent,
@@ -15,6 +15,7 @@ import { cleanupReportJobs, getReportJobsStore, type ReportJobState } from "@/li
 import type { ReportPayload } from "@/types";
 
 export const runtime = "nodejs";
+export const maxDuration = 300;
 
 type ProgressEvent = {
   type?: "contact_start" | "contact_done";
@@ -121,7 +122,7 @@ export async function POST(request: Request) {
       });
     };
 
-    void (async () => {
+    after(async () => {
       try {
         const output = await buildDailyReport({
           config,
@@ -227,7 +228,7 @@ export async function POST(request: Request) {
           }
         }
       }
-    })();
+    });
 
     return NextResponse.json(
       {
