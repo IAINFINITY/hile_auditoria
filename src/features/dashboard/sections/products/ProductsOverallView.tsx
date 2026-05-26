@@ -1,6 +1,7 @@
 ﻿import { useEffect, useMemo, useRef, useState } from "react";
 import { apiGet } from "@/lib/api";
 import { useChartEnterAnimation } from "../../charts/useChartEnterAnimation";
+import type { ProductDemandItem } from "../../shared/types";
 
 type ProductOverallItem = {
   name: string;
@@ -18,15 +19,17 @@ type ProductsOverallResponse = {
 type ProductsOverallViewProps = {
   refreshHint?: string | null;
   showHeader?: boolean;
+  scope?: "overall" | "day";
+  dayItems?: ProductDemandItem[];
+  selectedDate?: string;
 };
 
-type SortMode = "count" | "contacts" | "days" | "name";
+type SortMode = "count" | "name";
 
 const PRODUCTS_OVERALL_REVALIDATE_MS = 5 * 60 * 1000;
 const PRODUCTS_OVERALL_CACHE_VERSION = "v2";
 const PER_PAGE = 10;
 const DONUT_COLORS = ["#0066cc", "#0a2b5c", "#e8a838", "#5a6f8a", "#9ea6b4", "#cd7f4b"];
-const BAR_COLORS = ["#0066cc", "#0a2b5c", "#e8a838", "#5a6f8a", "#9ea6b4", "#cd7f4b"];
 
 function normalizeText(value: string): string {
   return String(value || "")
@@ -34,6 +37,42 @@ function normalizeText(value: string): string {
     .trim()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "");
+}
+
+function productCanonicalLabel(name: string): string {
+  const normalized = normalizeText(name).replace(/[^a-z0-9]+/g, " ").trim();
+  if (/^pre treino$/.test(normalized) || /^pretreino$/.test(normalized)) return "Pré-treino";
+  if (/^pos treino$/.test(normalized) || /^post treino$/.test(normalized)) return "Pós-treino";
+  if (/^whey( protein)?$/.test(normalized)) return "Whey Protein";
+  if (/^creatina( monohidratada)?$/.test(normalized)) return "Creatina";
+  return String(name || "").trim() || "Produto não informado";
+}
+
+function aggregateProducts(items: ProductOverallItem[]): ProductOverallItem[] {
+  const map = new Map<string, ProductOverallItem>();
+  for (const item of items) {
+    const label = productCanonicalLabel(item.name);
+    const key = normalizeText(label);
+    const current = map.get(key);
+    if (!current) {
+      map.set(key, {
+        name: label,
+        count: Number(item.count || 0),
+        contacts: Number(item.contacts || 0),
+        days: Number(item.days || 0),
+        lastSeenDate: item.lastSeenDate || null,
+      });
+      continue;
+    }
+    current.count += Number(item.count || 0);
+    current.contacts += Number(item.contacts || 0);
+    current.days += Number(item.days || 0);
+    current.lastSeenDate =
+      !current.lastSeenDate || (item.lastSeenDate && item.lastSeenDate > current.lastSeenDate)
+        ? item.lastSeenDate || current.lastSeenDate
+        : current.lastSeenDate;
+  }
+  return Array.from(map.values());
 }
 
 function polarToCartesian(cx: number, cy: number, r: number, angleDeg: number) {
@@ -67,11 +106,13 @@ function readProductsOverallCache(cacheKey: string): ProductsOverallResponse | n
   }
 }
 
-export function ProductsOverallView({ refreshHint = null, showHeader = true }: ProductsOverallViewProps) {
-  const { rootRef: barsChartRef, progress: barsProgress } = useChartEnterAnimation<HTMLDivElement>({
-    durationMs: 1300,
-    threshold: 0.25,
-  });
+export function ProductsOverallView({
+  refreshHint = null,
+  showHeader = true,
+  scope = "overall",
+  dayItems = [],
+  selectedDate = "",
+}: ProductsOverallViewProps) {
   const { rootRef: donutChartRef, progress: donutProgress } = useChartEnterAnimation<HTMLDivElement>({
     durationMs: 1250,
     delayMs: 80,
@@ -85,7 +126,9 @@ export function ProductsOverallView({ refreshHint = null, showHeader = true }: P
   const cacheKey = `hile_products_overall_cache_${PRODUCTS_OVERALL_CACHE_VERSION}`;
   const fetchMetaKey = `hile_products_overall_fetch_meta_${PRODUCTS_OVERALL_CACHE_VERSION}`;
   const handledRefreshHintRef = useRef<string | null>(null);
-  const initialCache = readProductsOverallCache(cacheKey);
+  const useApiData = scope === "overall";
+  const initialCache = useApiData ? readProductsOverallCache(cacheKey) : null;
+  const cachedRenderData = useApiData ? readProductsOverallCache(cacheKey) : null;
   const [loading, setLoading] = useState(!initialCache);
   const [error, setError] = useState("");
   const [data, setData] = useState<ProductsOverallResponse>(initialCache || { items: [], totalRuns: 0 });
@@ -94,6 +137,7 @@ export function ProductsOverallView({ refreshHint = null, showHeader = true }: P
   const [page, setPage] = useState(1);
 
   useEffect(() => {
+    if (!useApiData) return;
     let cancelled = false;
     const hasNewRefreshHint = Boolean(refreshHint) && refreshHint !== handledRefreshHintRef.current;
     if (hasNewRefreshHint && refreshHint) handledRefreshHintRef.current = refreshHint;
@@ -145,31 +189,43 @@ export function ProductsOverallView({ refreshHint = null, showHeader = true }: P
     return () => {
       cancelled = true;
     };
-  }, [cacheKey, fetchMetaKey, refreshHint]);
+  }, [cacheKey, fetchMetaKey, refreshHint, useApiData]);
+
+  const scopedLoading = useApiData ? loading : false;
+  const scopedError = useApiData ? error : "";
+
+  const activeItems = useMemo<ProductOverallItem[]>(() => {
+    const source = useApiData
+      ? data.items.length > 0
+        ? data.items
+        : Array.isArray(cachedRenderData?.items)
+          ? cachedRenderData.items
+          : []
+      : dayItems.map((item) => ({
+          name: item.name,
+          count: Number(item.count || 0),
+          contacts: Number(item.contacts || 0),
+          days: 1,
+          lastSeenDate: selectedDate || null,
+        }));
+    return aggregateProducts(source);
+  }, [cachedRenderData, data.items, dayItems, selectedDate, useApiData]);
 
   const summary = useMemo(() => {
-    const totalOccurrences = data.items.reduce((acc, item) => acc + Number(item.count || 0), 0);
-    const totalContacts = data.items.reduce((acc, item) => acc + Number(item.contacts || 0), 0);
-    const totalDays = data.items.reduce((acc, item) => acc + Number(item.days || 0), 0);
     return {
-      totalProducts: data.items.length,
-      totalOccurrences,
-      totalContacts,
-      totalDays,
-      totalRuns: data.totalRuns,
+      totalProducts: activeItems.length,
+      totalQuantity: activeItems.reduce((acc, item) => acc + Number(item.count || 0), 0),
     };
-  }, [data.items, data.totalRuns]);
+  }, [activeItems]);
 
   const sortedAndFiltered = useMemo(() => {
     const q = normalizeText(query);
-    const list = data.items.filter((item) => !q || normalizeText(item.name).includes(q));
+    const list = activeItems.filter((item) => !q || normalizeText(item.name).includes(q));
     return [...list].sort((a, b) => {
       if (sortMode === "name") return a.name.localeCompare(b.name, "pt-BR");
-      if (sortMode === "contacts") return b.contacts - a.contacts || b.count - a.count;
-      if (sortMode === "days") return b.days - a.days || b.count - a.count;
-      return b.count - a.count || b.contacts - a.contacts;
+      return b.count - a.count || a.name.localeCompare(b.name, "pt-BR");
     });
-  }, [data.items, query, sortMode]);
+  }, [activeItems, query, sortMode]);
 
   const totalPages = Math.max(1, Math.ceil(sortedAndFiltered.length / PER_PAGE));
   const safePage = Math.min(page, totalPages);
@@ -181,7 +237,7 @@ export function ProductsOverallView({ refreshHint = null, showHeader = true }: P
 
   const maxCount = Math.max(1, sortedAndFiltered[0]?.count || 1);
   const isSingleItem = sortedAndFiltered.length === 1;
-  const showDim = !loading && !error && sortedAndFiltered.length === 0;
+  const showDim = !scopedLoading && !scopedError && sortedAndFiltered.length === 0;
 
   const podiumItems = useMemo(() => {
     const top = sortedAndFiltered.slice(0, 3);
@@ -197,17 +253,15 @@ export function ProductsOverallView({ refreshHint = null, showHeader = true }: P
     ];
   }, [sortedAndFiltered]);
 
-  const barsTop = useMemo(() => sortedAndFiltered.slice(0, 10), [sortedAndFiltered]);
-
   const donutEntries = useMemo(() => {
-    const base = [...sortedAndFiltered].sort((a, b) => b.contacts - a.contacts);
+    const base = [...sortedAndFiltered].sort((a, b) => b.count - a.count);
     if (base.length === 0) return [] as Array<{ label: string; value: number; color: string }>;
     const top5 = base.slice(0, 5).map((item, idx) => ({
       label: item.name,
-      value: item.contacts,
+      value: item.count,
       color: DONUT_COLORS[idx] || DONUT_COLORS[DONUT_COLORS.length - 1],
     }));
-    const other = base.slice(5).reduce((acc, item) => acc + item.contacts, 0);
+    const other = base.slice(5).reduce((acc, item) => acc + item.count, 0);
     if (other > 0) {
       top5.push({
         label: "Outros",
@@ -237,8 +291,12 @@ export function ProductsOverallView({ refreshHint = null, showHeader = true }: P
           <div className="section-header">
             <span className="section-num">01</span>
             <div className="section-title">
-              <h2>Produtos mais procurados</h2>
-              <p>Consolidado de todos os produtos mencionados em todas as execuções salvas.</p>
+              <h2>Produtos procurados</h2>
+              <p>
+                {useApiData
+                  ? "Consolidado de todos os produtos mencionados em atendimentos salvos."
+                  : `Visão do dia selecionado (${selectedDate || "-"}) com produtos detectados.`}
+              </p>
             </div>
           </div>
         </div>
@@ -251,20 +309,8 @@ export function ProductsOverallView({ refreshHint = null, showHeader = true }: P
             <div className="products-overall-stat-label">Produtos</div>
           </div>
           <div className="products-overall-stat">
-            <div className="products-overall-stat-value">{summary.totalOccurrences}</div>
-            <div className="products-overall-stat-label">Ocorrências</div>
-          </div>
-          <div className="products-overall-stat">
-            <div className="products-overall-stat-value">{summary.totalContacts}</div>
-            <div className="products-overall-stat-label">Contatos únicos</div>
-          </div>
-          <div className="products-overall-stat">
-            <div className="products-overall-stat-value">{summary.totalDays}</div>
-            <div className="products-overall-stat-label">Dias com dados</div>
-          </div>
-          <div className="products-overall-stat">
-            <div className="products-overall-stat-value">{summary.totalRuns}</div>
-            <div className="products-overall-stat-label">Execuções</div>
+            <div className="products-overall-stat-value">{summary.totalQuantity}</div>
+            <div className="products-overall-stat-label">Quantidade total</div>
           </div>
         </div>
       </article>
@@ -272,10 +318,10 @@ export function ProductsOverallView({ refreshHint = null, showHeader = true }: P
       <article className={`settings-card ${showDim ? "data-dim" : ""}`} id="products-ranking">
         <div className="settings-card-head">Top Produtos</div>
         <div className="settings-card-body">
-          {loading ? <p className="empty-state">Carregando produtos...</p> : null}
-          {!loading && error ? <p className="empty-state">{error}</p> : null}
-          {!loading && !error && showDim ? <p className="empty-state">Ainda não há produtos mapeados no consolidado.</p> : null}
-          {!loading && !error && !showDim ? (
+          {scopedLoading ? <p className="empty-state">Carregando produtos...</p> : null}
+          {!scopedLoading && scopedError ? <p className="empty-state">{scopedError}</p> : null}
+          {!scopedLoading && !scopedError && showDim ? <p className="empty-state">Ainda não há produtos mapeados no consolidado.</p> : null}
+          {!scopedLoading && !scopedError && !showDim ? (
             <div className="products-overall-podium">
               {podiumItems.map(({ item, rank }) => (
                 <article
@@ -290,15 +336,7 @@ export function ProductsOverallView({ refreshHint = null, showHeader = true }: P
                   <div className="products-overall-podium-stats">
                     <span>
                       <strong>{item?.count ?? "-"}</strong>
-                      <small>ocorr.</small>
-                    </span>
-                    <span>
-                      <strong>{item?.contacts ?? "-"}</strong>
-                      <small>contatos</small>
-                    </span>
-                    <span>
-                      <strong>{item?.days ?? "-"}</strong>
-                      <small>dias</small>
+                      <small>qtd.</small>
                     </span>
                   </div>
                 </article>
@@ -331,9 +369,7 @@ export function ProductsOverallView({ refreshHint = null, showHeader = true }: P
                 }}
                 className="products-overall-sort"
               >
-                <option value="count">Ordenar por: Ocorrências</option>
-                <option value="contacts">Ordenar por: Contatos</option>
-                <option value="days">Ordenar por: Dias com ocorrência</option>
+                <option value="count">Ordenar por: Quantidade</option>
                 <option value="name">Ordenar por: Nome (A-Z)</option>
               </select>
               <span className="products-overall-filter-count">
@@ -351,11 +387,8 @@ export function ProductsOverallView({ refreshHint = null, showHeader = true }: P
             >
               <header className="products-overall-head">
                 <span>#</span>
-                <span>Produto</span>
-                <span>Ocorr.</span>
-                <span>Contatos</span>
-                <span>Dias</span>
-                <span>Última</span>
+                <span>Produto procurado</span>
+                <span>Quantidade</span>
               </header>
               {pagedItems.map((item, idx) => {
                 const absoluteRank = (safePage - 1) * PER_PAGE + idx + 1;
@@ -380,9 +413,6 @@ export function ProductsOverallView({ refreshHint = null, showHeader = true }: P
                       </div>
                     </div>
                     <div className="products-overall-cell products-overall-cell-count">{item.count}</div>
-                    <div className="products-overall-cell products-overall-cell-contacts">{item.contacts}</div>
-                    <div className="products-overall-cell products-overall-cell-days">{item.days}</div>
-                    <div className="products-overall-cell products-overall-cell-last products-overall-cell-muted">{item.lastSeenDate || "-"}</div>
                   </article>
                 );
               })}
@@ -406,40 +436,9 @@ export function ProductsOverallView({ refreshHint = null, showHeader = true }: P
       </article>
 
       <section className={`products-overall-charts ${showDim ? "data-dim" : ""}`} id="products-charts">
-        <article className="settings-card" ref={barsChartRef}>
-          <div className="settings-card-body">
-            <h3 className="products-overall-chart-title">Distribuição por Ocorrências</h3>
-            {barsTop.length === 0 ? (
-              <p className="empty-state">Sem dados para exibir.</p>
-            ) : (
-              <div className="products-overall-bars">
-                {barsTop.map((item, index) => {
-                  const widthPercent = Math.max(4, Math.round((item.count / maxCount) * 100));
-                  const animatedWidthPercent = Math.round(widthPercent * barsProgress);
-                  const barColor = isSingleItem ? "#0066cc" : BAR_COLORS[index % BAR_COLORS.length];
-                  return (
-                    <div className="products-overall-bars-row" key={`bar-${item.name}`}>
-                      <div className="products-overall-bars-meta">
-                        <span>{item.name}</span>
-                        <strong>{item.count}</strong>
-                      </div>
-                      <div className="products-overall-bar-track">
-                        <span
-                          className="products-overall-bar-fill"
-                          style={{ width: `${animatedWidthPercent}%`, backgroundColor: barColor }}
-                        />
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        </article>
-
         <article className="settings-card" ref={donutChartRef}>
           <div className="settings-card-body">
-            <h3 className="products-overall-chart-title">Proporção por Contatos Únicos</h3>
+            <h3 className="products-overall-chart-title">Proporção por Quantidade</h3>
             {donutEntries.length === 0 || donutTotal <= 0 ? (
               <p className="empty-state">Sem dados para exibir.</p>
             ) : (
@@ -505,4 +504,3 @@ export function ProductsOverallView({ refreshHint = null, showHeader = true }: P
     </section>
   );
 }
-

@@ -892,7 +892,21 @@
   outline:none;
   border-radius:8px;
 }
+.report-filter-field input{
+  height:36px;
+  border:1px solid var(--azul-line);
+  background:var(--branco);
+  color:var(--navy);
+  padding:0 10px;
+  font-size:var(--fs-small);
+  outline:none;
+  border-radius:8px;
+}
 .report-filter-field select:focus{
+  border-color:var(--azul);
+  box-shadow:0 0 0 2px rgba(16,107,182,.14);
+}
+.report-filter-field input:focus{
   border-color:var(--azul);
   box-shadow:0 0 0 2px rgba(16,107,182,.14);
 }

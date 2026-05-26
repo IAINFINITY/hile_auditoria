@@ -3,34 +3,16 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
 import { requireAuthorizedApiAccess } from "@/lib/server/apiUtils";
 import { parseJsonSafe } from "@/lib/server/audit/persistence/helpers";
+import { canonicalizeProductLabel, normalizeProductForMatch } from "@/lib/products/canonical";
 
 export const runtime = "nodejs";
 
-function normalizeProductName(value: string): string {
-  const cleaned = String(value || "").trim();
-  if (!cleaned) return "";
-  return cleaned
-    .replace(/_/g, " ")
-    .replace(/\s+/g, " ")
-    .toLowerCase()
-    .replace(/\b\w/g, (m) => m.toUpperCase());
-}
-
-function normalizeForMatch(value: string): string {
-  return String(value || "")
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
 const PRODUCT_ALIASES: Record<string, string[]> = {
-  Whey: ["whey", "uei", "wehy"],
-  Creatina: ["creatina", "creatine", "creatin", "creatna"],
-  "Pré-treino": ["pre treino", "pre-treino", "pretreino", "preworkout", "pré treino", "pré-treino"],
-  Colageno: ["colageno", "colágeno", "collagen"],
-  "Suplementos fitness": ["suplemento", "suplementos", "fitness"],
+  "Whey Protein": ["whey", "uei", "wehy", "whey protein"],
+  Creatina: ["creatina", "creatine", "creatin", "creatna", "creatina monohidratada"],
+  "Pre-treino": ["pre treino", "pre-treino", "pretreino", "preworkout", "pre treino", "pre-treino"],
+  Colageno: ["colageno", "colageno", "collagen"],
+  "Suplementos Fitness": ["suplementos fitness", "suplemento fitness"],
 };
 
 function extractUserLogText(logText: string): string {
@@ -49,7 +31,7 @@ function extractUserLogText(logText: string): string {
       collected.push(compactUser[2]);
     }
   }
-  return normalizeForMatch(collected.join(" "));
+  return normalizeProductForMatch(collected.join(" "));
 }
 
 type ProductCounter = {
@@ -100,7 +82,7 @@ export async function GET(request: Request) {
       const dateRef = run.dateRef.toISOString().slice(0, 10);
       const reportJson = (run.report?.reportJson as Record<string, unknown> | null) || null;
       const rawAnalysis = reportJson?.raw_analysis as Record<string, unknown> | undefined;
-      const analyses = Array.isArray(rawAnalysis?.analyses) ? rawAnalysis?.analyses as Array<Record<string, unknown>> : [];
+      const analyses = Array.isArray(rawAnalysis?.analyses) ? (rawAnalysis?.analyses as Array<Record<string, unknown>>) : [];
 
       for (const analysis of analyses) {
         const analysisObj = analysis && typeof analysis === "object" ? analysis : {};
@@ -118,11 +100,12 @@ export async function GET(request: Request) {
         const seenInAnalysis = new Set<string>();
         for (const product of productsRaw) {
           const rawName = String(product?.nome_produto || product?.termo_detectado || "").trim();
-          const name = normalizeProductName(rawName);
-          if (!name || seenInAnalysis.has(name)) continue;
-          seenInAnalysis.add(name);
+          const label = canonicalizeProductLabel(rawName);
+          const key = normalizeProductForMatch(label);
+          if (!key || seenInAnalysis.has(key)) continue;
+          seenInAnalysis.add(key);
 
-          const current = counters.get(name) || {
+          const current = counters.get(label) || {
             count: 0,
             contacts: new Set<string>(),
             days: new Set<string>(),
@@ -131,21 +114,21 @@ export async function GET(request: Request) {
           current.count += 1;
           if (contactKey) current.contacts.add(contactKey);
           current.days.add(dateRef);
-          if (!current.lastSeenDate || dateRef > current.lastSeenDate) {
-            current.lastSeenDate = dateRef;
-          }
-          counters.set(name, current);
+          if (!current.lastSeenDate || dateRef > current.lastSeenDate) current.lastSeenDate = dateRef;
+          counters.set(label, current);
         }
 
         for (const [canonicalName, aliases] of Object.entries(PRODUCT_ALIASES)) {
           if (!userText) continue;
-          const matched = aliases.some((alias) => userText.includes(normalizeForMatch(alias)));
+          const matched = aliases.some((alias) => userText.includes(normalizeProductForMatch(alias)));
           if (!matched) continue;
-          const name = normalizeProductName(canonicalName);
-          if (!name || seenInAnalysis.has(name)) continue;
-          seenInAnalysis.add(name);
 
-          const current = counters.get(name) || {
+          const label = canonicalizeProductLabel(canonicalName);
+          const key = normalizeProductForMatch(label);
+          if (!key || seenInAnalysis.has(key)) continue;
+          seenInAnalysis.add(key);
+
+          const current = counters.get(label) || {
             count: 0,
             contacts: new Set<string>(),
             days: new Set<string>(),
@@ -154,10 +137,8 @@ export async function GET(request: Request) {
           current.count += 1;
           if (contactKey) current.contacts.add(contactKey);
           current.days.add(dateRef);
-          if (!current.lastSeenDate || dateRef > current.lastSeenDate) {
-            current.lastSeenDate = dateRef;
-          }
-          counters.set(name, current);
+          if (!current.lastSeenDate || dateRef > current.lastSeenDate) current.lastSeenDate = dateRef;
+          counters.set(label, current);
         }
       }
     }

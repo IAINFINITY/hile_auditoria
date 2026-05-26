@@ -1,8 +1,7 @@
-﻿import { useMemo, useState } from "react";
+﻿import { useState } from "react";
 import type { InsightItem } from "../../../../types";
 import type { ProductDemandItem } from "../../shared/types";
 import { ProductsOverallView } from "./ProductsOverallView";
-import { toTitleCaseName } from "../../hooks/controller/common";
 
 interface ProductsDualViewProps {
   selectedDate: string;
@@ -13,20 +12,9 @@ interface ProductsDualViewProps {
 
 type ProductsScope = "day" | "overall";
 
-export function ProductsDualView({
-  selectedDate,
-  dayItems,
-  refreshHint,
-  informationalInsights,
-}: ProductsDualViewProps) {
+export function ProductsDualView({ selectedDate, dayItems, refreshHint }: ProductsDualViewProps) {
   const [scope, setScope] = useState<ProductsScope>("day");
-
-  const summary = useMemo(() => {
-    const totalProducts = dayItems.length;
-    const totalOccurrences = dayItems.reduce((acc, item) => acc + Number(item.count || 0), 0);
-    const totalContacts = dayItems.reduce((acc, item) => acc + Number(item.contacts || 0), 0);
-    return { totalProducts, totalOccurrences, totalContacts };
-  }, [dayItems]);
+  const [scopeAnimationSeed, setScopeAnimationSeed] = useState(0);
 
   return (
     <section className="settings-shell reveal" id="products-overview">
@@ -38,7 +26,7 @@ export function ProductsDualView({
             <p>
               {scope === "day"
                 ? `Visão do dia selecionado (${selectedDate}).`
-                : "Visão total consolidada de todas as execuções salvas."}
+                : "Visão total consolidada de todos os atendimentos salvos."}
             </p>
           </div>
         </div>
@@ -48,89 +36,39 @@ export function ProductsDualView({
         <div className="settings-card-head">Escopo dos produtos</div>
         <div className="settings-card-body">
           <div className="btn-group">
-            <button type="button" className={`gap-chip ${scope === "day" ? "active" : ""}`} onClick={() => setScope("day")}>
+            <button
+              type="button"
+              className={`gap-chip ${scope === "day" ? "active" : ""}`}
+              onClick={() => {
+                setScopeAnimationSeed((value) => value + 1);
+                setScope("day");
+              }}
+            >
               Produtos do dia
             </button>
-            <button type="button" className={`gap-chip ${scope === "overall" ? "active" : ""}`} onClick={() => setScope("overall")}>
+            <button
+              type="button"
+              className={`gap-chip ${scope === "overall" ? "active" : ""}`}
+              onClick={() => {
+                setScopeAnimationSeed((value) => value + 1);
+                setScope("overall");
+              }}
+            >
               Produtos total
             </button>
           </div>
         </div>
       </article>
 
-      {scope === "overall" ? (
-        <ProductsOverallView refreshHint={refreshHint} showHeader={false} />
-      ) : (
-        <div className="products-scope-shell reveal">
-          <article className={`settings-card ${summary.totalProducts > 0 ? "" : "data-dim"}`}>
-            <div className="settings-card-head">Resumo do dia</div>
-            <div className="settings-card-body dissatisfaction-kpis">
-              <p>
-                <strong>Produtos:</strong> {summary.totalProducts}
-              </p>
-              <p>
-                <strong>Ocorrências:</strong> {summary.totalOccurrences}
-              </p>
-              <p>
-                <strong>Contatos únicos:</strong> {summary.totalContacts}
-              </p>
-            </div>
-          </article>
-
-          <article className={`settings-card ${dayItems.length > 0 ? "" : "data-dim"}`} id="products-ranking">
-            <div className="settings-card-head">Ranking do dia</div>
-            <div className="settings-card-body">
-              {dayItems.length === 0 ? (
-                <p className="empty-state">Ainda não há produtos mapeados neste dia.</p>
-              ) : (
-                <div className="report-list-animated">
-                  {dayItems.map((item, index) => (
-                    <article className="report-card" key={`${item.name}-${index + 1}`}>
-                      <span className="report-card-dot report-card-dot-default" />
-                      <div className="report-card-content">
-                        <h4>{item.name}</h4>
-                        <p>
-                          <strong>Ocorrências:</strong> {item.count}
-                        </p>
-                        <p>
-                          <strong>Clientes únicos:</strong> {item.contacts}
-                        </p>
-                        <p>
-                          <strong>Usuários:</strong>{" "}
-                          {item.contactNames.length > 0
-                            ? item.contactNames.map((name) => toTitleCaseName(name)).join(" • ")
-                            : "-"}
-                        </p>
-                      </div>
-                    </article>
-                  ))}
-                </div>
-              )}
-            </div>
-          </article>
-
-          <article className={`settings-card ${informationalInsights.length > 0 ? "" : "data-dim"}`} id="products-charts">
-            <div className="settings-card-head">Contexto do dia</div>
-            <div className="settings-card-body">
-              {informationalInsights.length === 0 ? (
-                <p className="empty-state">Sem contexto informativo para o dia selecionado.</p>
-              ) : (
-                <div className="report-list-animated">
-                  {informationalInsights.slice(0, 8).map((item) => (
-                    <article className="report-card" key={item.id}>
-                      <span className={`report-card-dot report-card-dot-${item.severity || "info"}`} />
-                      <div className="report-card-content">
-                        <h4>{toTitleCaseName(item.contact_name)}</h4>
-                        <p>{item.summary}</p>
-                      </div>
-                    </article>
-                  ))}
-                </div>
-              )}
-            </div>
-          </article>
-        </div>
-      )}
+      <div className="scope-switch-animated" key={`products-scope-${scope}-${scopeAnimationSeed}`}>
+        <ProductsOverallView
+          showHeader={false}
+          refreshHint={refreshHint}
+          scope={scope === "day" ? "day" : "overall"}
+          dayItems={scope === "day" ? dayItems : []}
+          selectedDate={selectedDate}
+        />
+      </div>
     </section>
   );
 }

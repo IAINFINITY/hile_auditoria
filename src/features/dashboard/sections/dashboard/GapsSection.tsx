@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+﻿import { useMemo, useState } from "react";
 import type { InsightItem, OverviewPayload } from "../../../../types";
 import type { OperationalAlertItem } from "../../shared/types";
 import { toTitleCaseName } from "../../hooks/controller/common";
@@ -38,6 +38,89 @@ function severityColor(severity: string): string {
   return severity === "critical" ? "var(--critical)" : "var(--high)";
 }
 
+function conciseGapHeadline(title: string, summary: string): string {
+  const source = `${String(title || "")} ${String(summary || "")}`.toLowerCase();
+
+  if (source.includes("lentidao") || source.includes("atraso") || source.includes("demor")) {
+    return "Ocorreu atraso no atendimento.";
+  }
+  if (source.includes("abandono") || source.includes("sem resposta")) {
+    return "Cliente ficou sem resposta.";
+  }
+  if (source.includes("pedido_consultor") || source.includes("consultor") || source.includes("atendente")) {
+    return "Pedido de consultor não foi atendido.";
+  }
+  if (source.includes("transferencia") || source.includes("transferência")) {
+    return "A transferência não ocorreu como esperado.";
+  }
+  if (source.includes("agendamento") && (source.includes("incorreto") || source.includes("erro"))) {
+    return "Houve erro no agendamento.";
+  }
+  if (source.includes("falha_envio_confirmacao") || source.includes("não recebeu") || source.includes("nao recebeu")) {
+    return "Cliente não recebeu a confirmação.";
+  }
+  if (source.includes("dado_incorreto") || source.includes("valor") && source.includes("conflito")) {
+    return "Foi identificado conflito de dados.";
+  }
+  if (source.includes("resolucao_prematura") || source.includes("resolução prematura")) {
+    return "A conversa foi encerrada sem conclusão.";
+  }
+
+  const sentence = String(summary || title || "").replace(/\s+/g, " ").trim().split(/[.!?]/)[0]?.trim() || "";
+  if (!sentence) return "Atenção operacional identificada.";
+  if (sentence.length <= 80) return sentence.endsWith(".") ? sentence : `${sentence}.`;
+  return `${sentence.slice(0, 77).trimEnd()}...`;
+}
+
+function cleanedSentence(value: string): string {
+  return String(value || "").replace(/\s+/g, " ").trim().split(/[.!?]/)[0]?.trim() || "";
+}
+
+function isGenericHeadline(value: string): boolean {
+  const normalized = normalizeCompareText(value);
+  if (!normalized) return true;
+  return (
+    normalized.includes("a analise da conversa identificou") ||
+    normalized.includes("analise da conversa identificou") ||
+    normalized.includes("a conversa apresentou") ||
+    normalized.includes("foi identificado um gap") ||
+    normalized.includes("gap registrado") ||
+    normalized.includes("problema aberto") ||
+    normalized.includes("atencao operacional") ||
+    normalized.includes("insight registrado")
+  );
+}
+
+function smartGapHeadline(title: string, summary: string): string {
+  const titleSentence = cleanedSentence(title);
+  const hasTruncation = String(title || "").includes("...");
+  if (!isGenericHeadline(titleSentence) && !hasTruncation && titleSentence.length >= 14 && titleSentence.length <= 96) {
+    return titleSentence.endsWith(".") ? titleSentence : `${titleSentence}.`;
+  }
+  return conciseGapHeadline(title, summary);
+}
+
+function normalizeCompareText(value: string): string {
+  return String(value || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function shouldShowGapReason(headline: string, summary: string): boolean {
+  const titleNorm = normalizeCompareText(headline);
+  const summaryNorm = normalizeCompareText(summary);
+  if (!summaryNorm) return false;
+  if (!titleNorm) return true;
+  if (titleNorm === summaryNorm) return false;
+  if (titleNorm.length >= 24 && summaryNorm.startsWith(titleNorm)) return false;
+  if (summaryNorm.length >= 24 && titleNorm.startsWith(summaryNorm)) return false;
+  return true;
+}
+
 function labelClass(tag: string): string {
   const value = String(tag || "").toLowerCase();
   if (value.includes("lead_agendado")) return "tag tag-ok";
@@ -66,8 +149,6 @@ export function GapsSection({
     if (filter === "todos") return criticalGapInsights;
     return criticalGapInsights.filter((item) => item.severity === filter);
   }, [criticalGapInsights, filter]);
-
-
 
   const totalPages = useMemo(() => Math.max(1, Math.ceil(filtered.length / perPage)), [filtered.length]);
   const safePage = Math.min(page, totalPages);
@@ -135,6 +216,8 @@ export function GapsSection({
                 {pagedItems.map((item) => {
                   const url = buildConversationLink(baseUrl, accountId, inboxId, item.conversation_id);
                   const contactName = toTitleCaseName(item.contact_name || "");
+                  const headline = smartGapHeadline(item.title, item.summary);
+                  const showReason = shouldShowGapReason(headline, item.summary);
                   return (
                     <article className={`gap-item ${item.severity}`} key={item.id}>
                       <div className="gap-color-bar" />
@@ -149,14 +232,14 @@ export function GapsSection({
                         </div>
 
                         <div style={{ fontSize: "var(--fs-h3)", fontWeight: 700, color: "var(--navy)", margin: "4px 0 2px" }}>
-                          {item.title}
+                          {headline}
                         </div>
 
                         <div className="gap-contact">
                           <strong>{contactName}</strong>
                           <span>• Conversa #{item.conversation_id}</span>
                           <button type="button" className="link-btn" onClick={() => onOpenReportByContact(contactName)}>
-                            Ver relatório desta pessoa
+                            Ver detalhes desta pessoa
                           </button>
                           {url ? (
                             <a href={url} target="_blank" rel="noreferrer">
@@ -165,8 +248,12 @@ export function GapsSection({
                           ) : null}
                         </div>
 
-                        <hr className="gap-divider" />
-                        <p className="gap-reason">{item.summary}</p>
+                        {showReason ? (
+                          <>
+                            <hr className="gap-divider" />
+                            <p className="gap-reason">{item.summary}</p>
+                          </>
+                        ) : null}
 
                         <div className="gap-label-row">
                           {(item.labels || []).length > 0 ? (
@@ -235,4 +322,3 @@ export function GapsSection({
     </div>
   );
 }
-
