@@ -149,6 +149,8 @@ function buildContactLogs(conversationLogs) {
         contact_key: baseContactKey,
         contact: log.contact,
         conversation_ids: [],
+        assignee_name: log.assignee_name || null,
+        assignee_id: Number(log.assignee_id || 0) || null,
         messages: [],
       });
     }

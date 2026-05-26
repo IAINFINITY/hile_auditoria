@@ -1,7 +1,7 @@
 ﻿import { useEffect, useMemo, useRef, useState } from "react";
 import { apiGet } from "@/lib/api";
 import { useChartEnterAnimation } from "../../charts/useChartEnterAnimation";
-import type { ProductDemandItem } from "../../shared/types";
+import type { OwnerScope, ProductDemandItem } from "../../shared/types";
 
 type ProductOverallItem = {
   name: string;
@@ -22,6 +22,7 @@ type ProductsOverallViewProps = {
   scope?: "overall" | "day";
   dayItems?: ProductDemandItem[];
   selectedDate?: string;
+  ownerScope?: OwnerScope;
 };
 
 type SortMode = "count" | "name";
@@ -112,6 +113,7 @@ export function ProductsOverallView({
   scope = "overall",
   dayItems = [],
   selectedDate = "",
+  ownerScope = "all",
 }: ProductsOverallViewProps) {
   const { rootRef: donutChartRef, progress: donutProgress } = useChartEnterAnimation<HTMLDivElement>({
     durationMs: 1250,
@@ -123,10 +125,11 @@ export function ProductsOverallView({
     threshold: 0.18,
   });
 
-  const cacheKey = `hile_products_overall_cache_${PRODUCTS_OVERALL_CACHE_VERSION}`;
-  const fetchMetaKey = `hile_products_overall_fetch_meta_${PRODUCTS_OVERALL_CACHE_VERSION}`;
+  const cacheScopeKey = `${scope}_${ownerScope}_${selectedDate || "all"}`;
+  const cacheKey = `hile_products_overall_cache_${PRODUCTS_OVERALL_CACHE_VERSION}_${cacheScopeKey}`;
+  const fetchMetaKey = `hile_products_overall_fetch_meta_${PRODUCTS_OVERALL_CACHE_VERSION}_${cacheScopeKey}`;
   const handledRefreshHintRef = useRef<string | null>(null);
-  const useApiData = scope === "overall";
+  const useApiData = scope === "overall" || ownerScope !== "all";
   const initialCache = useApiData ? readProductsOverallCache(cacheKey) : null;
   const cachedRenderData = useApiData ? readProductsOverallCache(cacheKey) : null;
   const [loading, setLoading] = useState(!initialCache);
@@ -161,7 +164,12 @@ export function ProductsOverallView({
     setLoading(!cachedRaw);
     setError("");
 
-    apiGet<ProductsOverallResponse>("/api/products/overall?limit=300")
+    const endpoint =
+      scope === "day"
+        ? `/api/products/overall?limit=300&from=${encodeURIComponent(selectedDate)}&to=${encodeURIComponent(selectedDate)}&owner=${encodeURIComponent(ownerScope)}`
+        : `/api/products/overall?limit=300&owner=${encodeURIComponent(ownerScope)}`;
+
+    apiGet<ProductsOverallResponse>(endpoint)
       .then((payload) => {
         if (cancelled) return;
         const nextData = {
@@ -189,7 +197,7 @@ export function ProductsOverallView({
     return () => {
       cancelled = true;
     };
-  }, [cacheKey, fetchMetaKey, refreshHint, useApiData]);
+  }, [cacheKey, fetchMetaKey, ownerScope, refreshHint, scope, selectedDate, useApiData]);
 
   const scopedLoading = useApiData ? loading : false;
   const scopedError = useApiData ? error : "";
@@ -504,3 +512,5 @@ export function ProductsOverallView({
     </section>
   );
 }
+
+

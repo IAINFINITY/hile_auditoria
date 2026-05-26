@@ -7,6 +7,12 @@ import { canonicalizeProductLabel, normalizeProductForMatch } from "@/lib/produc
 
 export const runtime = "nodejs";
 
+function normalizeOwnerScope(value: string | null): "all" | "ia" | "suellen" | "samuel" {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (normalized === "ia" || normalized === "suellen" || normalized === "samuel") return normalized;
+  return "all";
+}
+
 const PRODUCT_ALIASES: Record<string, string[]> = {
   "Whey Protein": ["whey", "uei", "wehy", "whey protein"],
   Creatina: ["creatina", "creatine", "creatin", "creatna", "creatina monohidratada"],
@@ -49,6 +55,7 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const takeInput = Number(searchParams.get("take") || searchParams.get("limit") || 300);
     const pageInput = Number(searchParams.get("page") || 1);
+    const ownerScope = normalizeOwnerScope(searchParams.get("owner"));
     const take = Number.isFinite(takeInput) && takeInput > 0 ? Math.min(1000, takeInput) : 300;
     const page = Number.isFinite(pageInput) && pageInput > 0 ? Math.floor(pageInput) : 1;
     const skip = (page - 1) * take;
@@ -86,6 +93,9 @@ export async function GET(request: Request) {
 
       for (const analysis of analyses) {
         const analysisObj = analysis && typeof analysis === "object" ? analysis : {};
+        const tracking = (analysisObj.responsible_tracking as Record<string, unknown> | undefined) || undefined;
+        const ownerBucket = String(tracking?.owner_bucket || "ia").toLowerCase();
+        if (ownerScope !== "all" && ownerBucket !== ownerScope) continue;
         const contactKey = String((analysisObj as Record<string, unknown>).contact_key || "").trim();
         const logText = String((analysisObj as Record<string, unknown>).log_text || "");
         const userText = extractUserLogText(logText);
@@ -155,6 +165,7 @@ export async function GET(request: Request) {
 
     return NextResponse.json({
       items,
+      owner_scope: ownerScope,
       totalRuns: runs.length,
       totalRunsAvailable: totalRuns,
       pagination: {

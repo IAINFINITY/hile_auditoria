@@ -1,8 +1,16 @@
 import type { InsightSeverity } from "@prisma/client";
 import type { ReportPayload } from "@/types";
+import { parseLooseJsonObject } from "@/lib/json/looseJson";
 import { toTitleCaseName } from "./nameFormat";
 
 type AnalysisItem = NonNullable<ReportPayload["raw_analysis"]["analyses"]>[number];
+type ResponsibleBucket = "ia" | "suellen" | "samuel";
+
+interface ResponsibleBreakdown {
+  ia: number;
+  suellen: number;
+  samuel: number;
+}
 
 export interface ClientRecordDraft {
   phonePk: string;
@@ -19,6 +27,10 @@ export interface ClientRecordDraft {
   closedAt: Date | null;
   status: string;
   severity: InsightSeverity;
+  responsibleBucket: ResponsibleBucket;
+  responsibleLabel: string;
+  responsibleMessageCount: number;
+  responsibleMessageBreakdown: ResponsibleBreakdown;
 }
 
 interface MutableClientRecord {
@@ -36,6 +48,10 @@ interface MutableClientRecord {
   closedAt: Date | null;
   status: string;
   severity: InsightSeverity;
+  responsibleBucket: ResponsibleBucket;
+  responsibleLabel: string;
+  responsibleMessageCount: number;
+  responsibleMessageBreakdown: ResponsibleBreakdown;
 }
 
 const severityOrder: Record<InsightSeverity, number> = {
@@ -45,6 +61,31 @@ const severityOrder: Record<InsightSeverity, number> = {
   low: 2,
   info: 1,
 };
+
+function responsibleLabel(bucket: ResponsibleBucket): string {
+  if (bucket === "suellen") return "Comercial Suellen";
+  if (bucket === "samuel") return "Comercial Samuel";
+  return "IA";
+}
+
+function normalizeResponsibleBucket(value: unknown): ResponsibleBucket | null {
+  const raw = String(value || "").toLowerCase().trim();
+  if (raw === "ia" || raw === "suellen" || raw === "samuel") return raw;
+  return null;
+}
+
+function toSafeCount(value: unknown): number {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  return Math.floor(n);
+}
+
+function pickResponsibleBucketFromBreakdown(breakdown: ResponsibleBreakdown): ResponsibleBucket {
+  const ranked = (Object.entries(breakdown) as Array<[ResponsibleBucket, number]>).sort((a, b) => b[1] - a[1]);
+  const winner = ranked[0];
+  if (!winner || winner[1] <= 0) return "ia";
+  return winner[0];
+}
 
 const PRODUCT_ALIASES: Record<string, string[]> = {
   Whey: ["whey", "uei", "wehy", "whey protein"],
@@ -158,19 +199,7 @@ function deriveSeverityFromAnalysis(parsed: Record<string, unknown>): InsightSev
 }
 
 function parsePossibleJsonObject(raw: string): Record<string, unknown> {
-  const clean = String(raw || "").trim();
-  if (!clean) return {};
-  try {
-    return JSON.parse(clean);
-  } catch {
-    const fenced = clean.match(/```json\s*([\s\S]*?)\s*```/i);
-    if (!fenced) return {};
-    try {
-      return JSON.parse(fenced[1]);
-    } catch {
-      return {};
-    }
-  }
+  return parseLooseJsonObject(raw) || {};
 }
 
 function mapStatus(record: MutableClientRecord): string {
@@ -242,6 +271,14 @@ function createDraft(phonePk: string, contactName: string): MutableClientRecord 
     closedAt: null,
     status: "aberto",
     severity: "info",
+    responsibleBucket: "ia",
+    responsibleLabel: "IA",
+    responsibleMessageCount: 0,
+    responsibleMessageBreakdown: {
+      ia: 0,
+      suellen: 0,
+      samuel: 0,
+    },
   };
 }
 
@@ -340,6 +377,28 @@ export function buildClientRecordsFromAnalyses(analyses: AnalysisItem[]): Client
     if (severityOrder[severity] > severityOrder[record.severity]) {
       record.severity = severity;
     }
+
+    const tracking = analysis.responsible_tracking || null;
+    const trackingBucket = normalizeResponsibleBucket(tracking?.owner_bucket);
+    const trackingBreakdown = tracking?.message_breakdown || null;
+
+    if (trackingBreakdown && typeof trackingBreakdown === "object") {
+      record.responsibleMessageBreakdown.ia += toSafeCount(
+        (trackingBreakdown as { ia?: unknown }).ia,
+      );
+      record.responsibleMessageBreakdown.suellen += toSafeCount(
+        (trackingBreakdown as { suellen?: unknown }).suellen,
+      );
+      record.responsibleMessageBreakdown.samuel += toSafeCount(
+        (trackingBreakdown as { samuel?: unknown }).samuel,
+      );
+    } else if (trackingBucket) {
+      record.responsibleMessageBreakdown[trackingBucket] += toSafeCount(tracking?.message_count_agent);
+    }
+
+    record.responsibleBucket = pickResponsibleBucketFromBreakdown(record.responsibleMessageBreakdown);
+    record.responsibleLabel = responsibleLabel(record.responsibleBucket);
+    record.responsibleMessageCount = record.responsibleMessageBreakdown[record.responsibleBucket] || 0;
     record.status = mapStatus(record);
   }
 
@@ -358,5 +417,9 @@ export function buildClientRecordsFromAnalyses(analyses: AnalysisItem[]): Client
     closedAt: record.closedAt,
     status: record.status,
     severity: record.severity,
+    responsibleBucket: record.responsibleBucket,
+    responsibleLabel: record.responsibleLabel,
+    responsibleMessageCount: record.responsibleMessageCount,
+    responsibleMessageBreakdown: record.responsibleMessageBreakdown,
   }));
 }

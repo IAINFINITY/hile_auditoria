@@ -28,6 +28,12 @@ type OwnerBucket = {
 
 const OWNERS: Owner[] = ["ia", "suellen", "samuel"];
 
+function normalizeOwnerScope(value: string | null): "all" | Owner {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (normalized === "ia" || normalized === "suellen" || normalized === "samuel") return normalized;
+  return "all";
+}
+
 function parseSeverity(value: unknown): "critical" | "high" | "medium" | "low" | "info" {
   const normalized = String(value || "")
     .toLowerCase()
@@ -109,6 +115,7 @@ export async function GET(request: Request) {
 
     const { searchParams } = new URL(request.url);
     const takeInput = Number(searchParams.get("take") || 1000);
+    const ownerScope = normalizeOwnerScope(searchParams.get("owner"));
     const take = Number.isFinite(takeInput) && takeInput > 0 ? Math.min(2000, takeInput) : 1000;
     const from = String(searchParams.get("from") || "").trim();
     const to = String(searchParams.get("to") || "").trim();
@@ -203,10 +210,21 @@ export async function GET(request: Request) {
       }
     }
 
+    const summary = toSummary(bucketMap);
+    const filteredEntries = ownerScope === "all" ? summary.entries : summary.entries.filter((item) => item.owner === ownerScope);
+    const filteredSummary: AttendantPerformanceSummary = {
+      entries: filteredEntries,
+      totalAnalyses: filteredEntries.reduce((acc, entry) => acc + entry.analysesCount, 0),
+      totalMessages: filteredEntries.reduce((acc, entry) => acc + entry.messageCountAgent, 0),
+      totalGaps: filteredEntries.reduce((acc, entry) => acc + entry.gapsCount, 0),
+      totalCriticalGaps: filteredEntries.reduce((acc, entry) => acc + entry.criticalGapsCount, 0),
+    };
+
     return NextResponse.json({
       total_runs: runs.length,
       date_range: { from: minDate, to: maxDate },
-      summary: toSummary(bucketMap),
+      owner_scope: ownerScope,
+      summary: filteredSummary,
     });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Falha ao carregar atendentes (geral).";

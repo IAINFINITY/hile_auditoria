@@ -1,4 +1,4 @@
-import { FiSearch } from "react-icons/fi";
+﻿import { FiSearch } from "react-icons/fi";
 import type { ClientPhase, Severity } from "../../../../../types";
 import type { AccountStatus, ResponsibleFilter } from "./types";
 
@@ -15,6 +15,7 @@ interface AccountsFiltersCardProps {
   analysisFilterOptions: Array<{ value: "all" | "gaps_insights" | Severity; label: string }>;
   responsibleFilter: ResponsibleFilter;
   onResponsibleFilterChange: (value: ResponsibleFilter) => void;
+  responsibleFilterLocked?: boolean;
   phaseFilter: "all" | ClientPhase;
   onPhaseFilterChange: (value: "all" | ClientPhase) => void;
   favoritesOnly: boolean;
@@ -36,6 +37,7 @@ export function AccountsFiltersCard({
   analysisFilterOptions,
   responsibleFilter,
   onResponsibleFilterChange,
+  responsibleFilterLocked = false,
   phaseFilter,
   onPhaseFilterChange,
   favoritesOnly,
@@ -64,7 +66,7 @@ export function AccountsFiltersCard({
               <option value="all">Todos</option>
               <option value="entrada">Entrada</option>
               <option value="remarketing">Remarketing</option>
-              <option value="atencao">Atenção</option>
+              <option value="atencao">AtenÃ§Ã£o</option>
               <option value="resolvido">Fora da IA</option>
             </select>
           </label>
@@ -96,8 +98,8 @@ export function AccountsFiltersCard({
           </label>
 
           <label>
-            Responsável
-            <select value={responsibleFilter} onChange={(event) => onResponsibleFilterChange(event.target.value as ResponsibleFilter)}>
+            ResponsÃ¡vel
+            <select value={responsibleFilter} disabled={responsibleFilterLocked} onChange={(event) => onResponsibleFilterChange(event.target.value as ResponsibleFilter)}>
               <option value="all">Todos</option>
               <option value="ia">IA</option>
               <option value="suellen">Comercial Suellen</option>
@@ -110,8 +112,8 @@ export function AccountsFiltersCard({
             <select value={phaseFilter} onChange={(event) => onPhaseFilterChange(event.target.value as "all" | ClientPhase)}>
               <option value="all">Todas</option>
               <option value="inicial">Inicial</option>
-              <option value="intermediario">Intermediário</option>
-              <option value="avancado">Avançado</option>
+              <option value="intermediario">IntermediÃ¡rio</option>
+              <option value="avancado">AvanÃ§ado</option>
             </select>
           </label>
         </div>
@@ -131,4 +133,6 @@ export function AccountsFiltersCard({
     </article>
   );
 }
+
+
 

@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { formatDateTimeInTimezone, unique } from "../dateUtils";
+import { parseLooseJsonObject } from "@/lib/json/looseJson";
 
 const FINALIZATION_LABELS = ["lead_agendado", "pausar_ia"];
 const FINALIZATION_STATUSES = ["resolved", "closed"];
@@ -377,21 +378,7 @@ export function buildConversationInsights(log, state) {
 }
 
 export function tryParseJson(text) {
-  if (!text) return null;
-
-  const trimmed = String(text).trim();
-  try {
-    return JSON.parse(trimmed);
-  } catch {}
-
-  const fencedMatch = trimmed.match(/```json\s*([\s\S]*?)\s*```/i);
-  if (!fencedMatch) return null;
-
-  try {
-    return JSON.parse(fencedMatch[1]);
-  } catch {
-    return null;
-  }
+  return parseLooseJsonObject(text);
 }
 
 export function toArray(value) {

@@ -11,7 +11,13 @@ const CLIENTS_REVALIDATE_MS = 5 * 60 * 1000;
 const CLIENTS_REVALIDATE_TODAY_MS = 60 * 1000;
 const CLIENTS_CACHE_VERSION = "v8";
 
-export function AccountsView({ selectedDate, knownRunId = null, refreshHint = null }: AccountsViewProps) {
+export function AccountsView({
+  selectedDate,
+  knownRunId = null,
+  refreshHint = null,
+  ownerScope,
+  onSetOwnerScope,
+}: AccountsViewProps) {
   const [scope, setScope] = useState<ClientsScope>("day");
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | AccountStatus>("all");
@@ -30,7 +36,7 @@ export function AccountsView({ selectedDate, knownRunId = null, refreshHint = nu
   const [selectedRecord, setSelectedRecord] = useState<ClientRecordItem | null>(null);
   const [scopeAnimationSeed, setScopeAnimationSeed] = useState(0);
   const handledRefreshHintRef = useRef<string | null>(null);
-  const scopeKey = scope === "overall" ? "overall" : selectedDate;
+  const scopeKey = scope === "overall" ? `overall_${ownerScope}` : `${selectedDate}_${ownerScope}`;
   const cacheKey = `hile_clients_cache_${CLIENTS_CACHE_VERSION}_${scopeKey}`;
   const fetchMetaKey = `hile_clients_fetch_meta_${CLIENTS_CACHE_VERSION}_${scopeKey}`;
 
@@ -134,8 +140,8 @@ export function AccountsView({ selectedDate, knownRunId = null, refreshHint = nu
 
     const endpoint =
       scope === "overall"
-        ? `/api/clients/overall?take=1000`
-        : `/api/clients?date=${encodeURIComponent(selectedDate)}`;
+        ? `/api/clients/overall?take=1000&owner=${encodeURIComponent(ownerScope)}`
+        : `/api/clients?date=${encodeURIComponent(selectedDate)}&owner=${encodeURIComponent(ownerScope)}`;
 
     apiGet<ClientsByDateResponse>(endpoint)
       .then((payload) => {
@@ -178,7 +184,10 @@ export function AccountsView({ selectedDate, knownRunId = null, refreshHint = nu
     return () => {
       cancelled = true;
     };
-  }, [cacheKey, fetchMetaKey, knownRunId, records.length, refreshHint, scope, selectedDate]);
+  }, [cacheKey, fetchMetaKey, knownRunId, ownerScope, records.length, refreshHint, scope, selectedDate]);
+
+  const effectiveResponsibleFilter: ResponsibleFilter =
+    ownerScope === "all" ? responsibleFilter : ownerScope;
 
   const labelsAvailable = useMemo(() => {
     const set = new Set<string>();
@@ -249,7 +258,7 @@ export function AccountsView({ selectedDate, knownRunId = null, refreshHint = nu
       const phase = normalizeClientPhase(record.clientPhase);
       const byPhase = phaseFilter === "all" || phase === phaseFilter;
       const bucket = normalizeResponsibleBucket(record.responsibleBucket || record.responsibleLabel || "ia");
-      const byResponsible = responsibleFilter === "all" || bucket === responsibleFilter;
+      const byResponsible = effectiveResponsibleFilter === "all" || bucket === effectiveResponsibleFilter;
       const byFavorite = !favoritesOnly || favoritePhones.includes(record.phonePk);
       const byPinned = !pinnedOnly || pinnedPhones.includes(record.phonePk);
       return byText && byStatus && byLabel && byAnalysis && byPhase && byResponsible && byFavorite && byPinned;
@@ -262,7 +271,7 @@ export function AccountsView({ selectedDate, knownRunId = null, refreshHint = nu
       if (favDiff !== 0) return favDiff;
       return String(a.contactName || "").localeCompare(String(b.contactName || ""), "pt-BR");
     });
-  }, [effectiveAnalysisFilter, favoritePhones, favoritesOnly, labelFilter, phaseFilter, pinnedOnly, pinnedPhones, query, records, responsibleFilter, statusFilter]);
+  }, [effectiveAnalysisFilter, effectiveResponsibleFilter, favoritePhones, favoritesOnly, labelFilter, phaseFilter, pinnedOnly, pinnedPhones, query, records, statusFilter]);
 
   const recordsByStatus = useMemo(() => {
     const grouped: Record<AccountStatus, ClientRecordItem[]> = {
@@ -286,11 +295,11 @@ export function AccountsView({ selectedDate, knownRunId = null, refreshHint = nu
       statusFilter !== "all" ||
       labelFilter !== "all" ||
       effectiveAnalysisFilter !== "all" ||
-      responsibleFilter !== "all" ||
+      effectiveResponsibleFilter !== "all" ||
       phaseFilter !== "all" ||
       favoritesOnly ||
       pinnedOnly,
-    [effectiveAnalysisFilter, favoritesOnly, labelFilter, phaseFilter, pinnedOnly, query, responsibleFilter, statusFilter],
+    [effectiveAnalysisFilter, effectiveResponsibleFilter, favoritesOnly, labelFilter, phaseFilter, pinnedOnly, query, statusFilter],
   );
   const shouldDimKanban = filteredRecords.length === 0;
 
@@ -363,6 +372,28 @@ export function AccountsView({ selectedDate, knownRunId = null, refreshHint = nu
               Base geral de clientes
             </button>
           </div>
+          <div className="btn-group" style={{ marginTop: "10px" }}>
+            <button type="button" className={`gap-chip ${ownerScope === "all" ? "active" : ""}`} onClick={() => onSetOwnerScope("all")}>
+              Todos
+            </button>
+            <button type="button" className={`gap-chip ${ownerScope === "ia" ? "active" : ""}`} onClick={() => onSetOwnerScope("ia")}>
+              IA
+            </button>
+            <button
+              type="button"
+              className={`gap-chip ${ownerScope === "suellen" ? "active" : ""}`}
+              onClick={() => onSetOwnerScope("suellen")}
+            >
+              Suellen
+            </button>
+            <button
+              type="button"
+              className={`gap-chip ${ownerScope === "samuel" ? "active" : ""}`}
+              onClick={() => onSetOwnerScope("samuel")}
+            >
+              Samuel
+            </button>
+          </div>
         </div>
       </article>
 
@@ -400,8 +431,9 @@ export function AccountsView({ selectedDate, knownRunId = null, refreshHint = nu
           effectiveAnalysisFilter={effectiveAnalysisFilter}
           onAnalysisFilterChange={setAnalysisFilter}
           analysisFilterOptions={analysisFilterOptions}
-          responsibleFilter={responsibleFilter}
+          responsibleFilter={effectiveResponsibleFilter}
           onResponsibleFilterChange={setResponsibleFilter}
+          responsibleFilterLocked={ownerScope !== "all"}
           phaseFilter={phaseFilter}
           onPhaseFilterChange={setPhaseFilter}
           favoritesOnly={favoritesOnly}

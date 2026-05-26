@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { GapSeverity, InsightSeverity, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
+import { parseLooseJsonObject } from "@/lib/json/looseJson";
 import type { AppConfig } from "../types";
 import type { ReportPayload } from "@/types";
 import { toTitleCaseName } from "../nameFormat";
@@ -67,20 +68,7 @@ export function parseInsightSeverity(value: unknown): InsightSeverity {
 }
 
 export function parseJsonSafe(text: unknown): Record<string, unknown> {
-  const raw = String(text || "").trim();
-  if (!raw) return {};
-
-  try {
-    return JSON.parse(raw);
-  } catch {
-    const fencedMatch = raw.match(/```json\s*([\s\S]*?)\s*```/i);
-    if (!fencedMatch) return {};
-    try {
-      return JSON.parse(fencedMatch[1]);
-    } catch {
-      return {};
-    }
-  }
+  return parseLooseJsonObject(text) || {};
 }
 
 export function asStringList(value: unknown): string[] {

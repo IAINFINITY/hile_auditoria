@@ -3,6 +3,7 @@ import type { InsightItem, Severity } from "../../../../types";
 import type { ProductDemandItem } from "../../shared/types";
 import { toTitleCaseName } from "../../hooks/controller/common";
 import { canonicalizeProductLabel, normalizeProductForMatch } from "@/lib/products/canonical";
+import type { OwnerScope } from "../../shared/types";
 
 interface ProductsViewProps {
   items: ProductDemandItem[];
@@ -10,6 +11,7 @@ interface ProductsViewProps {
   informationalInsights: InsightItem[];
   contextInsights?: InsightItem[];
   showHeader?: boolean;
+  ownerScope?: OwnerScope;
 }
 
 type ContextSeverityFilter = "all" | Severity;
@@ -81,6 +83,7 @@ export function ProductsView({
   informationalInsights,
   contextInsights,
   showHeader = true,
+  ownerScope = "all",
 }: ProductsViewProps) {
   const [contextFilter, setContextFilter] = useState<ContextSeverityFilter>("all");
   const [contextContactFilter, setContextContactFilter] = useState<string>("all");
@@ -180,7 +183,10 @@ export function ProductsView({
       {showHeader ? (
         <header className="settings-header" id="analysis-overview">
           <h2>Analise Geral do Dia</h2>
-          <p>Esta analise geral reflete exatamente os dados do dia selecionado: {selectedDate}.</p>
+          <p>
+            Esta analise geral reflete exatamente os dados do dia selecionado: {selectedDate}. Responsável:{" "}
+            {ownerScope === "all" ? "Todos" : ownerScope === "ia" ? "IA" : ownerScope === "suellen" ? "Comercial Suellen" : "Comercial Samuel"}.
+          </p>
         </header>
       ) : null}
 

@@ -13,6 +13,7 @@ import { ProductsView } from "@/features/dashboard/sections/products/ProductsVie
 import { SettingsView } from "@/features/dashboard/sections/settings/SettingsView";
 import type { DashboardController } from "../dashboardTypes";
 import type { AppView } from "../types";
+import type { OwnerScope } from "@/features/dashboard/shared/types";
 
 interface MainContentRendererProps {
   activeView: AppView;
@@ -28,6 +29,15 @@ interface MainContentRendererProps {
   onOpenReportByContact: (contactName: string) => void;
   onSetAnalysisScope: (scope: "day" | "overall") => void;
   onSetDissatisfactionScope: (scope: "day" | "overall") => void;
+  ownerScope: OwnerScope;
+  onSetOwnerScope: (scope: OwnerScope) => void;
+}
+
+function ownerScopeLabel(scope: OwnerScope): string {
+  if (scope === "ia") return "IA";
+  if (scope === "suellen") return "Comercial Suellen";
+  if (scope === "samuel") return "Comercial Samuel";
+  return "Todos";
 }
 
 export function MainContentRenderer({
@@ -43,6 +53,8 @@ export function MainContentRenderer({
   onOpenReportByContact,
   onSetAnalysisScope,
   onSetDissatisfactionScope,
+  ownerScope,
+  onSetOwnerScope,
   onUpdateProfile,
 }: MainContentRendererProps) {
   const analysisOverallRefreshHint = `overview-runs:${controller.overviewRunCount}`;
@@ -114,7 +126,13 @@ export function MainContentRenderer({
   if (activeView === "clients") {
     return (
       <div className="settings-animated" key="clients-view">
-        <AccountsView selectedDate={clientsSnapshotDate} knownRunId={selectedDateKnownRunId} refreshHint={controller.lastRunAt} />
+        <AccountsView
+          selectedDate={clientsSnapshotDate}
+          knownRunId={selectedDateKnownRunId}
+          refreshHint={controller.lastRunAt}
+          ownerScope={ownerScope}
+          onSetOwnerScope={onSetOwnerScope}
+        />
       </div>
     );
   }
@@ -171,6 +189,28 @@ export function MainContentRenderer({
                   Análise total
                 </button>
               </div>
+              <div className="btn-group" style={{ marginTop: "10px" }}>
+                <button type="button" className={`gap-chip ${ownerScope === "all" ? "active" : ""}`} onClick={() => onSetOwnerScope("all")}>
+                  Todos
+                </button>
+                <button type="button" className={`gap-chip ${ownerScope === "ia" ? "active" : ""}`} onClick={() => onSetOwnerScope("ia")}>
+                  IA
+                </button>
+                <button
+                  type="button"
+                  className={`gap-chip ${ownerScope === "suellen" ? "active" : ""}`}
+                  onClick={() => onSetOwnerScope("suellen")}
+                >
+                  Suellen
+                </button>
+                <button
+                  type="button"
+                  className={`gap-chip ${ownerScope === "samuel" ? "active" : ""}`}
+                  onClick={() => onSetOwnerScope("samuel")}
+                >
+                  Samuel
+                </button>
+              </div>
             </div>
           </article>
         </section>
@@ -209,7 +249,12 @@ export function MainContentRenderer({
         </section>
 
         {analysisScope === "overall" ? (
-          <AnalysisOverallView refreshHint={analysisOverallRefreshHint} sectionStart={2} />
+          <AnalysisOverallView
+            key={`analysis-overall-${ownerScope}`}
+            refreshHint={analysisOverallRefreshHint}
+            sectionStart={2}
+            ownerScope={ownerScope}
+          />
         ) : (
           <>
             <div className="section reveal" id="analysis-overview">
@@ -218,7 +263,10 @@ export function MainContentRenderer({
                   <span className="section-num">02</span>
                   <div className="section-title">
                     <h2>Análise Geral do Dia</h2>
-                    <p>Esta análise geral reflete exatamente os dados do dia selecionado: {controller.date}.</p>
+                    <p>
+                      Esta análise geral reflete exatamente os dados do dia selecionado: {controller.date}{" "}
+                      ({ownerScopeLabel(ownerScope)}).
+                    </p>
                   </div>
                 </div>
               </div>
@@ -305,6 +353,7 @@ export function MainContentRenderer({
                 selectedDate={controller.date}
                 informationalInsights={controller.informationalInsights}
                 contextInsights={controller.allInsights}
+                ownerScope={ownerScope}
                 showHeader={false}
               />
             </div>
@@ -317,7 +366,13 @@ export function MainContentRenderer({
   if (activeView === "attendants") {
     return (
       <div className="settings-animated" key="attendants-view">
-        <AttendantsView selectedDate={controller.date} summary={controller.attendantsPerformance} refreshHint={controller.lastRunAt} />
+        <AttendantsView
+          selectedDate={controller.date}
+          summary={controller.attendantsPerformance}
+          refreshHint={controller.lastRunAt}
+          ownerScope={ownerScope}
+          onSetOwnerScope={onSetOwnerScope}
+        />
       </div>
     );
   }
@@ -397,6 +452,8 @@ export function MainContentRenderer({
           dayItems={controller.productDemand}
           informationalInsights={controller.informationalInsights}
           refreshHint={controller.lastRunAt}
+          ownerScope={ownerScope}
+          onSetOwnerScope={onSetOwnerScope}
         />
       </div>
     );

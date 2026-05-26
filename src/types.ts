@@ -406,6 +406,7 @@ export interface ClientsByDateResponse {
   date: string;
   runId: string | null;
   generatedAt: string | null;
+  owner_scope?: "all" | "ia" | "suellen" | "samuel";
   items: ClientRecordItem[];
 }
 
@@ -434,6 +435,7 @@ export interface AnalysisOverallContextItem {
 
 export interface AnalysisOverallResponse {
   total_runs: number;
+  owner_scope?: "all" | "ia" | "suellen" | "samuel";
   total_runs_available?: number;
   pagination?: {
     page: number;

@@ -1,6 +1,6 @@
 ﻿import { useState } from "react";
 import type { InsightItem } from "../../../../types";
-import type { ProductDemandItem } from "../../shared/types";
+import type { OwnerScope, ProductDemandItem } from "../../shared/types";
 import { ProductsOverallView } from "./ProductsOverallView";
 
 interface ProductsDualViewProps {
@@ -8,11 +8,19 @@ interface ProductsDualViewProps {
   dayItems: ProductDemandItem[];
   refreshHint?: string | null;
   informationalInsights: InsightItem[];
+  ownerScope: OwnerScope;
+  onSetOwnerScope: (scope: OwnerScope) => void;
 }
 
 type ProductsScope = "day" | "overall";
 
-export function ProductsDualView({ selectedDate, dayItems, refreshHint }: ProductsDualViewProps) {
+export function ProductsDualView({
+  selectedDate,
+  dayItems,
+  refreshHint,
+  ownerScope,
+  onSetOwnerScope,
+}: ProductsDualViewProps) {
   const [scope, setScope] = useState<ProductsScope>("day");
   const [scopeAnimationSeed, setScopeAnimationSeed] = useState(0);
 
@@ -57,16 +65,40 @@ export function ProductsDualView({ selectedDate, dayItems, refreshHint }: Produc
               Produtos total
             </button>
           </div>
+          <div className="btn-group" style={{ marginTop: "10px" }}>
+            <button type="button" className={`gap-chip ${ownerScope === "all" ? "active" : ""}`} onClick={() => onSetOwnerScope("all")}>
+              Todos
+            </button>
+            <button type="button" className={`gap-chip ${ownerScope === "ia" ? "active" : ""}`} onClick={() => onSetOwnerScope("ia")}>
+              IA
+            </button>
+            <button
+              type="button"
+              className={`gap-chip ${ownerScope === "suellen" ? "active" : ""}`}
+              onClick={() => onSetOwnerScope("suellen")}
+            >
+              Suellen
+            </button>
+            <button
+              type="button"
+              className={`gap-chip ${ownerScope === "samuel" ? "active" : ""}`}
+              onClick={() => onSetOwnerScope("samuel")}
+            >
+              Samuel
+            </button>
+          </div>
         </div>
       </article>
 
       <div className="scope-switch-animated" key={`products-scope-${scope}-${scopeAnimationSeed}`}>
         <ProductsOverallView
+          key={`products-overall-${scope}-${ownerScope}-${selectedDate}`}
           showHeader={false}
           refreshHint={refreshHint}
           scope={scope === "day" ? "day" : "overall"}
           dayItems={scope === "day" ? dayItems : []}
           selectedDate={selectedDate}
+          ownerScope={ownerScope}
         />
       </div>
     </section>

@@ -1,4 +1,5 @@
 import type { Severity } from "../../../../types";
+import { parseLooseJsonObject } from "@/lib/json/looseJson";
 
 export type ReportSeverityFilter = "all" | "critical" | "high" | "medium" | "low";
 
@@ -88,13 +89,7 @@ export function asBoolean(value: unknown): boolean {
 }
 
 export function parseJsonObject(text: unknown): Record<string, unknown> {
-  const raw = String(text || "").trim();
-  if (!raw) return {};
-  try {
-    return asRecord(JSON.parse(raw));
-  } catch {
-    return {};
-  }
+  return asRecord(parseLooseJsonObject(text) || {});
 }
 
 export function parseHourlyRolesFromLogText(logText: unknown): Array<{ hour: number; role: "USER" | "AGENT" }> {

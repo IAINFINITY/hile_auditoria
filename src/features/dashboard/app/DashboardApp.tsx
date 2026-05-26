@@ -13,6 +13,7 @@ import { LoginScreen } from "./components/LoginScreen";
 import { MainContentRenderer } from "./components/MainContentRenderer";
 import { SplashScreen } from "./components/SplashScreen";
 import type { AppView, AuthStatusPayload } from "./types";
+import type { OwnerScope } from "@/features/dashboard/shared/types";
 
 export function DashboardApp() {
   const clearStaleAuthStorage = useCallback(() => {
@@ -83,6 +84,16 @@ export function DashboardApp() {
   });
   const [analysisScope, setAnalysisScope] = useState<"day" | "overall">("day");
   const [dissatisfactionScope, setDissatisfactionScope] = useState<"day" | "overall">("day");
+  const [ownerScope, setOwnerScope] = useState<OwnerScope>(() => {
+    if (typeof window === "undefined") return "all";
+    try {
+      const saved = sessionStorage.getItem("hile_owner_scope");
+      if (saved === "ia" || saved === "suellen" || saved === "samuel" || saved === "all") return saved;
+    } catch {
+      // noop
+    }
+    return "all";
+  });
   const [currentUser, setCurrentUser] = useState<{ name: string; email: string; role: string } | null>(null);
 
   useRevealOnScroll({ enabled: stage === "app", viewKey: activeView });
@@ -244,6 +255,14 @@ export function DashboardApp() {
       // noop
     }
   }, [activeView]);
+
+  useEffect(() => {
+    try {
+      sessionStorage.setItem("hile_owner_scope", ownerScope);
+    } catch {
+      // noop
+    }
+  }, [ownerScope]);
 
   useEffect(() => {
     try {
@@ -646,6 +665,8 @@ export function DashboardApp() {
             onOpenReportByContact={handleOpenReportByContact}
             onSetAnalysisScope={setAnalysisScope}
             onSetDissatisfactionScope={setDissatisfactionScope}
+            ownerScope={ownerScope}
+            onSetOwnerScope={setOwnerScope}
             onUpdateProfile={handleUpdateProfile}
           />
         </div>

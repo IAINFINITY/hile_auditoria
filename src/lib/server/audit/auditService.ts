@@ -76,8 +76,28 @@ function inboxOwnerBucket(inboxId) {
   return "ia";
 }
 
-function buildResponsibleTracking(messages, inboxId) {
+function buildResponsibleTracking(messages, inboxId, assigneeName) {
   const safeMessages = Array.isArray(messages) ? messages : [];
+  const assigneeBucket = String(assigneeName || "").trim() ? resolveResponsibleBucket(assigneeName) : null;
+  const inboxBucket = inboxOwnerBucket(inboxId);
+  const fallbackOwnerBucket = assigneeBucket || inboxBucket || "ia";
+
+  const resolveMessageBucket = (message) => {
+    const direct = resolveResponsibleBucket(message?.sender_name);
+    if (!direct) return fallbackOwnerBucket;
+
+    const senderNameToken = normalizeNameToken(message?.sender_name);
+    const senderId = Number(message?.sender_id || 0);
+    const senderLooksLikeSystemIa =
+      senderId === 1 &&
+      /\bacesso infinity\b|\bacesso_infinity\b|\bassistant\b|\bbot\b|(^|\s)ia(\s|$)/.test(senderNameToken);
+
+    if (direct === "ia" && senderLooksLikeSystemIa && (fallbackOwnerBucket === "samuel" || fallbackOwnerBucket === "suellen")) {
+      return fallbackOwnerBucket;
+    }
+    return direct;
+  };
+
   const counts = { ia: 0, suellen: 0, samuel: 0 };
   const latestByBucket = { ia: 0, suellen: 0, samuel: 0 };
   const responseAgg = {
@@ -89,8 +109,7 @@ function buildResponsibleTracking(messages, inboxId) {
   for (const message of safeMessages) {
     const role = String(message?.role || "").toUpperCase();
     if (role !== "AGENT") continue;
-    const resolved = resolveResponsibleBucket(message?.sender_name);
-    const bucket = resolved || inboxOwnerBucket(inboxId);
+    const bucket = resolveMessageBucket(message);
     if (!bucket) continue;
     counts[bucket] += 1;
     latestByBucket[bucket] = Math.max(latestByBucket[bucket] || 0, Number(message?.created_at || 0));
@@ -106,8 +125,7 @@ function buildResponsibleTracking(messages, inboxId) {
       const next = safeMessages[scan];
       const nextRole = String(next?.role || "").toUpperCase();
       if (nextRole !== "AGENT") continue;
-      const resolved = resolveResponsibleBucket(next?.sender_name);
-      const bucket = resolved || inboxOwnerBucket(inboxId);
+      const bucket = resolveMessageBucket(next);
       if (!bucket) break;
       const endedAt = Number(next?.created_at || 0);
       const delta = endedAt - startedAt;
@@ -919,7 +937,11 @@ export async function runDailyAnalysis({
           .filter((entry) => entry.state),
         message_count_day: log.message_count_day,
         log_text: logText,
-        responsible_tracking: buildResponsibleTracking(log.messages || [], log.inbox_id),
+        responsible_tracking: buildResponsibleTracking(
+          log.messages || [],
+          log.inbox_id,
+          log.assignee_name || null,
+        ),
         analysis: compactAnalysis(difyRaw),
       });
       console.log(

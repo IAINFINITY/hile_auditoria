@@ -1048,6 +1048,10 @@ export async function persistCompletedRun(params: {
           closedAt: record.closedAt,
           status: record.status,
           severity: record.severity,
+          responsibleBucket: record.responsibleBucket || "ia",
+          responsibleLabel: record.responsibleLabel || null,
+          responsibleMessageCount: Number(record.responsibleMessageCount || 0),
+          responsibleMessageBreakdown: toJsonValue(record.responsibleMessageBreakdown || null),
         })),
       });
 
@@ -1094,6 +1098,10 @@ export async function persistCompletedRun(params: {
               currentSeverity: record.severity,
               currentLabels: record.labels,
               openConversationIds: isResolved ? [] : record.conversationIds,
+              responsibleBucket: record.responsibleBucket || "ia",
+              responsibleLabel: record.responsibleLabel || null,
+              responsibleMessageCount: Number(record.responsibleMessageCount || 0),
+              responsibleMessageBreakdown: toJsonValue(record.responsibleMessageBreakdown || null),
               lastRunId: params.runId,
             },
           });
@@ -1150,6 +1158,10 @@ export async function persistCompletedRun(params: {
             currentSeverity: selectedSeverity,
             currentLabels: record.labels,
             openConversationIds: isResolved ? [] : record.conversationIds,
+            responsibleBucket: record.responsibleBucket || "ia",
+            responsibleLabel: record.responsibleLabel || null,
+            responsibleMessageCount: Number(record.responsibleMessageCount || 0),
+            responsibleMessageBreakdown: toJsonValue(record.responsibleMessageBreakdown || null),
             lastRunId: params.runId,
           },
         });
@@ -1551,6 +1563,10 @@ export async function listClientsByDate(date: string) {
           closedAt: true,
           status: true,
           severity: true,
+          responsibleBucket: true,
+          responsibleLabel: true,
+          responsibleMessageCount: true,
+          responsibleMessageBreakdown: true,
         },
       },
     },
@@ -1623,6 +1639,10 @@ export async function listClientsByDate(date: string) {
       resolvedAt: true,
       currentStatus: true,
       currentSeverity: true,
+      responsibleBucket: true,
+      responsibleLabel: true,
+      responsibleMessageCount: true,
+      responsibleMessageBreakdown: true,
     },
   });
   const stateByPhone = new Map(states.map((item) => [item.phonePk, item]));
@@ -1942,6 +1962,44 @@ export async function listClientsByDate(date: string) {
       label: responsibleLabel(fallbackBucket),
       messageCount,
       breakdown: counts,
+    };
+  };
+  const normalizeStoredResponsibleBucket = (value: unknown): ResponsibleBucket => {
+    const normalized = String(value || "").trim().toLowerCase();
+    if (normalized === "suellen" || normalized === "samuel") return normalized;
+    return "ia";
+  };
+  const toSafeInt = (value: unknown): number => {
+    const n = Number(value);
+    if (!Number.isFinite(n) || n < 0) return 0;
+    return Math.floor(n);
+  };
+  const buildResponsibleTrackingFromStored = (params: {
+    bucket: unknown;
+    label: unknown;
+    messageCount: unknown;
+    breakdown: unknown;
+    conversationIds: number[];
+  }): ResponsibleTracking => {
+    const fallback = buildResponsibleTracking(params.conversationIds || []);
+    const rawBreakdown = asRecord(params.breakdown);
+    const normalizedBreakdown = {
+      ia: toSafeInt(rawBreakdown.ia),
+      suellen: toSafeInt(rawBreakdown.suellen),
+      samuel: toSafeInt(rawBreakdown.samuel),
+    };
+    const hasBreakdown =
+      normalizedBreakdown.ia > 0 || normalizedBreakdown.suellen > 0 || normalizedBreakdown.samuel > 0;
+    if (!hasBreakdown) return fallback;
+
+    const bucket = normalizeStoredResponsibleBucket(params.bucket);
+    const label = String(params.label || "").trim() || responsibleLabel(bucket);
+    const messageCount = Math.max(toSafeInt(params.messageCount), normalizedBreakdown[bucket] || 0);
+    return {
+      bucket,
+      label,
+      messageCount,
+      breakdown: normalizedBreakdown,
     };
   };
   const pendingContextByName = new Map<string, PendingContext>();
@@ -2586,7 +2644,13 @@ export async function listClientsByDate(date: string) {
       attentions: unifiedAttentions,
       pendingContext,
     });
-    const responsibleTracking = buildResponsibleTracking(resolvedConversationIds);
+    const responsibleTracking = buildResponsibleTrackingFromStored({
+      bucket: (item as { responsibleBucket?: unknown }).responsibleBucket,
+      label: (item as { responsibleLabel?: unknown }).responsibleLabel,
+      messageCount: (item as { responsibleMessageCount?: unknown }).responsibleMessageCount,
+      breakdown: (item as { responsibleMessageBreakdown?: unknown }).responsibleMessageBreakdown,
+      conversationIds: resolvedConversationIds,
+    });
 
     return {
     lifecycle: (() => {
@@ -2757,7 +2821,13 @@ export async function listClientsByDate(date: string) {
           attentions: [],
           pendingContext,
         });
-        const responsibleTracking = buildResponsibleTracking(state.openConversationIds || []);
+        const responsibleTracking = buildResponsibleTrackingFromStored({
+          bucket: (state as { responsibleBucket?: unknown }).responsibleBucket,
+          label: (state as { responsibleLabel?: unknown }).responsibleLabel,
+          messageCount: (state as { responsibleMessageCount?: unknown }).responsibleMessageCount,
+          breakdown: (state as { responsibleMessageBreakdown?: unknown }).responsibleMessageBreakdown,
+          conversationIds: state.openConversationIds || [],
+        });
         return {
         clientPhase: phase.phase,
         clientPhaseReason: phase.reason,

@@ -6,6 +6,12 @@ import { requireAuthorizedApiAccess } from "@/lib/server/apiUtils";
 
 export const runtime = "nodejs";
 
+function normalizeOwnerScope(value: string | null): "all" | "ia" | "suellen" | "samuel" {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (normalized === "ia" || normalized === "suellen" || normalized === "samuel") return normalized;
+  return "all";
+}
+
 function normalizeSeverity(value: unknown): Severity {
   const text = String(value || "")
     .toLowerCase()
@@ -154,6 +160,7 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const takeInput = Number(searchParams.get("take") || searchParams.get("limit") || 300);
     const pageInput = Number(searchParams.get("page") || 1);
+    const ownerScope = normalizeOwnerScope(searchParams.get("owner"));
     const take = Number.isFinite(takeInput) && takeInput > 0 ? Math.min(1000, takeInput) : 300;
     const page = Number.isFinite(pageInput) && pageInput > 0 ? Math.floor(pageInput) : 1;
     const skip = (page - 1) * take;
@@ -225,12 +232,15 @@ export async function GET(request: Request) {
       firstDate = firstDate === null || dateRef < firstDate ? dateRef : firstDate;
       lastDate = lastDate === null || dateRef > lastDate ? dateRef : lastDate;
       conversationsScanned += Math.max(0, Number(run.totalConversations || 0));
-      conversationsAnalyzed += Math.max(0, Number(run.processed || 0));
+      if (ownerScope === "all") {
+        conversationsAnalyzed += Math.max(0, Number(run.processed || 0));
+      }
 
       const reportJson = (run.report?.reportJson as Record<string, unknown> | null) || null;
       const overviewObj = extractOverviewRecord(reportJson);
       const analysisSeverityByContact = new Map<string, Severity>();
       const analysisByContact = new Map<string, Record<string, unknown>>();
+      const allowedContactKeys = new Set<string>();
       const rawAnalysis = reportJson?.raw_analysis as Record<string, unknown> | undefined;
       const analyses = Array.isArray(rawAnalysis?.analyses) ? (rawAnalysis?.analyses as unknown[]) : [];
       let runMessagesFromAnalyses = 0;
@@ -240,8 +250,12 @@ export async function GET(request: Request) {
       for (const entry of analyses) {
         if (!entry || typeof entry !== "object") continue;
         const row = entry as Record<string, unknown>;
+        const tracking = (row.responsible_tracking as Record<string, unknown> | undefined) || undefined;
+        const ownerBucket = String(tracking?.owner_bucket || "ia").toLowerCase();
+        if (ownerScope !== "all" && ownerBucket !== ownerScope) continue;
         const key = String(row.contact_key || "").trim();
         if (!key) continue;
+        allowedContactKeys.add(key);
         runMessagesFromAnalyses += Math.max(0, Number(row.message_count_day || 0));
         analysisByContact.set(key, row);
         const analysisObj = row.analysis as Record<string, unknown> | undefined;
@@ -271,6 +285,9 @@ export async function GET(request: Request) {
           hourlyConversations[hour] += 1;
         }
       }
+      if (ownerScope !== "all") {
+        for (const key of allowedContactKeys) uniqueContacts.add(key);
+      }
 
       const logs = Array.isArray(reportJson?.logs) ? (reportJson?.logs as Array<Record<string, unknown>>) : [];
       let runMessagesFromLogs = 0;
@@ -278,6 +295,7 @@ export async function GET(request: Request) {
       let runContinuedFromLogs = 0;
       logs.forEach((log, index) => {
         const contactKey = String(log.contact_key || "").trim();
+        if (ownerScope !== "all" && contactKey && !allowedContactKeys.has(contactKey)) return;
         if (contactKey) uniqueContacts.add(contactKey);
         runMessagesFromLogs += Math.max(0, Number(log.message_count_day || log.total_messages_day || 0));
         const finalizationStatus = normalizeFinalizationStatus(log.finalization_status ?? log.status_operacional ?? null);
@@ -316,7 +334,7 @@ export async function GET(request: Request) {
       const runContinuedFromOverview = Math.max(0, Number(overviewObj?.continued_count ?? 0));
 
       const runMessages =
-        runMessagesFromOverview > 0
+        ownerScope === "all" && runMessagesFromOverview > 0
           ? runMessagesFromOverview
           : runMessagesFromAnalyses > 0
             ? runMessagesFromAnalyses
@@ -326,7 +344,7 @@ export async function GET(request: Request) {
       totalMessages += runMessages;
 
       const runFinalized =
-        runFinalizedFromOverview > 0
+        ownerScope === "all" && runFinalizedFromOverview > 0
           ? runFinalizedFromOverview
           : runFinalizedFromLogs > 0
             ? runFinalizedFromLogs
@@ -334,20 +352,24 @@ export async function GET(request: Request) {
               ? runFinalizedFromAnalyses
               : 0;
       let runContinued =
-        runContinuedFromOverview > 0
+        ownerScope === "all" && runContinuedFromOverview > 0
           ? runContinuedFromOverview
           : runContinuedFromLogs > 0
             ? runContinuedFromLogs
             : runContinuedFromAnalyses > 0
               ? runContinuedFromAnalyses
-              : Math.max(0, Number(run.processed || 0) - runFinalized);
+              : Math.max(0, Math.max(0, allowedContactKeys.size) - runFinalized);
 
-      const processedCount = Math.max(0, Number(run.processed || 0));
+      const processedCount =
+        ownerScope === "all" ? Math.max(0, Number(run.processed || 0)) : Math.max(0, allowedContactKeys.size);
       if (runFinalized + runContinued > processedCount && processedCount > 0) {
         const overflow = runFinalized + runContinued - processedCount;
         runContinued = Math.max(0, runContinued - overflow);
       }
 
+      if (ownerScope !== "all") {
+        conversationsAnalyzed += allowedContactKeys.size;
+      }
       finalizedCount += runFinalized;
       continuedCount += runContinued;
     }
@@ -368,6 +390,7 @@ export async function GET(request: Request) {
 
     return NextResponse.json({
       total_runs: runs.length,
+      owner_scope: ownerScope,
       total_runs_available: totalRuns,
       pagination: {
         page,

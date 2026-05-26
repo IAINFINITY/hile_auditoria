@@ -4,10 +4,12 @@ import { apiGet } from "@/lib/api";
 import { toTitleCaseName } from "../../hooks/controller/common";
 import { MovementSection } from "../dashboard/MovementSection";
 import { canonicalizeProductLabel, normalizeProductForMatch } from "@/lib/products/canonical";
+import type { OwnerScope } from "../../shared/types";
 
 interface AnalysisOverallViewProps {
   refreshHint?: string | null;
   sectionStart?: number;
+  ownerScope: OwnerScope;
 }
 
 type ProductsOverallItem = {
@@ -27,12 +29,12 @@ type ProductsSortMode = "count" | "name";
 type ProductTone = "tone-1" | "tone-2" | "tone-3" | "tone-default";
 
 const ANALYSIS_OVERALL_REVALIDATE_MS = 5 * 60 * 1000;
-const ANALYSIS_OVERALL_CACHE_KEY = "hile_analysis_overall_cache_v2";
-const ANALYSIS_OVERALL_META_KEY = "hile_analysis_overall_meta_v2";
+const ANALYSIS_OVERALL_CACHE_KEY = "hile_analysis_overall_cache_v3";
+const ANALYSIS_OVERALL_META_KEY = "hile_analysis_overall_meta_v3";
 
 const PRODUCTS_OVERALL_REVALIDATE_MS = 5 * 60 * 1000;
-const PRODUCTS_OVERALL_CACHE_KEY = "hile_analysis_overall_products_cache_v1";
-const PRODUCTS_OVERALL_META_KEY = "hile_analysis_overall_products_meta_v1";
+const PRODUCTS_OVERALL_CACHE_KEY = "hile_analysis_overall_products_cache_v2";
+const PRODUCTS_OVERALL_META_KEY = "hile_analysis_overall_products_meta_v2";
 
 function severityLabel(value: Severity): string {
   if (value === "critical") return "Crítico";
@@ -92,9 +94,20 @@ function toneByIndex(index: number): ProductTone {
   return "tone-default";
 }
 
-export function AnalysisOverallView({ refreshHint, sectionStart = 1 }: AnalysisOverallViewProps) {
-  const cachedAnalysis = useMemo(() => readCachedJson<AnalysisOverallResponse>(ANALYSIS_OVERALL_CACHE_KEY), []);
-  const cachedProducts = useMemo(() => readCachedJson<ProductsOverallResponse>(PRODUCTS_OVERALL_CACHE_KEY), []);
+function ownerScopeLabel(scope: OwnerScope): string {
+  if (scope === "ia") return "IA";
+  if (scope === "suellen") return "Comercial Suellen";
+  if (scope === "samuel") return "Comercial Samuel";
+  return "Todos";
+}
+
+export function AnalysisOverallView({ refreshHint, sectionStart = 1, ownerScope }: AnalysisOverallViewProps) {
+  const analysisCacheKey = `${ANALYSIS_OVERALL_CACHE_KEY}_${ownerScope}`;
+  const analysisMetaKey = `${ANALYSIS_OVERALL_META_KEY}_${ownerScope}`;
+  const productsCacheKey = `${PRODUCTS_OVERALL_CACHE_KEY}_${ownerScope}`;
+  const productsMetaKey = `${PRODUCTS_OVERALL_META_KEY}_${ownerScope}`;
+  const cachedAnalysis = useMemo(() => readCachedJson<AnalysisOverallResponse>(analysisCacheKey), [analysisCacheKey]);
+  const cachedProducts = useMemo(() => readCachedJson<ProductsOverallResponse>(productsCacheKey), [productsCacheKey]);
 
   const [loading, setLoading] = useState(!cachedAnalysis);
   const [error, setError] = useState("");
@@ -114,18 +127,18 @@ export function AnalysisOverallView({ refreshHint, sectionStart = 1 }: AnalysisO
   const [productsSortMode, setProductsSortMode] = useState<ProductsSortMode>("count");
 
   const contextPageSize = 5;
-const productsPageSize = 6;
+  const productsPageSize = 6;
 
   useEffect(() => {
     let cancelled = false;
     const now = Date.now();
 
-    const cachedAnalysisData = readCachedJson<AnalysisOverallResponse>(ANALYSIS_OVERALL_CACHE_KEY);
-    const cachedAnalysisMeta = readCachedMeta(ANALYSIS_OVERALL_META_KEY);
+    const cachedAnalysisData = readCachedJson<AnalysisOverallResponse>(analysisCacheKey);
+    const cachedAnalysisMeta = readCachedMeta(analysisMetaKey);
     const isAnalysisFresh = Boolean(cachedAnalysisData) && now - cachedAnalysisMeta.fetchedAt < ANALYSIS_OVERALL_REVALIDATE_MS;
 
-    const cachedProductsData = readCachedJson<ProductsOverallResponse>(PRODUCTS_OVERALL_CACHE_KEY);
-    const cachedProductsMeta = readCachedMeta(PRODUCTS_OVERALL_META_KEY);
+    const cachedProductsData = readCachedJson<ProductsOverallResponse>(productsCacheKey);
+    const cachedProductsMeta = readCachedMeta(productsMetaKey);
     const isProductsFresh = Boolean(cachedProductsData) && now - cachedProductsMeta.fetchedAt < PRODUCTS_OVERALL_REVALIDATE_MS;
 
     const hasAnalysisHintUpdate =
@@ -136,13 +149,13 @@ const productsPageSize = 6;
     const shouldFetchProducts = !isProductsFresh || hasProductsHintUpdate;
 
     if (shouldFetchAnalysis) {
-      apiGet<AnalysisOverallResponse>("/api/analysis/overall?limit=500")
+      apiGet<AnalysisOverallResponse>(`/api/analysis/overall?limit=500&owner=${encodeURIComponent(ownerScope)}`)
         .then((data) => {
           if (cancelled) return;
           setPayload(data);
-          localStorage.setItem(ANALYSIS_OVERALL_CACHE_KEY, JSON.stringify(data));
+          localStorage.setItem(analysisCacheKey, JSON.stringify(data));
           sessionStorage.setItem(
-            ANALYSIS_OVERALL_META_KEY,
+            analysisMetaKey,
             JSON.stringify({ fetchedAt: Date.now(), refreshHint: refreshHint || null }),
           );
         })
@@ -156,7 +169,7 @@ const productsPageSize = 6;
     }
 
     if (shouldFetchProducts) {
-      apiGet<ProductsOverallResponse>("/api/products/overall?limit=300")
+      apiGet<ProductsOverallResponse>(`/api/products/overall?limit=300&owner=${encodeURIComponent(ownerScope)}`)
         .then((data) => {
           if (cancelled) return;
           const nextData = {
@@ -164,9 +177,9 @@ const productsPageSize = 6;
             totalRuns: Number(data?.totalRuns || 0),
           };
           setProductsPayload(nextData);
-          localStorage.setItem(PRODUCTS_OVERALL_CACHE_KEY, JSON.stringify(nextData));
+          localStorage.setItem(productsCacheKey, JSON.stringify(nextData));
           sessionStorage.setItem(
-            PRODUCTS_OVERALL_META_KEY,
+            productsMetaKey,
             JSON.stringify({ fetchedAt: Date.now(), refreshHint: refreshHint || null }),
           );
         })
@@ -182,7 +195,7 @@ const productsPageSize = 6;
     return () => {
       cancelled = true;
     };
-  }, [refreshHint]);
+  }, [analysisCacheKey, analysisMetaKey, ownerScope, productsCacheKey, productsMetaKey, refreshHint]);
 
   const contextItems = useMemo(() => payload?.context_items || [], [payload?.context_items]);
   const contactOptions = useMemo(() => {
@@ -305,7 +318,8 @@ const productsPageSize = 6;
                 Consolidado de todas as execuções salvas
                 {payload?.date_range?.from && payload?.date_range?.to
                   ? ` (${payload.date_range.from} até ${payload.date_range.to})`
-                  : "."}
+                  : "."}{" "}
+                • Responsável: {ownerScopeLabel(ownerScope)}.
               </p>
             </div>
           </div>

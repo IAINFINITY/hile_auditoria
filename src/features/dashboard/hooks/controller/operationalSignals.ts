@@ -1,5 +1,6 @@
 ﻿import type { AnalysisItem } from "../../../../types";
 import type { OperationalAlertItem, ProductDemandItem } from "../../shared/types";
+import { parseLooseJsonObject } from "@/lib/json/looseJson";
 import { toTitleCaseName } from "./common";
 import { canonicalizeProductLabel, normalizeProductForMatch } from "@/lib/products/canonical";
 
@@ -10,20 +11,7 @@ type ParsedMessage = {
 };
 
 function tryParseJson(text: string): Record<string, unknown> | null {
-  const raw = String(text || "").trim();
-  if (!raw) return null;
-  try {
-    const parsed = JSON.parse(raw);
-    return parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : null;
-  } catch {}
-  const fenced = raw.match(/```json\s*([\s\S]*?)\s*```/i);
-  if (!fenced?.[1]) return null;
-  try {
-    const parsed = JSON.parse(fenced[1]);
-    return parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : null;
-  } catch {
-    return null;
-  }
+  return parseLooseJsonObject(text);
 }
 
 const PRODUCT_ALIASES: Record<string, string[]> = {

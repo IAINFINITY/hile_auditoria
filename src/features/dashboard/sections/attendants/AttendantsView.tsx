@@ -1,12 +1,14 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { apiGet } from "@/lib/api";
 import { useEnterViewport } from "../../hooks/useEnterViewport";
-import type { AttendantPerformanceSummary } from "../../shared/types";
+import type { AttendantPerformanceSummary, OwnerScope } from "../../shared/types";
 
 interface AttendantsViewProps {
   selectedDate: string;
   summary: AttendantPerformanceSummary;
   refreshHint?: string | null;
+  ownerScope: OwnerScope;
+  onSetOwnerScope: (scope: OwnerScope) => void;
 }
 
 type Scope = "day" | "overall";
@@ -28,7 +30,13 @@ function formatSeconds(value: number | null): string {
   return `${Number(value).toFixed(1)}s`;
 }
 
-export function AttendantsView({ selectedDate, summary, refreshHint = null }: AttendantsViewProps) {
+export function AttendantsView({
+  selectedDate,
+  summary,
+  refreshHint = null,
+  ownerScope,
+  onSetOwnerScope,
+}: AttendantsViewProps) {
   const [scope, setScope] = useState<Scope>("day");
   const { rootRef: comparisonTableRef, hasEntered: comparisonTableEntered } = useEnterViewport<HTMLDivElement>();
   const [overallSummary, setOverallSummary] = useState<AttendantPerformanceSummary>(EMPTY_SUMMARY);
@@ -44,7 +52,7 @@ export function AttendantsView({ selectedDate, summary, refreshHint = null }: At
       setOverallError("");
     });
 
-    apiGet<AttendantsOverallResponse>("/api/attendants/overall?take=1000")
+    apiGet<AttendantsOverallResponse>(`/api/attendants/overall?take=1000&owner=${encodeURIComponent(ownerScope)}`)
       .then((payload) => {
         if (cancelled) return;
         const incoming = payload?.summary;
@@ -62,9 +70,20 @@ export function AttendantsView({ selectedDate, summary, refreshHint = null }: At
     return () => {
       cancelled = true;
     };
-  }, [refreshHint, scope]);
+  }, [ownerScope, refreshHint, scope]);
 
-  const activeSummary = scope === "overall" ? overallSummary : summary;
+  const dayScopedSummary = useMemo<AttendantPerformanceSummary>(() => {
+    const entries = ownerScope === "all" ? summary.entries : summary.entries.filter((item) => item.owner === ownerScope);
+    return {
+      entries,
+      totalAnalyses: entries.reduce((acc, entry) => acc + entry.analysesCount, 0),
+      totalMessages: entries.reduce((acc, entry) => acc + entry.messageCountAgent, 0),
+      totalGaps: entries.reduce((acc, entry) => acc + entry.gapsCount, 0),
+      totalCriticalGaps: entries.reduce((acc, entry) => acc + entry.criticalGapsCount, 0),
+    };
+  }, [ownerScope, summary.entries]);
+
+  const activeSummary = scope === "overall" ? overallSummary : dayScopedSummary;
   const hasData =
     activeSummary.totalAnalyses > 0 || activeSummary.totalMessages > 0 || activeSummary.totalGaps > 0;
 
@@ -101,6 +120,28 @@ export function AttendantsView({ selectedDate, summary, refreshHint = null }: At
               onClick={() => setScope("overall")}
             >
               Atendentes geral
+            </button>
+          </div>
+          <div className="btn-group" style={{ marginTop: "10px" }}>
+            <button type="button" className={`gap-chip ${ownerScope === "all" ? "active" : ""}`} onClick={() => onSetOwnerScope("all")}>
+              Todos
+            </button>
+            <button type="button" className={`gap-chip ${ownerScope === "ia" ? "active" : ""}`} onClick={() => onSetOwnerScope("ia")}>
+              IA
+            </button>
+            <button
+              type="button"
+              className={`gap-chip ${ownerScope === "suellen" ? "active" : ""}`}
+              onClick={() => onSetOwnerScope("suellen")}
+            >
+              Suellen
+            </button>
+            <button
+              type="button"
+              className={`gap-chip ${ownerScope === "samuel" ? "active" : ""}`}
+              onClick={() => onSetOwnerScope("samuel")}
+            >
+              Samuel
             </button>
           </div>
         </div>

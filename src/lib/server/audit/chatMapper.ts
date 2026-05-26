@@ -215,6 +215,8 @@ export function normalizeConversationLog({ conversation, messages }: { conversat
   return {
     conversation_id: Number(conversation?.id || 0),
     status: conversation?.status || null,
+    assignee_name: conversation?.meta?.assignee?.name || conversation?.meta?.assignee?.available_name || null,
+    assignee_id: Number(conversation?.meta?.assignee?.id || 0) || null,
     created_at: toUnixSecondsSafe(conversation?.created_at),
     updated_at: toUnixSecondsSafe(conversation?.updated_at),
     last_activity_at: toUnixSecondsSafe(conversation?.last_activity_at),

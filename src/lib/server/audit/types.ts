@@ -63,6 +63,8 @@ export interface NormalizedMessage {
 export interface NormalizedConversationLog {
   conversation_id: number;
   status: string | null;
+  assignee_name?: string | null;
+  assignee_id?: number | null;
   created_at: number;
   updated_at: number;
   last_activity_at: number;
@@ -81,6 +83,8 @@ export interface ContactLog {
   contact_key: string;
   contact: ChatwootContact;
   conversation_ids: number[];
+  assignee_name?: string | null;
+  assignee_id?: number | null;
   messages: NormalizedMessage[];
   message_count_day: number;
 }

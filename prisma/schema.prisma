@@ -46,6 +46,12 @@ enum GapSeverity {
   nao_informado
 }
 
+enum ResponsibleBucket {
+  ia
+  suellen
+  samuel
+}
+
 model Tenant {
   id          String    @id @default(cuid())
   name        String
@@ -328,6 +334,10 @@ model ClientRecord {
   closedAt        DateTime?
   status          String
   severity        InsightSeverity @default(info)
+  responsibleBucket ResponsibleBucket @default(ia)
+  responsibleLabel String?
+  responsibleMessageCount Int @default(0)
+  responsibleMessageBreakdown Json?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
@@ -337,6 +347,7 @@ model ClientRecord {
 
   @@unique([runId, phonePk])
   @@index([tenantId, channelId, dateRef])
+  @@index([tenantId, channelId, responsibleBucket])
   @@index([tenantId, phonePk])
   @@map("client_records")
 }
@@ -358,6 +369,10 @@ model ClientState {
   currentSeverity     InsightSeverity @default(info)
   currentLabels       String[]
   openConversationIds Int[]
+  responsibleBucket   ResponsibleBucket @default(ia)
+  responsibleLabel    String?
+  responsibleMessageCount Int @default(0)
+  responsibleMessageBreakdown Json?
   lastRunId           String?
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
@@ -368,6 +383,7 @@ model ClientState {
 
   @@unique([tenantId, channelId, phonePk])
   @@index([tenantId, channelId, currentStatus])
+  @@index([tenantId, channelId, responsibleBucket])
   @@map("client_states")
 }
 

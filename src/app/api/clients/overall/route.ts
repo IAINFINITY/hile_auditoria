@@ -6,6 +6,39 @@ import { requireAuthorizedApiAccess } from "@/lib/server/apiUtils";
 
 export const runtime = "nodejs";
 
+type OwnerScope = "all" | "ia" | "suellen" | "samuel";
+type ResponsibleBucket = "ia" | "suellen" | "samuel";
+
+function normalizeOwnerScope(value: string | null): OwnerScope {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (normalized === "ia" || normalized === "suellen" || normalized === "samuel") return normalized;
+  return "all";
+}
+
+function normalizeLabelText(value: unknown): string {
+  return String(value || "")
+    .toLowerCase()
+    .trim()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
+function resolveResponsibleBucket(senderName: unknown): ResponsibleBucket | null {
+  const normalized = normalizeLabelText(senderName);
+  if (!normalized) return "ia";
+  if (/\b(grupo|group|equipe|team|channel)\b/.test(normalized)) return null;
+  if (/\bsamuel\b/.test(normalized)) return "samuel";
+  if (/\bsuelen\b|\bsuellen\b/.test(normalized)) return "suellen";
+  if (/\bacesso infinity\b|\bassistant\b|\bbot\b|(^|\s)ia(\s|$)/.test(normalized)) return "ia";
+  return "ia";
+}
+
+function responsibleLabel(bucket: ResponsibleBucket): string {
+  if (bucket === "samuel") return "Comercial Samuel";
+  if (bucket === "suellen") return "Comercial Suellen";
+  return "IA";
+}
+
 function toTitleCaseName(value: string): string {
   return String(value || "")
     .toLowerCase()
@@ -49,6 +82,7 @@ export async function GET(request: Request) {
 
     const { searchParams } = new URL(request.url);
     const takeInput = Number(searchParams.get("take") || 500);
+    const ownerScope = normalizeOwnerScope(searchParams.get("owner"));
     const take = Number.isFinite(takeInput) && takeInput > 0 ? Math.min(2000, takeInput) : 500;
     const from = String(searchParams.get("from") || "").trim();
     const to = String(searchParams.get("to") || "").trim();
@@ -105,8 +139,96 @@ export async function GET(request: Request) {
         currentSeverity: true,
         currentLabels: true,
         openConversationIds: true,
+        responsibleBucket: true,
+        responsibleLabel: true,
+        responsibleMessageCount: true,
+        responsibleMessageBreakdown: true,
       },
     });
+
+    const trackedConversationIds = Array.from(
+      new Set(
+        states.flatMap((item) =>
+          Array.isArray(item.openConversationIds)
+            ? item.openConversationIds.map((id) => Number(id || 0)).filter((id) => id > 0)
+            : [],
+        ),
+      ),
+    );
+
+    const conversationResponsibleMap = new Map<
+      number,
+      {
+        counts: { ia: number; suellen: number; samuel: number };
+        last: { bucket: ResponsibleBucket; at: number } | null;
+      }
+    >();
+
+    if (trackedConversationIds.length > 0) {
+      const rows = await prisma.message.findMany({
+        where: {
+          tenantId: latestRun.tenantId,
+          conversation: {
+            chatwootConversationId: {
+              in: trackedConversationIds,
+            },
+          },
+          role: {
+            contains: "AGENT",
+            mode: "insensitive",
+          },
+        },
+        select: {
+          senderName: true,
+          createdAt: true,
+          conversation: {
+            select: {
+              chatwootConversationId: true,
+            },
+          },
+        },
+        orderBy: [{ createdAt: "asc" }],
+      });
+
+      for (const row of rows) {
+        const conversationId = Number(row.conversation?.chatwootConversationId || 0);
+        if (!conversationId) continue;
+        const bucket = resolveResponsibleBucket(row.senderName);
+        if (!bucket) continue;
+        const current = conversationResponsibleMap.get(conversationId) || {
+          counts: { ia: 0, suellen: 0, samuel: 0 },
+          last: null,
+        };
+        current.counts[bucket] += 1;
+        current.last = { bucket, at: row.createdAt.getTime() };
+        conversationResponsibleMap.set(conversationId, current);
+      }
+    }
+
+    const buildResponsibleTracking = (conversationIds: number[]) => {
+      const counts = { ia: 0, suellen: 0, samuel: 0 };
+      let latest: { bucket: ResponsibleBucket; at: number } | null = null;
+
+      for (const rawId of conversationIds || []) {
+        const id = Number(rawId || 0);
+        if (!id) continue;
+        const entry = conversationResponsibleMap.get(id);
+        if (!entry) continue;
+        counts.ia += Number(entry.counts.ia || 0);
+        counts.suellen += Number(entry.counts.suellen || 0);
+        counts.samuel += Number(entry.counts.samuel || 0);
+        if (entry.last && (!latest || entry.last.at > latest.at)) latest = { ...entry.last };
+      }
+
+      const ranked = (Object.entries(counts) as Array<[ResponsibleBucket, number]>).sort((a, b) => b[1] - a[1]);
+      const bucket: ResponsibleBucket = latest?.bucket || (ranked[0]?.[1] > 0 ? ranked[0][0] : "ia");
+      return {
+        bucket,
+        label: responsibleLabel(bucket),
+        messageCount: counts[bucket] || 0,
+        breakdown: counts,
+      };
+    };
 
     const phoneKeys = states.map((item) => item.phonePk).filter(Boolean);
     const timelineRows =
@@ -147,11 +269,37 @@ export async function GET(request: Request) {
       });
     }
 
-    const items: ClientRecordItem[] = states.map((state) => {
+    const items: ClientRecordItem[] = states
+      .map((state) => {
       const labels = Array.isArray(state.currentLabels) ? state.currentLabels : [];
       const conversationIds = Array.isArray(state.openConversationIds)
         ? state.openConversationIds.map((id) => Number(id || 0)).filter((id) => id > 0)
         : [];
+      const storedBreakdownRaw =
+        state.responsibleMessageBreakdown && typeof state.responsibleMessageBreakdown === "object"
+          ? (state.responsibleMessageBreakdown as Record<string, unknown>)
+          : null;
+      const storedBreakdown = storedBreakdownRaw
+        ? {
+            ia: Number(storedBreakdownRaw.ia || 0) || 0,
+            suellen: Number(storedBreakdownRaw.suellen || 0) || 0,
+            samuel: Number(storedBreakdownRaw.samuel || 0) || 0,
+          }
+        : null;
+      const hasStoredBreakdown =
+        Boolean(storedBreakdown) &&
+        ((storedBreakdown?.ia || 0) > 0 || (storedBreakdown?.suellen || 0) > 0 || (storedBreakdown?.samuel || 0) > 0);
+      const storedBucketRaw = String(state.responsibleBucket || "ia");
+      const storedBucket: ResponsibleBucket =
+        storedBucketRaw === "suellen" || storedBucketRaw === "samuel" ? (storedBucketRaw as ResponsibleBucket) : "ia";
+      const responsibleTracking = hasStoredBreakdown
+        ? {
+            bucket: storedBucket,
+            label: String(state.responsibleLabel || "").trim() || responsibleLabel(storedBucket),
+            messageCount: Number(state.responsibleMessageCount || 0) || 0,
+            breakdown: storedBreakdown as { ia: number; suellen: number; samuel: number },
+          }
+        : buildResponsibleTracking(conversationIds);
 
       const chatLinks = conversationIds
         .map((conversationId) => {
@@ -177,11 +325,11 @@ export async function GET(request: Request) {
         closedAt: state.resolvedAt?.toISOString() || null,
         status: hasExitLabel(labels) ? "resolvido" : normalizeStatus(state.currentStatus),
         severity: normalizeSeverity(state.currentSeverity),
-        responsibleBucket: "ia",
-        responsibleLabel: "IA",
-        responsibleMessageCount: null,
-        responsibleMessageBreakdown: null,
-        clientPhase: "inicial",
+        responsibleBucket: responsibleTracking.bucket,
+        responsibleLabel: responsibleTracking.label,
+        responsibleMessageCount: responsibleTracking.messageCount,
+        responsibleMessageBreakdown: responsibleTracking.breakdown,
+        clientPhase: "inicial" as const,
         clientPhaseReason: "Classificação geral baseada no estado atual consolidado.",
         finalizationActor: null,
         pipelineBlock: hasExitLabel(labels)
@@ -202,10 +350,12 @@ export async function GET(request: Request) {
         },
         timeline: timelineByPhone.get(state.phonePk) || [],
       };
-    });
+      })
+      .filter((item) => ownerScope === "all" || String(item.responsibleBucket || "ia") === ownerScope);
 
     return NextResponse.json({
       date: "overall",
+      owner_scope: ownerScope,
       runId: latestRun.id,
       generatedAt: latestRun.startedAt.toISOString(),
       source: "client_states_overall",
