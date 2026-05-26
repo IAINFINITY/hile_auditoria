@@ -148,17 +148,6 @@ export function ShellSidebar({
               </span>
               Insights
             </button>
-            <button
-              type="button"
-              className={`side-sub-item ${navClass("relatorio")}`}
-              onClick={(event) => handleSection("relatorio", event)}
-            >
-              <span className="side-sub-dot" />
-              <span className="side-sub-icon">
-                <FiFileText />
-              </span>
-              Relatório
-            </button>
           </div>
         ) : null}
 
@@ -564,3 +553,4 @@ export function ShellSidebar({
     </aside>
   );
 }
+

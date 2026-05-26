@@ -23,7 +23,6 @@ export function resolveCurrentBreadcrumb(
     inicio: "Métricas do Dia",
     gaps: "Gaps Identificados",
     insights: "Insights de Melhoria",
-    relatorio: "Relatório de Auditoria",
   };
   const activeSection = Object.keys(sectionLabels).find((key) => navClass(key) === "active") || "inicio";
 
@@ -36,3 +35,4 @@ export function resolveCurrentBreadcrumb(
   if (activeView === "logs") return "Logs Operacionais";
   return "Configurações";
 }
+

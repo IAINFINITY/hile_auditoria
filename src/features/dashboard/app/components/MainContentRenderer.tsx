@@ -1,4 +1,4 @@
-import { AccountsView } from "@/features/dashboard/sections/clients/AccountsView";
+﻿import { AccountsView } from "@/features/dashboard/sections/clients/AccountsView";
 import { AnalysisOverallView } from "@/features/dashboard/sections/analysis/AnalysisOverallView";
 import { AttendantsView } from "@/features/dashboard/sections/attendants/AttendantsView";
 import { DissatisfactionOverallView } from "@/features/dashboard/sections/dissatisfaction/DissatisfactionOverallView";
@@ -10,7 +10,6 @@ import { MetricsSection } from "@/features/dashboard/sections/dashboard/MetricsS
 import { MovementSection } from "@/features/dashboard/sections/dashboard/MovementSection";
 import { ProductsDualView } from "@/features/dashboard/sections/products/ProductsDualView";
 import { ProductsView } from "@/features/dashboard/sections/products/ProductsView";
-import { ReportSection } from "@/features/dashboard/sections/dashboard/ReportSection";
 import { SettingsView } from "@/features/dashboard/sections/settings/SettingsView";
 import type { DashboardController } from "../dashboardTypes";
 import type { AppView } from "../types";
@@ -46,6 +45,20 @@ export function MainContentRenderer({
   onSetDissatisfactionScope,
   onUpdateProfile,
 }: MainContentRendererProps) {
+  const analysisOverallRefreshHint = `overview-runs:${controller.overviewRunCount}`;
+  const dayOverview = controller.overview?.overview;
+  const dayConversations = Number(dayOverview?.conversations_total_analyzed_day || 0);
+  const dayMessages = Number(dayOverview?.total_messages_day || 0);
+  const dayCritical = Number(dayOverview?.critical_insights_count || 0);
+  const dayNonCritical = Number(dayOverview?.non_critical_insights_count || 0);
+  const dayTotalInsights = dayCritical + dayNonCritical;
+  const dayFinalized = Number(dayOverview?.finalized_count || 0);
+  const dayContinued = Number(dayOverview?.continued_count || 0);
+  const dayHasFinalizationBase = dayFinalized + dayContinued > 0;
+  const dayCriticalRate = dayTotalInsights > 0 ? dayCritical / dayTotalInsights : 0;
+  const dayAvgMessagesPerConversation = dayConversations > 0 ? dayMessages / dayConversations : 0;
+  const dayFinalizedRate = dayHasFinalizationBase ? dayFinalized / (dayFinalized + dayContinued) : 0;
+
   if (activeView === "dashboard") {
     return (
       <div className="dashboard-animated" key="dashboard-view">
@@ -93,18 +106,6 @@ export function MainContentRenderer({
           totalInsightPages={controller.totalInsightPages}
           setInsightsPage={controller.setInsightsPage}
           onOpenReportByContact={controller.focusReportByContact}
-        />
-
-        <ReportSection
-          criticalGapInsights={controller.criticalGapInsights}
-          report={controller.report}
-          reportHistory={controller.reportHistory}
-          selectedReportContact={controller.selectedReportContact}
-          onSelectReportContact={controller.setSelectedReportContact}
-          reportSeverityFilter={controller.reportSeverityFilter}
-          onChangeReportSeverityFilter={controller.setReportSeverityFilter}
-          selectedDate={controller.date}
-          periodPreset={controller.periodPreset}
         />
       </div>
     );
@@ -174,8 +175,41 @@ export function MainContentRenderer({
           </article>
         </section>
 
+        <section className="analysis-content-shell reveal">
+          <article className="settings-card">
+            <div className="settings-card-head">Como interpretar esta análise</div>
+            <div className="settings-card-body">
+              {analysisScope === "day" ? (
+                <>
+                  <p>
+                    <strong>Análise do Dia:</strong> sempre considera somente os dados da data selecionada no período.
+                  </p>
+                  <p>
+                    <strong>Movimentação:</strong> mostra volume horário e distribuição de severidade para o mesmo dia.
+                  </p>
+                  <p>
+                    <strong>Produtos e Contexto:</strong> lista produtos detectados e insights informativos desse dia, sem misturar com outras datas.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p>
+                    <strong>Análise Total:</strong> consolida os dados de todas as execuções salvas no período exibido.
+                  </p>
+                  <p>
+                    <strong>Movimentação:</strong> mostra volume horário e distribuição de severidade no consolidado geral.
+                  </p>
+                  <p>
+                    <strong>Produtos e Contexto:</strong> reúne produtos detectados e insights informativos de múltiplas datas, sem limitar a um único dia.
+                  </p>
+                </>
+              )}
+            </div>
+          </article>
+        </section>
+
         {analysisScope === "overall" ? (
-          <AnalysisOverallView refreshHint={controller.lastRunAt} sectionStart={2} />
+          <AnalysisOverallView refreshHint={analysisOverallRefreshHint} sectionStart={2} />
         ) : (
           <>
             <div className="section reveal" id="analysis-overview">
@@ -192,17 +226,54 @@ export function MainContentRenderer({
 
             <section className="analysis-content-shell reveal">
               <article className="settings-card">
-                <div className="settings-card-head">Como interpretar esta análise</div>
-                <div className="settings-card-body">
-                  <p>
-                    <strong>Análise do Dia:</strong> sempre considera somente os dados da data selecionada no período.
-                  </p>
-                  <p>
-                    <strong>Movimentação:</strong> mostra volume horário e distribuição de severidade para o mesmo dia.
-                  </p>
-                  <p>
-                    <strong>Produtos e Contexto:</strong> lista produtos detectados e insights informativos desse dia, sem misturar com outras datas.
-                  </p>
+                <div className="settings-card-head">Resumo total</div>
+                <div className="settings-card-body analysis-overall-summary">
+                  <div className="analysis-overall-summary-main">
+                    <article className="analysis-overall-stat">
+                      <span className="analysis-overall-stat-label">Relatórios</span>
+                      <strong className="analysis-overall-stat-value">{controller.selectedDateHasSavedReport ? 1 : 0}</strong>
+                      <small className="analysis-overall-stat-sub">Data selecionada: {controller.date}</small>
+                    </article>
+
+                    <article className="analysis-overall-stat">
+                      <span className="analysis-overall-stat-label">Conversas</span>
+                      <strong className="analysis-overall-stat-value">{dayConversations}</strong>
+                      <small className="analysis-overall-stat-sub">Total consolidado no período</small>
+                    </article>
+
+                    <article className="analysis-overall-stat">
+                      <span className="analysis-overall-stat-label">Mensagens</span>
+                      <strong className="analysis-overall-stat-value">{dayMessages}</strong>
+                      <small className="analysis-overall-stat-sub">IA + usuário no consolidado</small>
+                    </article>
+
+                    <article className="analysis-overall-stat is-alert">
+                      <span className="analysis-overall-stat-label">Críticos</span>
+                      <strong className="analysis-overall-stat-value">{dayCritical}</strong>
+                      <small className="analysis-overall-stat-sub">
+                        {dayTotalInsights} insights • taxa crítica {(dayCriticalRate * 100).toFixed(1)}%
+                      </small>
+                    </article>
+                  </div>
+
+                  <div className="analysis-overall-summary-mini">
+                    <div className="analysis-overall-mini-item">
+                      <span>Média msg/conversa</span>
+                      <strong>{dayAvgMessagesPerConversation.toFixed(1)}</strong>
+                    </div>
+                    <div className="analysis-overall-mini-item">
+                      <span>Finalizadas</span>
+                      <strong>{dayFinalized}</strong>
+                    </div>
+                    <div className="analysis-overall-mini-item">
+                      <span>Continuadas</span>
+                      <strong>{dayContinued}</strong>
+                    </div>
+                    <div className="analysis-overall-mini-item">
+                      <span>Taxa de finalização</span>
+                      <strong>{dayHasFinalizationBase ? `${(dayFinalizedRate * 100).toFixed(1)}%` : "-"}</strong>
+                    </div>
+                  </div>
                 </div>
               </article>
             </section>

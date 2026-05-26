@@ -79,6 +79,18 @@ function extractMaxSeverityFromAnswer(answer: Record<string, unknown>): string {
   return "info";
 }
 
+function humanizedInsightTitle(summary: string, severity: Severity): string {
+  const clean = String(summary || "").replace(/\s+/g, " ").trim();
+  if (!clean) return severity === "critical" ? "Atenção crÒ­tica no atendimento" : "Atenção operacional";
+
+  const firstSentence = clean.split(/[.!?]/)[0]?.trim() || clean;
+  const lowered = normalizeTextForMatch(firstSentence);
+  if (lowered.startsWith("a analise da conversa identificou")) {
+    return firstSentence.replace(/^a an[aÒ¡]lise da conversa identificou\s*/i, "").trim();
+  }
+  return firstSentence;
+}
+
 export function mapRunToDashboardSnapshot(run: ReportByDateResponse["run"]): DashboardRunSnapshot {
   const reportJson = asRecord(run.report_json);
   const summary = asRecord(reportJson.summary);
@@ -240,7 +252,7 @@ export function mapRunToDashboardSnapshot(run: ReportByDateResponse["run"]): Das
       ...(operationalByConversation.get(conversationId) || {}),
       id: `${run.id}-${index + 1}-${subIndex + 1}`,
       severity,
-      title: severity === "critical" ? "Gap crítico registrado" : "Registro operacional",
+      title: humanizedInsightTitle(String(log.summary || ""), severity),
       summary: String(log.summary || "Sem resumo disponível."),
       conversation_id: conversationId,
       contact_key: String(log.contact_key || `contact-${index + 1}`),

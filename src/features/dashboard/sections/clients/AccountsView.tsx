@@ -28,6 +28,7 @@ export function AccountsView({ selectedDate, knownRunId = null, refreshHint = nu
   const [errorMessage, setErrorMessage] = useState("");
   const [runId, setRunId] = useState<string | null>(null);
   const [selectedRecord, setSelectedRecord] = useState<ClientRecordItem | null>(null);
+  const [scopeAnimationSeed, setScopeAnimationSeed] = useState(0);
   const handledRefreshHintRef = useRef<string | null>(null);
   const scopeKey = scope === "overall" ? "overall" : selectedDate;
   const cacheKey = `hile_clients_cache_${CLIENTS_CACHE_VERSION}_${scopeKey}`;
@@ -343,6 +344,7 @@ export function AccountsView({ selectedDate, knownRunId = null, refreshHint = nu
               type="button"
               className={`gap-chip ${scope === "day" ? "active" : ""}`}
               onClick={() => {
+                setScopeAnimationSeed((value) => value + 1);
                 setSelectedRecord(null);
                 setScope("day");
               }}
@@ -353,6 +355,7 @@ export function AccountsView({ selectedDate, knownRunId = null, refreshHint = nu
               type="button"
               className={`gap-chip ${scope === "overall" ? "active" : ""}`}
               onClick={() => {
+                setScopeAnimationSeed((value) => value + 1);
                 setSelectedRecord(null);
                 setScope("overall");
               }}
@@ -363,64 +366,66 @@ export function AccountsView({ selectedDate, knownRunId = null, refreshHint = nu
         </div>
       </article>
 
-      <article className="settings-card">
-        <div className="settings-card-head">Como funciona a classificação</div>
-        <div className="settings-card-body">
-          <p>
-            <strong>Entrada:</strong> conversa no fluxo normal da IA, sem necessidade de ação imediata.
-          </p>
-          <p>
-            <strong>Remarketing:</strong> lead com indício de consultor/reunião e entre 6h e 24h aguardando retorno da equipe.
-          </p>
-          <p>
-            <strong>Atenção:</strong> conversa ainda no fluxo da IA com sinais operacionais que merecem acompanhamento.
-          </p>
-          <p>
-            <strong>Fora da IA:</strong> conversa com etiqueta de saída do fluxo da IA, como{" "}
-            <code>lead_agendado</code> ou <code>pausar_ia</code>.
-          </p>
-          <p>
-            <strong>Fase do cliente:</strong> inicial (ideia sem estrutura), intermediário (já tem CNPJ/presença de marca) e avançado (já opera marca e busca otimização de terceirização com a Hilê).
-          </p>
-        </div>
-      </article>
+      <div className="scope-switch-animated" key={`clients-scope-${scope}-${scopeAnimationSeed}`}>
+        <article className="settings-card">
+          <div className="settings-card-head">Como funciona a classificação</div>
+          <div className="settings-card-body">
+            <p>
+              <strong>Entrada:</strong> conversa no fluxo normal da IA, sem necessidade de ação imediata.
+            </p>
+            <p>
+              <strong>Remarketing:</strong> lead com indício de consultor/reunião e entre 6h e 24h aguardando retorno da equipe.
+            </p>
+            <p>
+              <strong>Atenção:</strong> conversa ainda no fluxo da IA com sinais operacionais que merecem acompanhamento.
+            </p>
+            <p>
+              <strong>Fora da IA:</strong> conversa com etiqueta de saída do fluxo da IA, como{" "}
+              <code>lead_agendado</code> ou <code>pausar_ia</code>.
+            </p>
+            <p>
+              <strong>Fase do cliente:</strong> inicial (ideia sem estrutura), intermediário (já tem CNPJ/presença de marca) e avançado (já opera marca e busca otimização de terceirização com a Hilê).
+            </p>
+          </div>
+        </article>
 
-      <AccountsFiltersCard
-        query={query}
-        onQueryChange={setQuery}
-        statusFilter={statusFilter}
-        onStatusFilterChange={setStatusFilter}
-        labelFilter={labelFilter}
-        onLabelFilterChange={setLabelFilter}
-        labelsAvailable={labelsAvailable}
-        effectiveAnalysisFilter={effectiveAnalysisFilter}
-        onAnalysisFilterChange={setAnalysisFilter}
-        analysisFilterOptions={analysisFilterOptions}
-        responsibleFilter={responsibleFilter}
-        onResponsibleFilterChange={setResponsibleFilter}
-        phaseFilter={phaseFilter}
-        onPhaseFilterChange={setPhaseFilter}
-        favoritesOnly={favoritesOnly}
-        onFavoritesOnlyChange={setFavoritesOnly}
-        pinnedOnly={pinnedOnly}
-        onPinnedOnlyChange={setPinnedOnly}
-      />
+        <AccountsFiltersCard
+          query={query}
+          onQueryChange={setQuery}
+          statusFilter={statusFilter}
+          onStatusFilterChange={setStatusFilter}
+          labelFilter={labelFilter}
+          onLabelFilterChange={setLabelFilter}
+          labelsAvailable={labelsAvailable}
+          effectiveAnalysisFilter={effectiveAnalysisFilter}
+          onAnalysisFilterChange={setAnalysisFilter}
+          analysisFilterOptions={analysisFilterOptions}
+          responsibleFilter={responsibleFilter}
+          onResponsibleFilterChange={setResponsibleFilter}
+          phaseFilter={phaseFilter}
+          onPhaseFilterChange={setPhaseFilter}
+          favoritesOnly={favoritesOnly}
+          onFavoritesOnlyChange={setFavoritesOnly}
+          pinnedOnly={pinnedOnly}
+          onPinnedOnlyChange={setPinnedOnly}
+        />
 
-      <AccountsKanbanCard
-        shouldDimKanban={shouldDimKanban}
-        loading={loading}
-        errorMessage={errorMessage}
-        filteredRecords={filteredRecords}
-        hasActiveFilters={hasActiveFilters}
-        filteredColsClass={filteredColsClass}
-        visibleStatuses={visibleStatuses}
-        recordsByStatus={recordsByStatus}
-        favoritePhones={favoritePhones}
-        pinnedPhones={pinnedPhones}
-        onToggleFavorite={toggleFavorite}
-        onTogglePinned={togglePinned}
-        onSelectRecord={setSelectedRecord}
-      />
+        <AccountsKanbanCard
+          shouldDimKanban={shouldDimKanban}
+          loading={loading}
+          errorMessage={errorMessage}
+          filteredRecords={filteredRecords}
+          hasActiveFilters={hasActiveFilters}
+          filteredColsClass={filteredColsClass}
+          visibleStatuses={visibleStatuses}
+          recordsByStatus={recordsByStatus}
+          favoritePhones={favoritePhones}
+          pinnedPhones={pinnedPhones}
+          onToggleFavorite={toggleFavorite}
+          onTogglePinned={togglePinned}
+          onSelectRecord={setSelectedRecord}
+        />
+      </div>
 
       {selectedRecord ? <AccountDetailModal record={selectedRecord} onClose={() => setSelectedRecord(null)} /> : null}
     </section>

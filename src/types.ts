@@ -434,6 +434,12 @@ export interface AnalysisOverallContextItem {
 
 export interface AnalysisOverallResponse {
   total_runs: number;
+  total_runs_available?: number;
+  pagination?: {
+    page: number;
+    take: number;
+    total_pages: number;
+  };
   date_range: {
     from: string | null;
     to: string | null;
@@ -449,6 +455,12 @@ export interface AnalysisOverallResponse {
     continued_count: number;
   };
   severity_snapshot: Record<Severity, number>;
+  trend_series: Array<{
+    label: string;
+    conversas: number;
+    ia: number;
+    usuario: number;
+  }>;
   context_items: AnalysisOverallContextItem[];
 }
 

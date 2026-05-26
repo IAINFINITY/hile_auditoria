@@ -5,7 +5,10 @@ export interface ChatwootConfig {
   groupName: string;
   inboxName: string;
   inboxId: number | null;
+  extraInboxIds: number[];
   inboxProvider: string;
+  ignoredContactIdentifiers: string[];
+  ignoredContactNames: string[];
   maxPages: number;
   requestTimeoutMs: number;
 }

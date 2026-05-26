@@ -1,6 +1,7 @@
-import type { AnalysisItem } from "../../../../types";
+﻿import type { AnalysisItem } from "../../../../types";
 import type { OperationalAlertItem, ProductDemandItem } from "../../shared/types";
 import { toTitleCaseName } from "./common";
+import { canonicalizeProductLabel, normalizeProductForMatch } from "@/lib/products/canonical";
 
 type ParsedMessage = {
   role: "USER" | "AGENT" | "SYSTEM";
@@ -26,11 +27,11 @@ function tryParseJson(text: string): Record<string, unknown> | null {
 }
 
 const PRODUCT_ALIASES: Record<string, string[]> = {
-  Whey: ["whey", "uei", "wehy"],
-  Creatina: ["creatina", "creatine", "creatin", "creatna"],
-  "Pré-treino": ["pre treino", "pre-treino", "pretreino", "pre treino", "preworkout", "pré treino", "pré-treino"],
+  "Whey Protein": ["whey", "uei", "wehy", "whey protein"],
+  Creatina: ["creatina", "creatine", "creatin", "creatna", "creatina monohidratada"],
+  "Pre-treino": ["pre treino", "pre-treino", "pretreino", "preworkout", "pré treino", "pré-treino"],
   Colageno: ["colageno", "colágeno", "collagen"],
-  "Suplementos fitness": ["suplemento", "suplementos", "fitness"],
+  "Suplementos Fitness": ["suplementos fitness", "suplemento fitness"],
 };
 
 const CONSULTOR_KEYWORDS = [
@@ -57,7 +58,7 @@ const CONSULTOR_KEYWORDS = [
   "chamar consultor",
   "chama consultor",
   "falar com alguem",
-  "falar com alguém",
+  "falar com alguÃ©m",
   "quero atendimento humano",
 ];
 
@@ -74,23 +75,23 @@ const DISENGAGEMENT_KEYWORDS = [
   "enrolacao",
   "ruim",
   "horrivel",
-  "horrível",
-  "péssimo",
+  "horrÃ­vel",
+  "pÃ©ssimo",
   "pessimo",
   "fraco",
   "desorganizado",
   "nao resolve",
-  "não resolve",
+  "nÃ£o resolve",
   "nao ajudou",
-  "não ajudou",
+  "nÃ£o ajudou",
   "nao respondeu",
-  "não respondeu",
+  "nÃ£o respondeu",
   "sem resposta",
   "sem retorno",
   "nao gostei",
-  "não gostei",
+  "nÃ£o gostei",
   "nao confio",
-  "não confio",
+  "nÃ£o confio",
   "desisti",
   "cansei",
   "decepcionado",
@@ -98,16 +99,16 @@ const DISENGAGEMENT_KEYWORDS = [
   "insatisfeito",
   "insatisfeita",
   "insatisfacao",
-  "insatisfação",
+  "insatisfaÃ§Ã£o",
   "vou procurar outra",
   "vou procurar outro",
   "vou procurar concorrente",
   "vou para concorrencia",
-  "vou para concorrência",
+  "vou para concorrÃªncia",
   "outra empresa",
   "outra marca",
   "toda empresa",
-  "vocês atrasam",
+  "vocÃªs atrasam",
   "voces atrasam",
   "falar mal",
 ];
@@ -116,21 +117,21 @@ const HILE_DISSATISFACTION_KEYWORDS = [
   "hile",
   "empresa",
   "atendimento de voces",
-  "atendimento de vocês",
-  "vocês",
+  "atendimento de vocÃªs",
+  "vocÃªs",
   "voces",
   "marca",
   "servico",
-  "serviço",
+  "serviÃ§o",
 ];
 
 const STRONG_DISSATISFACTION_KEYWORDS = [
   "pessimo",
-  "péssimo",
+  "pÃ©ssimo",
   "horrivel",
-  "horrível",
+  "horrÃ­vel",
   "inadmissivel",
-  "inadmissível",
+  "inadmissÃ­vel",
   "absurdo",
   "decepcionado",
   "decepcionada",
@@ -140,12 +141,12 @@ const STRONG_DISSATISFACTION_KEYWORDS = [
   "vou procurar outra",
   "vou procurar concorrente",
   "vou para concorrencia",
-  "vou para concorrência",
+  "vou para concorrÃªncia",
   "toda empresa",
   "sem resposta",
   "falar mal",
   "nao gostei",
-  "não gostei",
+  "nÃ£o gostei",
 ];
 
 const SELF_DELAY_APOLOGY_PATTERNS = [
@@ -199,7 +200,7 @@ export function parseLogMessages(logText: string): ParsedMessage[] {
   const out: ParsedMessage[] = [];
   for (const line of lines) {
     const withConversation = line.match(
-      /^\[(.*?)\]\s*(?:\[[^\]]+\]\s*)?([A-Z_À-ÿ ]+?)(?:\s*\([^)]+\))?\s*[:\-]\s*(.*)$/i,
+      /^\[(.*?)\]\s*(?:\[[^\]]+\]\s*)?([^:\-\[]+?)(?:\s*\([^)]+\))?\s*[:\-]\s*(.*)$/i,
     );
     if (withConversation) {
       out.push({
@@ -210,7 +211,7 @@ export function parseLogMessages(logText: string): ParsedMessage[] {
       continue;
     }
 
-    const altMatch = line.match(/^([A-Z_À-ÿ ]+?)(?:\s*\([^)]+\))?\s*[:\-]\s*(.*)$/i);
+    const altMatch = line.match(/^([^:\-]+?)(?:\s*\([^)]+\))?\s*[:\-]\s*(.*)$/i);
     if (altMatch) {
       out.push({
         role: inferRole(altMatch[1]),
@@ -329,11 +330,10 @@ export function extractProductDemand(analyses: AnalysisItem[]): ProductDemandIte
     for (const product of structuredProducts) {
       const candidate = String(product?.nome_produto || product?.termo_detectado || "").trim();
       if (!candidate) continue;
-      const display = candidate
-        .replace(/_/g, " ")
-        .replace(/\b\w/g, (match) => match.toUpperCase());
-      if (seenProductsInAnalysis.has(display)) continue;
-      seenProductsInAnalysis.add(display);
+      const display = canonicalizeProductLabel(candidate);
+      const productKey = normalizeProductForMatch(display);
+      if (!productKey || seenProductsInAnalysis.has(productKey)) continue;
+      seenProductsInAnalysis.add(productKey);
       const current = counters.get(display) || {
         occurrenceKeys: new Set<string>(),
         contacts: new Set<string>(),
@@ -356,9 +356,11 @@ export function extractProductDemand(analyses: AnalysisItem[]): ProductDemandIte
     for (const [productName, aliases] of Object.entries(PRODUCT_ALIASES)) {
       const matched = aliases.some((alias) => userText.includes(normalizeText(alias)));
       if (!matched) continue;
-      if (seenProductsInAnalysis.has(productName)) continue;
-      seenProductsInAnalysis.add(productName);
-      const current = counters.get(productName) || {
+      const display = canonicalizeProductLabel(productName);
+      const productKey = normalizeProductForMatch(display);
+      if (!productKey || seenProductsInAnalysis.has(productKey)) continue;
+      seenProductsInAnalysis.add(productKey);
+      const current = counters.get(display) || {
         occurrenceKeys: new Set<string>(),
         contacts: new Set<string>(),
         contactNames: new Set<string>(),
@@ -368,7 +370,7 @@ export function extractProductDemand(analyses: AnalysisItem[]): ProductDemandIte
       }
       current.contacts.add(contactKey);
       current.contactNames.add(contactName);
-      counters.set(productName, current);
+      counters.set(display, current);
     }
   }
 
@@ -537,13 +539,15 @@ export function classifyGapPhase(text: string): string {
     normalized.includes("perfil do cliente") ||
     normalized.includes("compatibilidade")
   ) {
-    return "Match/Categorização de perfil";
+    return "Match/CategorizaÃ§Ã£o de perfil";
   }
-  if (normalized.includes("coleta") || normalized.includes("formulario") || normalized.includes("dados")) return "Coleta de informação";
-  if (normalized.includes("interesse") || normalized.includes("objetivo") || normalized.includes("produto")) return "Identificação de interesse";
-  if (normalized.includes("empresa") || normalized.includes("hile")) return "Apresentação da empresa";
-  if (normalized.includes("horario") || normalized.includes("agenda disponivel")) return "Apresentação de horários";
-  if (normalized.includes("agendamento") || normalized.includes("reuniao") || normalized.includes("marcar")) return "Realização de agendamento";
+  if (normalized.includes("coleta") || normalized.includes("formulario") || normalized.includes("dados")) return "Coleta de informaÃ§Ã£o";
+  if (normalized.includes("interesse") || normalized.includes("objetivo") || normalized.includes("produto")) return "IdentificaÃ§Ã£o de interesse";
+  if (normalized.includes("empresa") || normalized.includes("hile")) return "ApresentaÃ§Ã£o da empresa";
+  if (normalized.includes("horario") || normalized.includes("agenda disponivel")) return "ApresentaÃ§Ã£o de horÃ¡rios";
+  if (normalized.includes("agendamento") || normalized.includes("reuniao") || normalized.includes("marcar")) return "RealizaÃ§Ã£o de agendamento";
   return "Operacional";
 }
+
+
 

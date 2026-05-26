@@ -1,6 +1,6 @@
 import { createChatwootClient } from "./chatwootClient";
 import { createDifyClient } from "./difyClient";
-import { attachDay, normalizeConversationLog, renderLogForPrompt } from "./chatMapper";
+import { attachDay, extractContact, normalizeConversationLog, renderLogForPrompt } from "./chatMapper";
 import {
   getCachedAnalysisByFingerprint,
   getConversationDeltaStates,
@@ -69,7 +69,14 @@ function responsibleLabel(bucket) {
   return "IA";
 }
 
-function buildResponsibleTracking(messages) {
+function inboxOwnerBucket(inboxId) {
+  const id = Number(inboxId || 0);
+  if (id === 155) return "samuel";
+  if (id === 125) return "suellen";
+  return "ia";
+}
+
+function buildResponsibleTracking(messages, inboxId) {
   const safeMessages = Array.isArray(messages) ? messages : [];
   const counts = { ia: 0, suellen: 0, samuel: 0 };
   const latestByBucket = { ia: 0, suellen: 0, samuel: 0 };
@@ -82,7 +89,8 @@ function buildResponsibleTracking(messages) {
   for (const message of safeMessages) {
     const role = String(message?.role || "").toUpperCase();
     if (role !== "AGENT") continue;
-    const bucket = resolveResponsibleBucket(message?.sender_name);
+    const resolved = resolveResponsibleBucket(message?.sender_name);
+    const bucket = resolved || inboxOwnerBucket(inboxId);
     if (!bucket) continue;
     counts[bucket] += 1;
     latestByBucket[bucket] = Math.max(latestByBucket[bucket] || 0, Number(message?.created_at || 0));
@@ -98,7 +106,8 @@ function buildResponsibleTracking(messages) {
       const next = safeMessages[scan];
       const nextRole = String(next?.role || "").toUpperCase();
       if (nextRole !== "AGENT") continue;
-      const bucket = resolveResponsibleBucket(next?.sender_name);
+      const resolved = resolveResponsibleBucket(next?.sender_name);
+      const bucket = resolved || inboxOwnerBucket(inboxId);
       if (!bucket) break;
       const endedAt = Number(next?.created_at || 0);
       const delta = endedAt - startedAt;
@@ -191,7 +200,7 @@ const MIN_VALID_LATENCY_GAP_SECONDS = 120;
 function findMessageByTimestamp(messages: any[], unixSeconds: number) {
   const exact = messages.find((item) => Number(item?.created_at || 0) === unixSeconds);
   if (exact) return exact;
-  // Tolerancia pequena para diferencas de serializacao de segundos
+  // Tolerância pequena para diferencas de serializacao de segundos
   return messages.find((item) => Math.abs(Number(item?.created_at || 0) - unixSeconds) <= 2) || null;
 }
 
@@ -219,7 +228,7 @@ function isValidLatencyGapReference(gap: any, messages: any[]): boolean {
   if (Number(second.created_at) <= Number(first.created_at)) return false;
 
   // Regra operacional: lentidão só existe no primeiro par USER -> AGENT.
-  // Follow-up da IA após silêncio do usuário não entra como latência de resposta.
+  // Follow-up da IA após silêncio do usuário não entra como latÒªncia de resposta.
   const firstAgentReplyAfterUser = safeMessages.find(
     (item) => item.role === "AGENT" && Number(item.created_at) > Number(first.created_at),
   );
@@ -337,7 +346,7 @@ function pickAccount(accounts, configuredAccountId, groupName) {
   if (partial) return partial;
 
   const available = accounts.map((item) => item?.name).filter(Boolean).join(", ");
-  throw new Error(`Grupo '${groupName}' não encontrado. Contas visíveis: ${available || "(nenhuma)"}`);
+  throw new Error(`Grupo '${groupName}' não encontrado. Contas visÒ­veis: ${available || "(nenhuma)"}`);
 }
 
 function pickInbox(inboxes, inboxName, inboxId, inboxProvider) {
@@ -415,6 +424,55 @@ async function listAllConversations({ chatwootClient, accountId, inboxId, maxPag
 
   return all;
 }
+
+async function listAllConversationsByInboxes({ chatwootClient, accountId, inboxIds, maxPages }) {
+  const all = [];
+  for (const inboxId of inboxIds) {
+    const rows = await listAllConversations({
+      chatwootClient,
+      accountId,
+      inboxId,
+      maxPages,
+    });
+    all.push(...rows);
+  }
+  const uniqueById = new Map();
+  for (const conversation of all) {
+    const id = Number(conversation?.id || 0);
+    if (id <= 0) continue;
+    if (!uniqueById.has(id)) uniqueById.set(id, conversation);
+  }
+  return Array.from(uniqueById.values());
+}
+
+function normalizeComparison(value) {
+  return String(value || "")
+    .toLowerCase()
+    .trim()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
+function shouldIgnoreConversationByContact(conversation, config) {
+  const contact = extractContact(conversation);
+  const identifier = normalizeComparison(contact?.identifier || "");
+  if (!identifier) return false;
+  if (identifier.endsWith("@g.us")) return true;
+  if (identifier.includes("status@broadcast")) return true;
+
+  const ignoredIdentifiers = Array.isArray(config?.chatwoot?.ignoredContactIdentifiers)
+    ? config.chatwoot.ignoredContactIdentifiers.map((item) => normalizeComparison(item))
+    : [];
+  if (ignoredIdentifiers.some((needle) => needle && identifier.includes(needle))) return true;
+
+  const contactName = normalizeComparison(contact?.name || conversation?.meta?.sender?.name || "");
+  const ignoredNames = Array.isArray(config?.chatwoot?.ignoredContactNames)
+    ? config.chatwoot.ignoredContactNames.map((item) => normalizeComparison(item))
+    : [];
+  if (ignoredNames.some((needle) => needle && contactName.includes(needle))) return true;
+
+  return false;
+}
 export async function buildDailyConversationLogs({ config, date }) {
   assertYmd(date);
 
@@ -427,27 +485,33 @@ export async function buildDailyConversationLogs({ config, date }) {
     timeoutMs: config.chatwoot.requestTimeoutMs,
   });
 
-  const allConversations = await listAllConversations({
+  const scopedInboxIds = unique(
+    [Number(target.inbox.id || 0), ...(config.chatwoot.extraInboxIds || []).map((value) => Number(value || 0))]
+      .filter((value) => Number.isFinite(value) && value > 0),
+  );
+
+  const allConversations = await listAllConversationsByInboxes({
     chatwootClient,
     accountId: target.account.id,
-    inboxId: target.inbox.id,
+    inboxIds: scopedInboxIds,
     maxPages: config.chatwoot.maxPages,
   });
   const scopedToInbox = allConversations.filter((conversation) => {
     const inboxId = Number(conversation?.inbox_id || 0);
-    return inboxId === Number(target.inbox.id);
+    return scopedInboxIds.includes(inboxId);
   });
+  const filteredByContact = scopedToInbox.filter((conversation) => !shouldIgnoreConversationByContact(conversation, config));
   console.log(
-    `[preview-day] scan concluido: ${scopedToInbox.length} conversas varridas na inbox ${target.inbox.id} (conta ${target.account.id}).`,
+    `[preview-day] scan concluido: ${filteredByContact.length} conversas validas nas inboxes ${scopedInboxIds.join(", ")} (conta ${target.account.id}).`,
   );
 
-  const enteredToday = extractEnteredToday(scopedToInbox, date, toYmd);
+  const enteredToday = extractEnteredToday(filteredByContact, date, toYmd);
   const selectedConversations = unique(
     enteredToday
       .map((conversation) => Number(conversation?.id || 0))
       .filter((id) => id > 0),
   )
-    .map((id) => scopedToInbox.find((conversation) => Number(conversation?.id || 0) === id))
+    .map((id) => filteredByContact.find((conversation) => Number(conversation?.id || 0) === id))
     .filter(Boolean);
   const detailed = [];
 
@@ -485,7 +549,7 @@ export async function buildDailyConversationLogs({ config, date }) {
     timezone: config.timezone,
     account: target.account,
     inbox: target.inbox,
-    total_conversations_in_inbox_scan: allConversations.length,
+    total_conversations_in_inbox_scan: filteredByContact.length,
     conversations_entered_today: enteredToday.length,
     unique_contacts_today: uniqueContacts.length,
     logs_by_conversation: detailed,
@@ -800,7 +864,7 @@ export async function runDailyAnalysis({
       const difyAnswer = extractDifyAnswer(difyRaw);
       if (!difyRaw || !difyAnswer) {
         const missingError = new Error(
-          "Não encontramos análise disponível para este contato nesta execução.",
+          "NÒ£o encontramos anÒ¡lise disponível para este contato nesta execução.",
         );
         (missingError as Error & { code?: string }).code = "analysis_not_found_in_reuse_mode";
         throw missingError;
@@ -844,7 +908,7 @@ export async function runDailyAnalysis({
           delta_relevant: isRelevantDelta,
           delta_hash: deltaHash,
           forced_full: shouldForceFull,
-          forced_full_reason: mode === "force" ? "modo force" : staleFull ? "rebase periódico" : statusIncoherence ? "incoerência de status/labels" : null,
+          forced_full_reason: mode === "force" ? "modo force" : staleFull ? "rebase periÒ³dico" : statusIncoherence ? "incoerÒªncia de status/labels" : null,
           analysis_mode: analysisMode,
         },
         contact_key: log.contact_key,
@@ -855,17 +919,17 @@ export async function runDailyAnalysis({
           .filter((entry) => entry.state),
         message_count_day: log.message_count_day,
         log_text: logText,
-        responsible_tracking: buildResponsibleTracking(log.messages || []),
+        responsible_tracking: buildResponsibleTracking(log.messages || [], log.inbox_id),
         analysis: compactAnalysis(difyRaw),
       });
       console.log(
         `[analyze-day] contato ${log.contact_key} ${
           latestDbAnalysis
-            ? "reaproveitado do último estado (delta sem impacto)"
+            ? "reaproveitado do Òºltimo estado (delta sem impacto)"
             : cachedAnalysis
               ? "reaproveitado do cache"
               : recoveredFromHistory
-                ? "recuperado do histórico Dify"
+                ? "recuperado do histÒ³rico Dify"
                 : "analisado"
         } (${analyses.length + failures.length}/${totalToProcess}).`,
       );
@@ -1106,32 +1170,32 @@ export async function buildDailyReport({
   const chatwootAppBase = toChatwootAppBase(config.chatwoot.baseUrl);
 
   const lines = [];
-  lines.push(`# Relatório Diário - Auditoria de Atendimento`);
+  lines.push(`# Relatório DiÒ¡rio - Auditoria de Atendimento`);
   lines.push("");
   lines.push(`- Data: ${reportDate}`);
   lines.push(`- Conta: ${analysis.account?.name || "-"} (id ${analysis.account?.id || "-"})`);
   lines.push(`- Canal: ${analysis.inbox?.name || "-"} (id ${analysis.inbox?.id || "-"})`);
   lines.push(`- Conversas que entraram no dia: ${analysis.conversations_entered_today}`);
-  lines.push(`- Contatos únicos: ${analysis.unique_contacts_today}`);
+  lines.push(`- Contatos Òºnicos: ${analysis.unique_contacts_today}`);
   lines.push(`- Análises executadas: ${total}`);
   lines.push(`- Casos com risco crítico: ${criticalCount}`);
   lines.push(`- Total de pontos de melhoria citados: ${improvementsCount}`);
   lines.push(`- Total de gaps operacionais citados: ${gapsCount}`);
   lines.push("");
-  lines.push(`## Desempenho por Responsável`);
+  lines.push(`## Desempenho por ResponsÒ¡vel`);
   lines.push("");
   for (const owner of ["ia", "suellen", "samuel"]) {
     const stats = responsiblePerformance[owner];
     lines.push(`### ${stats.owner_label}`);
     lines.push(`- Análises: ${stats.analyses_count}`);
-    lines.push(`- Contatos únicos: ${stats.contacts_count}`);
-    lines.push(`- Conversas únicas: ${stats.conversations_count}`);
+    lines.push(`- Contatos Òºnicos: ${stats.contacts_count}`);
+    lines.push(`- Conversas Òºnicas: ${stats.conversations_count}`);
     lines.push(`- Mensagens de agente rastreadas: ${stats.message_count_agent}`);
     lines.push(`- Gaps totais: ${stats.gaps_count}`);
     lines.push(`- Gaps críticos: ${stats.critical_gaps_count}`);
     lines.push(`- Pontos de melhoria: ${stats.improvements_count}`);
     lines.push(
-      `- Tempo médio de resposta: ${
+      `- Tempo mÒ©dio de resposta: ${
         stats.avg_response_sec !== null ? `${Number(stats.avg_response_sec).toFixed(2)}s` : "N/A"
       }`,
     );

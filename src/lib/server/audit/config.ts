@@ -37,6 +37,31 @@ export function loadEnvFile(path = ".env"): void {
 }
 
 export function getConfig(): AppConfig {
+  const parseInboxIds = (value: string, fallback: number[] = []): number[] => {
+    const unique = new Set<number>();
+    for (const raw of String(value || "").split(",")) {
+      const id = Number(raw.trim());
+      if (Number.isFinite(id) && id > 0) unique.add(Math.floor(id));
+    }
+    for (const id of fallback) {
+      if (Number.isFinite(id) && id > 0) unique.add(Math.floor(id));
+    }
+    return Array.from(unique);
+  };
+
+  const parseList = (value: string, fallback: string[] = []): string[] => {
+    const unique = new Set<string>();
+    for (const raw of String(value || "").split(",")) {
+      const item = raw.trim();
+      if (item) unique.add(item);
+    }
+    for (const item of fallback) {
+      const clean = String(item || "").trim();
+      if (clean) unique.add(clean);
+    }
+    return Array.from(unique);
+  };
+
   return {
     port: Number(process.env.PORT || 3001),
     timezone: process.env.TIMEZONE || "America/Fortaleza",
@@ -47,7 +72,10 @@ export function getConfig(): AppConfig {
       groupName: process.env.CHATWOOT_GROUP_NAME || "Grupo Botta",
       inboxName: process.env.CHATWOOT_INBOX_NAME || "Atendimento",
       inboxId: Number(process.env.CHATWOOT_INBOX_ID || 0) || null,
+      extraInboxIds: parseInboxIds(process.env.CHATWOOT_EXTRA_INBOX_IDS || "", [155, 125]),
       inboxProvider: (process.env.CHATWOOT_INBOX_PROVIDER || "whatsapp").toLowerCase(),
+      ignoredContactIdentifiers: parseList(process.env.CHATWOOT_IGNORED_IDENTIFIERS || "", ["status@broadcast"]),
+      ignoredContactNames: parseList(process.env.CHATWOOT_IGNORED_CONTACT_NAMES || "", ["AI INFINITY NOTIFICATIONS"]),
       maxPages: Number(process.env.CHATWOOT_MAX_PAGES || 20),
       requestTimeoutMs: Number(process.env.CHATWOOT_REQUEST_TIMEOUT_MS || 45000),
     },

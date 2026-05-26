@@ -54,7 +54,7 @@ import {
   extractProductDemand,
 } from "./controller/operationalSignals";
 
-const SECTION_IDS = ["gaps", "insights", "relatorio"] as const;
+const SECTION_IDS = ["gaps", "insights"] as const;
 const NAVBAR_HEIGHT = 68;
 
 export function useDashboardController(options?: { enabled?: boolean; syncNavOnScroll?: boolean }): DashboardController {
@@ -202,7 +202,7 @@ export function useDashboardController(options?: { enabled?: boolean; syncNavOnS
       setInsightsReady(true);
       setShowTrend(true);
       setLastRunAt(new Date().toISOString());
-      setStatus(`Período agregado: ${datesInRange.length} dia(s), ${aggregated.insights.length} contato(s), ${aggregated.overview.overview.critical_insights_count} crítico(s).`);
+      setStatus(`PerÒ­odo agregado: ${datesInRange.length} dia(s), ${aggregated.insights.length} contato(s), ${aggregated.overview.overview.critical_insights_count} crítico(s).`);
     } catch (err) {
       loadedPeriodDatesRef.current = null;
       setOverview(null);
@@ -337,9 +337,9 @@ export function useDashboardController(options?: { enabled?: boolean; syncNavOnS
       const pageBottom = doc.scrollHeight - 2;
 
       if (viewportBottom >= pageBottom) {
-        if (activeNavRef.current !== "relatorio") {
-          activeNavRef.current = "relatorio";
-          setActiveNav("relatorio");
+        if (activeNavRef.current !== "insights") {
+          activeNavRef.current = "insights";
+          setActiveNav("insights");
         }
         return;
       }
@@ -387,14 +387,14 @@ export function useDashboardController(options?: { enabled?: boolean; syncNavOnS
       setInsights([]);
       setReport(null);
       setFailures([]);
-      setRawOutput("Sem relatório salvo para essa data. Você pode gerar um novo overview.");
+      setRawOutput("Sem relatório salvo para essa data. VocÒª pode gerar um novo overview.");
       setInsightsReady(false);
       setShowTrend(false);
       setStatus(message);
     };
 
     if (missingReportDatesRef.current.has(date)) {
-      clearLoadedReportView(`Não encontramos relatório salvo para ${date}.`);
+      clearLoadedReportView(`NÒ£o encontramos relatório salvo para ${date}.`);
       return;
     }
 
@@ -429,7 +429,7 @@ export function useDashboardController(options?: { enabled?: boolean; syncNavOnS
       .catch(() => {
         if (cancelled) return;
         missingReportDatesRef.current.add(date);
-        clearLoadedReportView(`Não encontramos relatório salvo para ${date}.`);
+        clearLoadedReportView(`NÒ£o encontramos relatório salvo para ${date}.`);
         setAvailableReportDates((current) => (current.includes(date) ? current.filter((item) => item !== date) : current));
       })
       .finally(() => {
@@ -592,7 +592,7 @@ export function useDashboardController(options?: { enabled?: boolean; syncNavOnS
     const startedAt = Date.now();
 
     try {
-      pushRunStep("Conferindo conexão com Chatwoot e Dify...");
+      pushRunStep("Conferindo conexÒ£o com Chatwoot e Dify...");
       updateRunProgress(2);
       const check = await apiGet<SystemCheckResponse>("/api/system-check");
       setSystemCheck(check);
@@ -746,9 +746,9 @@ export function useDashboardController(options?: { enabled?: boolean; syncNavOnS
           finalReportData = reportData;
           finalFailures = reportData.raw_analysis?.failures || [];
           finalRawOutput = reportData.report_markdown || JSON.stringify(reportData, null, 2);
-          pushRunStep("Relatório concluído e exibido a partir do retorno imediato; persistência finalizando em background.");
+          pushRunStep("Relatório concluÒ­do e exibido a partir do retorno imediato; persistência finalizando em background.");
         } else {
-          throw new Error("Relatório concluído, mas o payload final não foi localizado.");
+          throw new Error("Relatório concluÒ­do, mas o payload final não foi localizado.");
         }
         pushRunStep("Relatório final gerado com sucesso.");
         setRunCurrentContact(null);
@@ -760,13 +760,13 @@ export function useDashboardController(options?: { enabled?: boolean; syncNavOnS
         finalReportData = null;
         finalFailures = [];
         finalRawOutput = JSON.stringify({ system_check: check, report_error: reportMessage }, null, 2);
-        pushRunStep(`Não conseguimos gerar o relatório: ${reportMessage}`);
+        pushRunStep(`NÒ£o conseguimos gerar o relatório: ${reportMessage}`);
         setRunCurrentContact(null);
       }
 
       const elapsed = Math.round((Date.now() - startedAt) / 1000);
       if (reportFailedMessage) {
-        setStatus(`Overview concluído em ${elapsed}s. Relatório falhou: ${reportFailedMessage}`);
+        setStatus(`Overview concluÒ­do em ${elapsed}s. Relatório falhou: ${reportFailedMessage}`);
       } else {
         setOverview(finalOverviewData);
         setInsights(finalInsights);
@@ -781,7 +781,7 @@ export function useDashboardController(options?: { enabled?: boolean; syncNavOnS
         setOverviewRunCount((value) => value + 1);
         setSelectedReportContact(null);
         setReportSeverityFilter("all");
-      setStatus(`Overview concluído em ${elapsed}s. Conexões ${check.ok ? "OK" : "com alerta"}.`);
+      setStatus(`Overview concluÒ­do em ${elapsed}s. Conexões ${check.ok ? "OK" : "com alerta"}.`);
       }
       pushRunStep(`Overview finalizado em ${elapsed}s.`);
       setRunProgress(100);
@@ -818,9 +818,9 @@ export function useDashboardController(options?: { enabled?: boolean; syncNavOnS
     if (!clean) return;
     setSelectedReportContact(clean);
     navFreezeUntilRef.current = Date.now() + 850;
-    activeNavRef.current = "relatorio";
-    setActiveNav("relatorio");
-    const target = document.getElementById("relatorio");
+    activeNavRef.current = "insights";
+    setActiveNav("insights");
+    const target = document.getElementById("insights");
     if (!target) return;
     const top = Math.max(0, target.offsetTop - NAVBAR_HEIGHT);
     window.scrollTo({ top, behavior: "smooth" });
