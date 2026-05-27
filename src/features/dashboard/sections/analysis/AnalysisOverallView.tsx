@@ -280,7 +280,19 @@ export function AnalysisOverallView({ refreshHint, sectionStart = 1, ownerScope 
   const topProducts = useMemo(() => filteredProducts.slice(0, 5), [filteredProducts]);
   const topProductsMax = useMemo(() => Math.max(1, ...topProducts.map((item) => Number(item.count || 0))), [topProducts]);
 
-  const hasData = Boolean(payload && payload.total_runs > 0);
+  const hasScopedData = Boolean(
+    payload &&
+      (
+        Number(payload?.overview.conversations_total_analyzed || 0) > 0 ||
+        Number(payload?.overview.total_messages || 0) > 0 ||
+        Number(payload?.overview.critical_insights_count || 0) > 0 ||
+        Number(payload?.overview.non_critical_insights_count || 0) > 0 ||
+        Number(payload?.overview.finalized_count || 0) > 0 ||
+        Number(payload?.overview.continued_count || 0) > 0 ||
+        filteredProducts.length > 0 ||
+        contextItems.length > 0
+      )
+  );
   const severitySnapshot = payload?.severity_snapshot || {
     critical: 0,
     high: 0,
@@ -326,7 +338,7 @@ export function AnalysisOverallView({ refreshHint, sectionStart = 1, ownerScope 
         </div>
       </div>
 
-      <section className={`analysis-content-shell reveal ${hasData ? "" : "data-dim"}`}>
+      <section className={`analysis-content-shell reveal ${hasScopedData ? "" : "data-dim"}`}>
         <article className="settings-card">
           <div className="settings-card-head">Resumo total</div>
           <div className="settings-card-body analysis-overall-summary">
@@ -353,7 +365,7 @@ export function AnalysisOverallView({ refreshHint, sectionStart = 1, ownerScope 
                 <small className="analysis-overall-stat-sub">IA + usuário no consolidado</small>
               </article>
 
-              <article className="analysis-overall-stat is-alert">
+              <article className={`analysis-overall-stat ${critical > 0 ? "is-alert" : ""}`}>
                 <span className="analysis-overall-stat-label">Críticos</span>
                 <strong className="analysis-overall-stat-value">{critical}</strong>
                 <small className="analysis-overall-stat-sub">

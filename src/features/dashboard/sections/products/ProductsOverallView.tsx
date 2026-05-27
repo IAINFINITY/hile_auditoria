@@ -52,20 +52,22 @@ function productCanonicalLabel(name: string): string {
 function aggregateProducts(items: ProductOverallItem[]): ProductOverallItem[] {
   const map = new Map<string, ProductOverallItem>();
   for (const item of items) {
+    const quantity = Number(item.count || 0);
+    if (quantity <= 0) continue;
     const label = productCanonicalLabel(item.name);
     const key = normalizeText(label);
     const current = map.get(key);
     if (!current) {
       map.set(key, {
         name: label,
-        count: Number(item.count || 0),
+        count: quantity,
         contacts: Number(item.contacts || 0),
         days: Number(item.days || 0),
         lastSeenDate: item.lastSeenDate || null,
       });
       continue;
     }
-    current.count += Number(item.count || 0);
+    current.count += quantity;
     current.contacts += Number(item.contacts || 0);
     current.days += Number(item.days || 0);
     current.lastSeenDate =
@@ -243,9 +245,10 @@ export function ProductsOverallView({
     return sortedAndFiltered.slice(start, start + PER_PAGE);
   }, [safePage, sortedAndFiltered]);
 
+  const hasProducts = sortedAndFiltered.length > 0;
   const maxCount = Math.max(1, sortedAndFiltered[0]?.count || 1);
   const isSingleItem = sortedAndFiltered.length === 1;
-  const showDim = !scopedLoading && !scopedError && sortedAndFiltered.length === 0;
+  const showDim = !scopedError && (scopedLoading || !hasProducts);
 
   const podiumItems = useMemo(() => {
     const top = sortedAndFiltered.slice(0, 3);
@@ -310,7 +313,7 @@ export function ProductsOverallView({
         </div>
       ) : null}
 
-      <article className="settings-card products-overall-summary-card">
+      <article className={`settings-card products-overall-summary-card ${showDim ? "data-dim" : ""}`}>
         <div className="products-overall-summary">
           <div className="products-overall-stat">
             <div className="products-overall-stat-value">{summary.totalProducts}</div>
@@ -328,7 +331,13 @@ export function ProductsOverallView({
         <div className="settings-card-body">
           {scopedLoading ? <p className="empty-state">Carregando produtos...</p> : null}
           {!scopedLoading && scopedError ? <p className="empty-state">{scopedError}</p> : null}
-          {!scopedLoading && !scopedError && showDim ? <p className="empty-state">Ainda não há produtos mapeados no consolidado.</p> : null}
+          {!scopedLoading && !scopedError && showDim ? (
+            <p className="empty-state">
+              {scope === "day"
+                ? "Ainda não há produtos mapeados no dia selecionado."
+                : "Ainda não há produtos mapeados no consolidado."}
+            </p>
+          ) : null}
           {!scopedLoading && !scopedError && !showDim ? (
             <div className="products-overall-podium">
               {podiumItems.map(({ item, rank }) => (
@@ -386,7 +395,9 @@ export function ProductsOverallView({
             </div>
           ) : null}
 
-          {sortedAndFiltered.length === 0 ? (
+          {scopedLoading ? (
+            <p className="empty-state">Carregando produtos...</p>
+          ) : sortedAndFiltered.length === 0 ? (
             <p className="empty-state">Nenhum produto encontrado com os filtros atuais.</p>
           ) : (
             <div

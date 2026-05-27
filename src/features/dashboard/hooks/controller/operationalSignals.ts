@@ -46,7 +46,7 @@ const CONSULTOR_KEYWORDS = [
   "chamar consultor",
   "chama consultor",
   "falar com alguem",
-  "falar com alguÃ©m",
+  "falar com alguém",
   "quero atendimento humano",
 ];
 
@@ -63,23 +63,23 @@ const DISENGAGEMENT_KEYWORDS = [
   "enrolacao",
   "ruim",
   "horrivel",
-  "horrÃ­vel",
-  "pÃ©ssimo",
+  "horrível",
+  "péssimo",
   "pessimo",
   "fraco",
   "desorganizado",
   "nao resolve",
-  "nÃ£o resolve",
+  "não resolve",
   "nao ajudou",
-  "nÃ£o ajudou",
+  "não ajudou",
   "nao respondeu",
-  "nÃ£o respondeu",
+  "não respondeu",
   "sem resposta",
   "sem retorno",
   "nao gostei",
-  "nÃ£o gostei",
+  "não gostei",
   "nao confio",
-  "nÃ£o confio",
+  "não confio",
   "desisti",
   "cansei",
   "decepcionado",
@@ -87,16 +87,16 @@ const DISENGAGEMENT_KEYWORDS = [
   "insatisfeito",
   "insatisfeita",
   "insatisfacao",
-  "insatisfaÃ§Ã£o",
+  "insatisfação",
   "vou procurar outra",
   "vou procurar outro",
   "vou procurar concorrente",
   "vou para concorrencia",
-  "vou para concorrÃªncia",
+  "vou para concorrência",
   "outra empresa",
   "outra marca",
   "toda empresa",
-  "vocÃªs atrasam",
+  "vocês atrasam",
   "voces atrasam",
   "falar mal",
 ];
@@ -105,21 +105,21 @@ const HILE_DISSATISFACTION_KEYWORDS = [
   "hile",
   "empresa",
   "atendimento de voces",
-  "atendimento de vocÃªs",
-  "vocÃªs",
+  "atendimento de vocês",
+  "vocês",
   "voces",
   "marca",
   "servico",
-  "serviÃ§o",
+  "serviço",
 ];
 
 const STRONG_DISSATISFACTION_KEYWORDS = [
   "pessimo",
-  "pÃ©ssimo",
+  "péssimo",
   "horrivel",
-  "horrÃ­vel",
+  "horrível",
   "inadmissivel",
-  "inadmissÃ­vel",
+  "inadmissível",
   "absurdo",
   "decepcionado",
   "decepcionada",
@@ -129,12 +129,12 @@ const STRONG_DISSATISFACTION_KEYWORDS = [
   "vou procurar outra",
   "vou procurar concorrente",
   "vou para concorrencia",
-  "vou para concorrÃªncia",
+  "vou para concorrência",
   "toda empresa",
   "sem resposta",
   "falar mal",
   "nao gostei",
-  "nÃ£o gostei",
+  "não gostei",
 ];
 
 const SELF_DELAY_APOLOGY_PATTERNS = [
@@ -527,13 +527,13 @@ export function classifyGapPhase(text: string): string {
     normalized.includes("perfil do cliente") ||
     normalized.includes("compatibilidade")
   ) {
-    return "Match/CategorizaÃ§Ã£o de perfil";
+    return "Match/Categorização de perfil";
   }
-  if (normalized.includes("coleta") || normalized.includes("formulario") || normalized.includes("dados")) return "Coleta de informaÃ§Ã£o";
-  if (normalized.includes("interesse") || normalized.includes("objetivo") || normalized.includes("produto")) return "IdentificaÃ§Ã£o de interesse";
-  if (normalized.includes("empresa") || normalized.includes("hile")) return "ApresentaÃ§Ã£o da empresa";
-  if (normalized.includes("horario") || normalized.includes("agenda disponivel")) return "ApresentaÃ§Ã£o de horÃ¡rios";
-  if (normalized.includes("agendamento") || normalized.includes("reuniao") || normalized.includes("marcar")) return "RealizaÃ§Ã£o de agendamento";
+  if (normalized.includes("coleta") || normalized.includes("formulario") || normalized.includes("dados")) return "Coleta de informação";
+  if (normalized.includes("interesse") || normalized.includes("objetivo") || normalized.includes("produto")) return "Identificação de interesse";
+  if (normalized.includes("empresa") || normalized.includes("hile")) return "Apresentação da empresa";
+  if (normalized.includes("horario") || normalized.includes("agenda disponivel")) return "Apresentação de horários";
+  if (normalized.includes("agendamento") || normalized.includes("reuniao") || normalized.includes("marcar")) return "Realização de agendamento";
   return "Operacional";
 }
 

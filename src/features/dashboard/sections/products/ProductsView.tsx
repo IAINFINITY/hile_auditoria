@@ -48,6 +48,8 @@ function aggregateDayProducts(items: ProductDemandItem[]): ProductDemandItem[] {
   const map = new Map<string, { name: string; count: number; contactNames: Set<string> }>();
 
   for (const item of items || []) {
+    const quantity = Number(item.count || 0);
+    if (quantity <= 0) continue;
     const label = canonicalizeProductLabel(item.name);
     const key = normalizeProductForMatch(label);
     if (!key) continue;
@@ -58,7 +60,7 @@ function aggregateDayProducts(items: ProductDemandItem[]): ProductDemandItem[] {
       contactNames: new Set<string>(),
     };
 
-    current.count += Number(item.count || 0);
+    current.count += quantity;
     for (const contactName of item.contactNames || []) {
       const normalized = toTitleCaseName(contactName);
       if (!normalized) continue;
@@ -234,7 +236,7 @@ export function ProductsView({
           </div>
 
           {!hasProducts ? (
-            <p className="empty-state">Ainda nao ha produtos mapeados para este periodo.</p>
+            <p className="empty-state">Ainda não há produtos mapeados para este período.</p>
           ) : (
             <>
               {topProducts.length > 0 ? (
@@ -284,7 +286,7 @@ export function ProductsView({
           {filteredProducts.length > PRODUCTS_PAGE_SIZE ? (
             <div className="pagination-row">
               <span>
-                {filteredProducts.length} registros • Pagina {safeProductsPage} de {totalProductsPages}
+                {filteredProducts.length} registros • Página {safeProductsPage} de {totalProductsPages}
               </span>
               <button
                 type="button"
@@ -372,7 +374,7 @@ export function ProductsView({
           </div>
 
           {!hasInformational ? (
-            <p className="empty-state">Nenhum registro disponivel para o filtro selecionado.</p>
+            <p className="empty-state">Nenhum registro disponível para o filtro selecionado.</p>
           ) : (
             <div className="report-list-animated">
               {visibleContextInsights.map((item) => (
@@ -393,7 +395,7 @@ export function ProductsView({
           {filteredContextInsights.length > CONTEXT_PAGE_SIZE ? (
             <div className="pagination-row">
               <span>
-                {filteredContextInsights.length} registros • Pagina {displayContextPage} de {totalContextPages}
+                {filteredContextInsights.length} registros • Página {displayContextPage} de {totalContextPages}
               </span>
               <button
                 type="button"

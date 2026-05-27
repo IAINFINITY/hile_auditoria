@@ -81,7 +81,7 @@ function extractMaxSeverityFromAnswer(answer: Record<string, unknown>): string {
 
 function humanizedInsightTitle(summary: string, severity: Severity): string {
   const clean = String(summary || "").replace(/\s+/g, " ").trim();
-  if (!clean) return severity === "critical" ? "Atenção crÒ­tica no atendimento" : "Atenção operacional";
+  if (!clean) return severity === "critical" ? "Atenção crítica no atendimento" : "Atenção operacional";
 
   const firstSentence = clean.split(/[.!?]/)[0]?.trim() || clean;
   const lowered = normalizeTextForMatch(firstSentence);

@@ -70,6 +70,12 @@ export function MainContentRenderer({
   const dayCriticalRate = dayTotalInsights > 0 ? dayCritical / dayTotalInsights : 0;
   const dayAvgMessagesPerConversation = dayConversations > 0 ? dayMessages / dayConversations : 0;
   const dayFinalizedRate = dayHasFinalizationBase ? dayFinalized / (dayFinalized + dayContinued) : 0;
+  const dayHasScopedData =
+    dayConversations > 0 ||
+    dayMessages > 0 ||
+    dayTotalInsights > 0 ||
+    dayFinalized > 0 ||
+    dayContinued > 0;
 
   if (activeView === "dashboard") {
     return (
@@ -272,7 +278,7 @@ export function MainContentRenderer({
               </div>
             </div>
 
-            <section className="analysis-content-shell reveal">
+            <section className={`analysis-content-shell reveal ${dayHasScopedData ? "" : "data-dim"}`}>
               <article className="settings-card">
                 <div className="settings-card-head">Resumo total</div>
                 <div className="settings-card-body analysis-overall-summary">
@@ -295,7 +301,7 @@ export function MainContentRenderer({
                       <small className="analysis-overall-stat-sub">IA + usuário no consolidado</small>
                     </article>
 
-                    <article className="analysis-overall-stat is-alert">
+                    <article className={`analysis-overall-stat ${dayCritical > 0 ? "is-alert" : ""}`}>
                       <span className="analysis-overall-stat-label">Críticos</span>
                       <strong className="analysis-overall-stat-value">{dayCritical}</strong>
                       <small className="analysis-overall-stat-sub">

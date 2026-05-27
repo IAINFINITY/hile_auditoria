@@ -364,7 +364,7 @@ function pickAccount(accounts, configuredAccountId, groupName) {
   if (partial) return partial;
 
   const available = accounts.map((item) => item?.name).filter(Boolean).join(", ");
-  throw new Error(`Grupo '${groupName}' não encontrado. Contas visÒ­veis: ${available || "(nenhuma)"}`);
+  throw new Error(`Grupo '${groupName}' não encontrado. Contas visíveis: ${available || "(nenhuma)"}`);
 }
 
 function pickInbox(inboxes, inboxName, inboxId, inboxProvider) {
@@ -882,7 +882,7 @@ export async function runDailyAnalysis({
       const difyAnswer = extractDifyAnswer(difyRaw);
       if (!difyRaw || !difyAnswer) {
         const missingError = new Error(
-          "NÒ£o encontramos anÒ¡lise disponível para este contato nesta execução.",
+          "Não encontramos análise disponível para este contato nesta execução.",
         );
         (missingError as Error & { code?: string }).code = "analysis_not_found_in_reuse_mode";
         throw missingError;

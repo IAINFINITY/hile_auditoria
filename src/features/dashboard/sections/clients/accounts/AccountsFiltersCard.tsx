@@ -66,7 +66,7 @@ export function AccountsFiltersCard({
               <option value="all">Todos</option>
               <option value="entrada">Entrada</option>
               <option value="remarketing">Remarketing</option>
-              <option value="atencao">AtenÃ§Ã£o</option>
+              <option value="atencao">Atenção</option>
               <option value="resolvido">Fora da IA</option>
             </select>
           </label>
@@ -98,7 +98,7 @@ export function AccountsFiltersCard({
           </label>
 
           <label>
-            ResponsÃ¡vel
+            Responsável
             <select value={responsibleFilter} disabled={responsibleFilterLocked} onChange={(event) => onResponsibleFilterChange(event.target.value as ResponsibleFilter)}>
               <option value="all">Todos</option>
               <option value="ia">IA</option>
@@ -112,8 +112,8 @@ export function AccountsFiltersCard({
             <select value={phaseFilter} onChange={(event) => onPhaseFilterChange(event.target.value as "all" | ClientPhase)}>
               <option value="all">Todas</option>
               <option value="inicial">Inicial</option>
-              <option value="intermediario">IntermediÃ¡rio</option>
-              <option value="avancado">AvanÃ§ado</option>
+              <option value="intermediario">Intermediário</option>
+              <option value="avancado">Avançado</option>
             </select>
           </label>
         </div>
