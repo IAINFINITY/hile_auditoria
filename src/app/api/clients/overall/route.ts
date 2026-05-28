@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
 import type { ClientRecordItem, Severity } from "@/types";
 import { requireAuthorizedApiAccess } from "@/lib/server/apiUtils";
+import { enforceOwnerBucketByInbox, sanitizeBreakdownByInbox } from "@/lib/server/audit/ownerBuckets";
 
 export const runtime = "nodejs";
 
@@ -23,14 +24,14 @@ function normalizeLabelText(value: unknown): string {
     .replace(/[\u0300-\u036f]/g, "");
 }
 
-function resolveResponsibleBucket(senderName: unknown): ResponsibleBucket | null {
+function resolveResponsibleBucket(senderName: unknown, inboxId: unknown): ResponsibleBucket | null {
   const normalized = normalizeLabelText(senderName);
   if (!normalized) return "ia";
   if (/\b(grupo|group|equipe|team|channel)\b/.test(normalized)) return null;
-  if (/\bsamuel\b/.test(normalized)) return "samuel";
-  if (/\bsuelen\b|\bsuellen\b/.test(normalized)) return "suellen";
-  if (/\bacesso infinity\b|\bassistant\b|\bbot\b|(^|\s)ia(\s|$)/.test(normalized)) return "ia";
-  return "ia";
+  if (/\bsamuel\b/.test(normalized)) return enforceOwnerBucketByInbox("samuel", inboxId);
+  if (/\bsuelen\b|\bsuellen\b/.test(normalized)) return enforceOwnerBucketByInbox("suellen", inboxId);
+  if (/\bacesso infinity\b|\bassistant\b|\bbot\b|(^|\s)ia(\s|$)/.test(normalized)) return enforceOwnerBucketByInbox("ia", inboxId);
+  return enforceOwnerBucketByInbox("ia", inboxId);
 }
 
 function responsibleLabel(bucket: ResponsibleBucket): string {
@@ -178,22 +179,28 @@ export async function GET(request: Request) {
             mode: "insensitive",
           },
         },
-        select: {
-          senderName: true,
-          createdAt: true,
-          conversation: {
-            select: {
-              chatwootConversationId: true,
+      select: {
+        senderName: true,
+        createdAt: true,
+        conversation: {
+          select: {
+            chatwootConversationId: true,
+            channel: {
+              select: {
+                chatwootInboxId: true,
+              },
             },
           },
         },
+      },
         orderBy: [{ createdAt: "asc" }],
       });
 
       for (const row of rows) {
         const conversationId = Number(row.conversation?.chatwootConversationId || 0);
         if (!conversationId) continue;
-        const bucket = resolveResponsibleBucket(row.senderName);
+        const inboxId = Number(row.conversation?.channel?.chatwootInboxId || 0) || null;
+        const bucket = resolveResponsibleBucket(row.senderName, inboxId);
         if (!bucket) continue;
         const current = conversationResponsibleMap.get(conversationId) || {
           counts: { ia: 0, suellen: 0, samuel: 0 },
@@ -280,18 +287,16 @@ export async function GET(request: Request) {
           ? (state.responsibleMessageBreakdown as Record<string, unknown>)
           : null;
       const storedBreakdown = storedBreakdownRaw
-        ? {
-            ia: Number(storedBreakdownRaw.ia || 0) || 0,
-            suellen: Number(storedBreakdownRaw.suellen || 0) || 0,
-            samuel: Number(storedBreakdownRaw.samuel || 0) || 0,
-          }
+        ? sanitizeBreakdownByInbox(storedBreakdownRaw, latestRun.channel?.chatwootInboxId || null)
         : null;
       const hasStoredBreakdown =
         Boolean(storedBreakdown) &&
         ((storedBreakdown?.ia || 0) > 0 || (storedBreakdown?.suellen || 0) > 0 || (storedBreakdown?.samuel || 0) > 0);
-      const storedBucketRaw = String(state.responsibleBucket || "ia");
-      const storedBucket: ResponsibleBucket =
-        storedBucketRaw === "suellen" || storedBucketRaw === "samuel" ? (storedBucketRaw as ResponsibleBucket) : "ia";
+      const storedBucketRaw = String(state.responsibleBucket || "ia").trim().toLowerCase();
+      const storedBucket = enforceOwnerBucketByInbox(
+        storedBucketRaw === "suellen" || storedBucketRaw === "samuel" ? storedBucketRaw : "ia",
+        latestRun.channel?.chatwootInboxId || null,
+      ) as ResponsibleBucket;
       const responsibleTracking = hasStoredBreakdown
         ? {
             bucket: storedBucket,

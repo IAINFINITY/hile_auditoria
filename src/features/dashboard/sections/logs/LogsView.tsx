@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { FiCheckCircle, FiClock, FiXCircle } from "react-icons/fi";
 import type { ReportHistoryItem, SystemCheckResponse } from "../../../../types";
 
@@ -67,6 +67,38 @@ export function LogsView({
   const hasRecentRuns = runsByDate.length > 0;
   const dimExec = !isRunningOverview;
   const dimRecent = !hasRecentRuns;
+  const [downloadingRunId, setDownloadingRunId] = useState<string | null>(null);
+
+  async function handleDownloadRunTxt(runId: string, dateRef: string) {
+    if (!runId || downloadingRunId) return;
+    setDownloadingRunId(runId);
+    try {
+      const query = new URLSearchParams();
+      query.set("run_id", runId);
+      const response = await fetch(`/api/report-day/export-txt?${query.toString()}`, {
+        method: "GET",
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        throw new Error(payload?.message || "Não foi possível baixar o relatório em TXT.");
+      }
+
+      const blob = await response.blob();
+      const objectUrl = window.URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = objectUrl;
+      anchor.download = `relatorio-${dateRef}-${runId.slice(0, 8)}.txt`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      window.URL.revokeObjectURL(objectUrl);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "Falha ao baixar relatório em TXT.";
+      alert(message);
+    } finally {
+      setDownloadingRunId((current) => (current === runId ? null : current));
+    }
+  }
 
   return (
     <div className="settings-shell">
@@ -159,6 +191,16 @@ export function LogsView({
                         {run.has_report && (
                           <span style={{ fontSize: "var(--fs-tiny)", color: "var(--low)", fontWeight: 600 }}>c/ relatório</span>
                         )}
+                        {run.has_report && run.status === "completed" ? (
+                          <button
+                            type="button"
+                            className="btn btn-sm"
+                            onClick={() => void handleDownloadRunTxt(run.id, run.date_ref)}
+                            disabled={downloadingRunId === run.id}
+                          >
+                            {downloadingRunId === run.id ? "Baixando..." : "Baixar relatório TXT"}
+                          </button>
+                        ) : null}
                       </div>
                       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "2px 16px", fontSize: "var(--fs-tiny)", color: "var(--muted)" }}>
                         <span>Início: {fmtBr(run.started_at)}</span>
@@ -204,7 +246,7 @@ export function LogsView({
                                   </span>
                                 </div>
                                 <p style={{ margin: 0, fontSize: "var(--fs-tiny)", color: "var(--muted)" }}>
-                                  Conversas: {log.conversation_ids?.length || 0}  Links: {log.chatwoot_links?.length || 0}
+                                  Conversas: {log.conversation_ids?.length || 0} • Links: {log.chatwoot_links?.length || 0}
                                 </p>
                               </div>
                             ))}
@@ -222,3 +264,4 @@ export function LogsView({
     </div>
   );
 }
+

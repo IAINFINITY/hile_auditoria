@@ -11,6 +11,8 @@ export interface ChatwootConfig {
   ignoredContactNames: string[];
   maxPages: number;
   requestTimeoutMs: number;
+  scanLookbackDays: number;
+  maxConversationsPerDay: number;
 }
 
 export interface DifyConfig {

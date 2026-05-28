@@ -185,6 +185,18 @@ export async function POST(request: Request) {
 
         const state = jobs.get(jobId);
         if (!state) return;
+        const runStats = (output as { raw_analysis?: { run_stats?: { total_to_process?: number; processed?: number; failure_count?: number } } })?.raw_analysis?.run_stats || {};
+        const totalToProcess = Number(runStats.total_to_process || 0);
+        const processed = Number(runStats.processed || 0);
+        const failureCount = Number(runStats.failure_count || 0);
+        const persistOnlyFullSuccess = String(process.env.REPORT_PERSIST_ONLY_ON_FULL_SUCCESS || "1") !== "0";
+        const isPartialRun =
+          (Number.isFinite(totalToProcess) && totalToProcess > 0 && processed < totalToProcess) || failureCount > 0;
+        if (persistOnlyFullSuccess && isPartialRun) {
+          throw new Error(
+            `Execução parcial detectada (${processed}/${totalToProcess} processados, ${failureCount} falha(s)); persistência final bloqueada.`,
+          );
+        }
         const finishedAt = new Date().toISOString();
         state.status = "completed";
         state.updated_at = finishedAt;

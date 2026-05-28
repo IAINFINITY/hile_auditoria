@@ -1,6 +1,7 @@
 import type { InsightSeverity } from "@prisma/client";
 import type { ReportPayload } from "@/types";
 import { parseLooseJsonObject } from "@/lib/json/looseJson";
+import { enforceOwnerBucketByInbox, sanitizeBreakdownByInbox } from "./ownerBuckets";
 import { toTitleCaseName } from "./nameFormat";
 
 type AnalysisItem = NonNullable<ReportPayload["raw_analysis"]["analyses"]>[number];
@@ -379,19 +380,18 @@ export function buildClientRecordsFromAnalyses(analyses: AnalysisItem[]): Client
     }
 
     const tracking = analysis.responsible_tracking || null;
-    const trackingBucket = normalizeResponsibleBucket(tracking?.owner_bucket);
+    const trackingInboxId = Number((tracking as Record<string, unknown> | null)?.source_inbox_id || analysis.inbox_id || 0) || null;
+    const trackingBucketRaw = normalizeResponsibleBucket(tracking?.owner_bucket);
+    const trackingBucket = trackingBucketRaw
+      ? (enforceOwnerBucketByInbox(trackingBucketRaw, trackingInboxId) as ResponsibleBucket)
+      : null;
     const trackingBreakdown = tracking?.message_breakdown || null;
 
     if (trackingBreakdown && typeof trackingBreakdown === "object") {
-      record.responsibleMessageBreakdown.ia += toSafeCount(
-        (trackingBreakdown as { ia?: unknown }).ia,
-      );
-      record.responsibleMessageBreakdown.suellen += toSafeCount(
-        (trackingBreakdown as { suellen?: unknown }).suellen,
-      );
-      record.responsibleMessageBreakdown.samuel += toSafeCount(
-        (trackingBreakdown as { samuel?: unknown }).samuel,
-      );
+      const safeBreakdown = sanitizeBreakdownByInbox(trackingBreakdown, trackingInboxId);
+      record.responsibleMessageBreakdown.ia += toSafeCount(safeBreakdown.ia);
+      record.responsibleMessageBreakdown.suellen += toSafeCount(safeBreakdown.suellen);
+      record.responsibleMessageBreakdown.samuel += toSafeCount(safeBreakdown.samuel);
     } else if (trackingBucket) {
       record.responsibleMessageBreakdown[trackingBucket] += toSafeCount(tracking?.message_count_agent);
     }

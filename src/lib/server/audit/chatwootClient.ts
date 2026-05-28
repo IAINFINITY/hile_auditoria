@@ -19,7 +19,7 @@ interface ChatwootClientInput {
 
 export function createChatwootClient({ baseUrl, apiAccessToken, accountId, timeoutMs = 45000 }: ChatwootClientInput) {
   const normalizedBaseUrl = baseUrl.replace(/\/$/, "");
-  const maxRetries = 3;
+  const maxRetries = 5;
 
   const sleep = (ms: number) =>
     new Promise<void>((resolve) => {
@@ -59,7 +59,7 @@ export function createChatwootClient({ baseUrl, apiAccessToken, accountId, timeo
         if (!response.ok) {
           const text = await response.text();
           if (attempt < maxRetries && isRetryableHttpStatus(response.status)) {
-            await sleep(400 * attempt);
+            await sleep(500 * attempt);
             continue;
           }
           throw new Error(`Chatwoot ${response.status} em ${pathname}. Body: ${text || "(vazio)"}`);
@@ -69,7 +69,7 @@ export function createChatwootClient({ baseUrl, apiAccessToken, accountId, timeo
       } catch (error) {
         lastError = error;
         if (attempt < maxRetries && isRetryableNetworkError(error)) {
-          await sleep(400 * attempt);
+          await sleep(500 * attempt);
           continue;
         }
         throw error;

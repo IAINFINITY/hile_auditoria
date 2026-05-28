@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+﻿import { useEffect, useMemo, useState } from "react";
 import { apiGet } from "@/lib/api";
 import { useEnterViewport } from "../../hooks/useEnterViewport";
 import type { AttendantPerformanceSummary, OwnerScope } from "../../shared/types";
@@ -28,6 +28,12 @@ const EMPTY_SUMMARY: AttendantPerformanceSummary = {
 function formatSeconds(value: number | null): string {
   if (value === null || value === undefined || !Number.isFinite(value) || value <= 0) return "-";
   return `${Number(value).toFixed(1)}s`;
+}
+
+function ownerTone(owner: "ia" | "suellen" | "samuel"): "tone-1" | "tone-2" | "tone-3" {
+  if (owner === "ia") return "tone-1";
+  if (owner === "suellen") return "tone-2";
+  return "tone-3";
 }
 
 export function AttendantsView({
@@ -84,8 +90,11 @@ export function AttendantsView({
   }, [ownerScope, summary.entries]);
 
   const activeSummary = scope === "overall" ? overallSummary : dayScopedSummary;
+  const hasEntries = activeSummary.entries.length > 0;
   const hasData =
     activeSummary.totalAnalyses > 0 || activeSummary.totalMessages > 0 || activeSummary.totalGaps > 0;
+  const maxMessages = Math.max(1, ...activeSummary.entries.map((entry) => Number(entry.messageCountAgent || 0)));
+  const maxGaps = Math.max(1, ...activeSummary.entries.map((entry) => Number(entry.gapsCount || 0)));
 
   return (
     <section className="settings-shell reveal">
@@ -164,6 +173,55 @@ export function AttendantsView({
           <p>
             <strong>Gaps críticos:</strong> {activeSummary.totalCriticalGaps}
           </p>
+        </div>
+      </article>
+
+      <article className={`settings-card ${hasData ? "" : "data-dim"}`} id="attendants-charts">
+        <div className="settings-card-head">Indicadores visuais</div>
+        <div className="settings-card-body">
+          {!hasEntries ? (
+            <p className="empty-state">Sem dados para gerar gráficos no período selecionado.</p>
+          ) : (
+            <div className="attendants-bars-wrap">
+              <div className="attendants-bars-col">
+                <h4 className="attendants-bars-title">Mensagens por responsável</h4>
+                {activeSummary.entries.map((entry) => {
+                  const tone = ownerTone(entry.owner);
+                  const width = Math.max(4, Math.round((Number(entry.messageCountAgent || 0) / maxMessages) * 100));
+                  return (
+                    <article className="attendants-bars-row" key={`msg-${entry.owner}`}>
+                      <div className="attendants-bars-meta">
+                        <strong>{entry.ownerLabel}</strong>
+                        <span>{entry.messageCountAgent}</span>
+                      </div>
+                      <div className="attendants-bars-track">
+                        <span className={`attendants-bars-fill ${tone}`} style={{ width: `${width}%` }} />
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+
+              <div className="attendants-bars-col">
+                <h4 className="attendants-bars-title">Gaps por responsável</h4>
+                {activeSummary.entries.map((entry) => {
+                  const tone = ownerTone(entry.owner);
+                  const width = Math.max(4, Math.round((Number(entry.gapsCount || 0) / maxGaps) * 100));
+                  return (
+                    <article className="attendants-bars-row" key={`gap-${entry.owner}`}>
+                      <div className="attendants-bars-meta">
+                        <strong>{entry.ownerLabel}</strong>
+                        <span>{entry.gapsCount}</span>
+                      </div>
+                      <div className="attendants-bars-track">
+                        <span className={`attendants-bars-fill ${tone}`} style={{ width: `${width}%` }} />
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
       </article>
 
@@ -264,4 +322,3 @@ export function AttendantsView({
     </section>
   );
 }
-

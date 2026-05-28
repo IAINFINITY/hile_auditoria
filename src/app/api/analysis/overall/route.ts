@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import type { Severity } from "@/types";
 import { prisma } from "@/lib/db/prisma";
 import { requireAuthorizedApiAccess } from "@/lib/server/apiUtils";
+import { enforceOwnerBucketByInbox, sanitizeBreakdownByInbox } from "@/lib/server/audit/ownerBuckets";
 
 export const runtime = "nodejs";
 
@@ -10,6 +11,28 @@ function normalizeOwnerScope(value: string | null): "all" | "ia" | "suellen" | "
   const normalized = String(value || "").trim().toLowerCase();
   if (normalized === "ia" || normalized === "suellen" || normalized === "samuel") return normalized;
   return "all";
+}
+
+function resolveOwnerBucketFromTracking(row: Record<string, unknown>): "ia" | "suellen" | "samuel" {
+  const tracking = (row.responsible_tracking as Record<string, unknown> | undefined) || undefined;
+  const trackingInboxId = Number(tracking?.source_inbox_id || row.inbox_id || 0) || null;
+  const directRaw = String(tracking?.owner_bucket || "").trim().toLowerCase();
+  if (directRaw === "ia" || directRaw === "suellen" || directRaw === "samuel") {
+    return enforceOwnerBucketByInbox(directRaw, trackingInboxId);
+  }
+
+  const breakdown = sanitizeBreakdownByInbox(tracking?.message_breakdown, trackingInboxId);
+  const iaCount = Number(breakdown.ia || 0);
+  const suellenCount = Number(breakdown.suellen || 0);
+  const samuelCount = Number(breakdown.samuel || 0);
+  const ranked = [
+    { key: "ia" as const, count: iaCount },
+    { key: "suellen" as const, count: suellenCount },
+    { key: "samuel" as const, count: samuelCount },
+  ].sort((a, b) => b.count - a.count);
+  if (ranked[0]?.count > 0) return ranked[0].key;
+
+  return "ia";
 }
 
 function normalizeSeverity(value: unknown): Severity {
@@ -250,8 +273,7 @@ export async function GET(request: Request) {
       for (const entry of analyses) {
         if (!entry || typeof entry !== "object") continue;
         const row = entry as Record<string, unknown>;
-        const tracking = (row.responsible_tracking as Record<string, unknown> | undefined) || undefined;
-        const ownerBucket = String(tracking?.owner_bucket || "ia").toLowerCase();
+        const ownerBucket = resolveOwnerBucketFromTracking(row);
         if (ownerScope !== "all" && ownerBucket !== ownerScope) continue;
         const key = String(row.contact_key || "").trim();
         if (!key) continue;

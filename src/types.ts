@@ -129,6 +129,7 @@ export interface AnalysisItem {
   contact_key: string;
   contact?: { name?: string | null; identifier?: string | null };
   conversation_ids: number[];
+  inbox_id?: number | null;
   message_count_day: number;
   log_text?: string;
   conversation_operational?: Array<{
@@ -148,6 +149,7 @@ export interface AnalysisItem {
   responsible_tracking?: {
     owner_bucket: "ia" | "suellen" | "samuel";
     owner_label: string;
+    source_inbox_id?: number | null;
     message_count_agent: number;
     message_breakdown: { ia: number; suellen: number; samuel: number };
     response_metrics: {

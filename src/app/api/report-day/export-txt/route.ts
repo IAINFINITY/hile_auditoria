@@ -112,7 +112,64 @@ export async function GET(request: Request) {
 
     const { searchParams } = new URL(request.url);
     const scope = String(searchParams.get("scope") || "day").trim().toLowerCase();
+    const runId = String(searchParams.get("run_id") || "").trim();
     const date = String(searchParams.get("date") || "").trim();
+
+    if (runId) {
+      const run = await prisma.analysisRun.findUnique({
+        where: { id: runId },
+        include: {
+          tenant: { select: { name: true } },
+          channel: { select: { name: true } },
+          report: {
+            select: {
+              reportMarkdown: true,
+              reportJson: true,
+            },
+          },
+        },
+      });
+
+      if (!run || run.status !== RunStatus.completed || !run.report) {
+        return NextResponse.json(
+          { error: "run_not_found", message: "Execução não encontrada ou sem relatório salvo." },
+          { status: 404 },
+        );
+      }
+
+      const body = buildTxtFromRuns(
+        [
+          {
+            id: run.id,
+            status: run.status,
+            dateRef: run.dateRef,
+            startedAt: run.startedAt,
+            finishedAt: run.finishedAt,
+            totalConversations: run.totalConversations,
+            processed: run.processed,
+            successCount: run.successCount,
+            failureCount: run.failureCount,
+            tenant: run.tenant,
+            channel: run.channel,
+            report: {
+              reportMarkdown: run.report.reportMarkdown,
+              reportJson: run.report.reportJson,
+            },
+          },
+        ],
+        `run (${run.id})`,
+      );
+
+      const fileName = `relatorio-${run.dateRef.toISOString().slice(0, 10)}-${run.id.slice(0, 8)}.txt`;
+      return new NextResponse(body, {
+        status: 200,
+        headers: {
+          "Content-Type": "text/plain; charset=utf-8",
+          "Content-Disposition": `attachment; filename="${fileName}"`,
+          "Cache-Control": "no-store",
+        },
+      });
+    }
 
     if (scope === "period") {
       const preset = String(searchParams.get("preset") || "").trim().toLowerCase() as ExportPreset;

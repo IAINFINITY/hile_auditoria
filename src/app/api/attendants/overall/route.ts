@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
 import { requireAuthorizedApiAccess } from "@/lib/server/apiUtils";
 import type { AttendantPerformanceSummary } from "@/features/dashboard/shared/types";
+import { enforceOwnerBucketByInbox, sanitizeBreakdownByInbox } from "@/lib/server/audit/ownerBuckets";
 
 export const runtime = "nodejs";
 
@@ -164,15 +165,27 @@ export async function GET(request: Request) {
 
       for (const analysis of analyses) {
         const tracking = (analysis.responsible_tracking as Record<string, unknown> | undefined) || undefined;
-        const owner = OWNERS.includes(tracking?.owner_bucket as Owner)
-          ? (tracking?.owner_bucket as Owner)
-          : "ia";
+        const trackingInboxId = Number(tracking?.source_inbox_id || analysis.inbox_id || 0) || null;
+        const breakdown = sanitizeBreakdownByInbox(tracking?.message_breakdown, trackingInboxId);
+        const ownerRaw = String(tracking?.owner_bucket || "").trim().toLowerCase();
+        const owner = OWNERS.includes(ownerRaw as Owner)
+          ? (enforceOwnerBucketByInbox(ownerRaw, trackingInboxId) as Owner)
+          : (() => {
+              const ranked = [
+                { key: "ia" as const, count: Number(breakdown.ia || 0) },
+                { key: "suellen" as const, count: Number(breakdown.suellen || 0) },
+                { key: "samuel" as const, count: Number(breakdown.samuel || 0) },
+              ].sort((a, b) => b.count - a.count);
+              return ranked[0]?.count > 0 ? ranked[0].key : "ia";
+            })();
         const bucket = bucketMap[owner];
         const answer = String((analysis.analysis as Record<string, unknown> | undefined)?.answer || "");
         const parsed = parseJsonObject(answer);
 
         bucket.analysesCount += 1;
-        bucket.messageCountAgent += Number(tracking?.message_count_agent || 0);
+        const ownerMessageCount = Number((breakdown as Record<Owner, number>)[owner] || 0);
+        const fallbackMessageCount = Number(tracking?.message_count_agent || 0);
+        bucket.messageCountAgent += ownerMessageCount > 0 ? ownerMessageCount : fallbackMessageCount;
         bucket.improvementsCount += Array.isArray(parsed.pontos_melhoria)
           ? (parsed.pontos_melhoria as unknown[]).length
           : 0;

@@ -78,6 +78,8 @@ export function getConfig(): AppConfig {
       ignoredContactNames: parseList(process.env.CHATWOOT_IGNORED_CONTACT_NAMES || "", ["AI INFINITY NOTIFICATIONS"]),
       maxPages: Number(process.env.CHATWOOT_MAX_PAGES || 20),
       requestTimeoutMs: Number(process.env.CHATWOOT_REQUEST_TIMEOUT_MS || 45000),
+      scanLookbackDays: Math.max(0, Number(process.env.CHATWOOT_SCAN_LOOKBACK_DAYS || 2)),
+      maxConversationsPerDay: Math.max(0, Number(process.env.CHATWOOT_MAX_CONVERSATIONS_PER_DAY || 0)),
     },
     dify: {
       baseUrl: (process.env.DIFY_BASE_URL || "https://api.dify.ai/v1").replace(/\/$/, ""),

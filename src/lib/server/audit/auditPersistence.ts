@@ -4,6 +4,7 @@ import type { AppConfig } from "./types";
 import type { ReportPayload } from "@/types";
 import { buildClientRecordsFromAnalyses } from "./clientRecords";
 import { toTitleCaseName } from "./nameFormat";
+import { enforceOwnerBucketByInbox, sanitizeBreakdownByInbox } from "./ownerBuckets";
 import {
   allInsightsFromAnalysis,
   asBool,
@@ -1743,19 +1744,19 @@ export async function listClientsByDate(date: string) {
     if (bucket === "suellen") return "Comercial Suellen";
     return "IA";
   };
-  const resolveResponsibleBucket = (senderName: unknown): ResponsibleBucket | null => {
+  const resolveResponsibleBucket = (senderName: unknown, inboxId: unknown): ResponsibleBucket | null => {
     const raw = String(senderName || "").trim();
     const normalized = normalizeLabelText(raw);
     if (!normalized) return "ia";
     if (/\b(grupo|group|equipe|team)\b/.test(normalized)) return null;
-    if (/\bsamuel\b/.test(normalized)) return "samuel";
-    if (/\bsuelen\b|\bsuellen\b/.test(normalized)) return "suellen";
+    if (/\bsamuel\b/.test(normalized)) return enforceOwnerBucketByInbox("samuel", inboxId);
+    if (/\bsuelen\b|\bsuellen\b/.test(normalized)) return enforceOwnerBucketByInbox("suellen", inboxId);
     if (
       /\bacesso infinity\b|\bacesso_infinity\b|\bassistant\b|\bchatbot\b|\bbot\b|(^|\s)ia(\s|$)/.test(normalized)
     ) {
-      return "ia";
+      return enforceOwnerBucketByInbox("ia", inboxId);
     }
-    return null;
+    return enforceOwnerBucketByInbox("ia", inboxId);
   };
   const classifyPipelineBlock = (params: {
     status: string;
@@ -1920,6 +1921,11 @@ export async function listClientsByDate(date: string) {
         conversation: {
           select: {
             chatwootConversationId: true,
+            channel: {
+              select: {
+                chatwootInboxId: true,
+              },
+            },
           },
         },
       },
@@ -1928,7 +1934,8 @@ export async function listClientsByDate(date: string) {
     for (const row of rows) {
       const conversationId = Number(row.conversation?.chatwootConversationId || 0);
       if (!conversationId) continue;
-      const bucket = resolveResponsibleBucket(row.senderName);
+      const inboxId = Number(row.conversation?.channel?.chatwootInboxId || 0) || null;
+      const bucket = resolveResponsibleBucket(row.senderName, inboxId);
       if (!bucket) continue;
       const current = conversationResponsibleMap.get(conversationId) || {
         counts: { ia: 0, suellen: 0, samuel: 0 },
@@ -1983,16 +1990,15 @@ export async function listClientsByDate(date: string) {
   }): ResponsibleTracking => {
     const fallback = buildResponsibleTracking(params.conversationIds || []);
     const rawBreakdown = asRecord(params.breakdown);
-    const normalizedBreakdown = {
-      ia: toSafeInt(rawBreakdown.ia),
-      suellen: toSafeInt(rawBreakdown.suellen),
-      samuel: toSafeInt(rawBreakdown.samuel),
-    };
+    const normalizedBreakdown = sanitizeBreakdownByInbox(rawBreakdown, runForDate?.channel?.chatwootInboxId || null);
     const hasBreakdown =
       normalizedBreakdown.ia > 0 || normalizedBreakdown.suellen > 0 || normalizedBreakdown.samuel > 0;
     if (!hasBreakdown) return fallback;
 
-    const bucket = normalizeStoredResponsibleBucket(params.bucket);
+    const bucket = enforceOwnerBucketByInbox(
+      normalizeStoredResponsibleBucket(params.bucket),
+      runForDate?.channel?.chatwootInboxId || null,
+    ) as ResponsibleBucket;
     const label = String(params.label || "").trim() || responsibleLabel(bucket);
     const messageCount = Math.max(toSafeInt(params.messageCount), normalizedBreakdown[bucket] || 0);
     return {

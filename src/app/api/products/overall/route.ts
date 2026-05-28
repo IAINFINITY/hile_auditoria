@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
 import { requireAuthorizedApiAccess } from "@/lib/server/apiUtils";
 import { parseJsonSafe } from "@/lib/server/audit/persistence/helpers";
+import { enforceOwnerBucketByInbox, sanitizeBreakdownByInbox } from "@/lib/server/audit/ownerBuckets";
 import { canonicalizeProductLabel, normalizeProductForMatch } from "@/lib/products/canonical";
 
 export const runtime = "nodejs";
@@ -11,6 +12,28 @@ function normalizeOwnerScope(value: string | null): "all" | "ia" | "suellen" | "
   const normalized = String(value || "").trim().toLowerCase();
   if (normalized === "ia" || normalized === "suellen" || normalized === "samuel") return normalized;
   return "all";
+}
+
+function resolveOwnerBucketFromTracking(analysisObj: Record<string, unknown>): "ia" | "suellen" | "samuel" {
+  const tracking = (analysisObj.responsible_tracking as Record<string, unknown> | undefined) || undefined;
+  const trackingInboxId = Number(tracking?.source_inbox_id || analysisObj.inbox_id || 0) || null;
+  const directRaw = String(tracking?.owner_bucket || "").trim().toLowerCase();
+  if (directRaw === "ia" || directRaw === "suellen" || directRaw === "samuel") {
+    return enforceOwnerBucketByInbox(directRaw, trackingInboxId);
+  }
+
+  const breakdown = sanitizeBreakdownByInbox(tracking?.message_breakdown, trackingInboxId);
+  const iaCount = Number(breakdown.ia || 0);
+  const suellenCount = Number(breakdown.suellen || 0);
+  const samuelCount = Number(breakdown.samuel || 0);
+  const ranked = [
+    { key: "ia" as const, count: iaCount },
+    { key: "suellen" as const, count: suellenCount },
+    { key: "samuel" as const, count: samuelCount },
+  ].sort((a, b) => b.count - a.count);
+  if (ranked[0]?.count > 0) return ranked[0].key;
+
+  return "ia";
 }
 
 const PRODUCT_ALIASES: Record<string, string[]> = {
@@ -93,8 +116,7 @@ export async function GET(request: Request) {
 
       for (const analysis of analyses) {
         const analysisObj = analysis && typeof analysis === "object" ? analysis : {};
-        const tracking = (analysisObj.responsible_tracking as Record<string, unknown> | undefined) || undefined;
-        const ownerBucket = String(tracking?.owner_bucket || "ia").toLowerCase();
+        const ownerBucket = resolveOwnerBucketFromTracking(analysisObj);
         if (ownerScope !== "all" && ownerBucket !== ownerScope) continue;
         const contactKey = String((analysisObj as Record<string, unknown>).contact_key || "").trim();
         const logText = String((analysisObj as Record<string, unknown>).log_text || "");

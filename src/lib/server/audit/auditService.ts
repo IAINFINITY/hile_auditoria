@@ -36,6 +36,7 @@ import {
   filterNewMessages,
   getLastMessageId,
 } from "./service/incrementalHelpers";
+import { enforceOwnerBucketByInbox, resolveInboxOwnerBucket, sanitizeBreakdownByInbox } from "./ownerBuckets";
 
 function normalizeText(value) {
   return String(value || "").trim().toLowerCase();
@@ -69,22 +70,14 @@ function responsibleLabel(bucket) {
   return "IA";
 }
 
-function inboxOwnerBucket(inboxId) {
-  const id = Number(inboxId || 0);
-  if (id === 155) return "samuel";
-  if (id === 125) return "suellen";
-  return "ia";
-}
-
-function buildResponsibleTracking(messages, inboxId, assigneeName) {
+function buildResponsibleTracking(messages, inboxId) {
   const safeMessages = Array.isArray(messages) ? messages : [];
-  const assigneeBucket = String(assigneeName || "").trim() ? resolveResponsibleBucket(assigneeName) : null;
-  const inboxBucket = inboxOwnerBucket(inboxId);
-  const fallbackOwnerBucket = assigneeBucket || inboxBucket || "ia";
+  const inboxBucket = resolveInboxOwnerBucket(inboxId);
+  const fallbackOwnerBucket = inboxBucket || "ia";
 
   const resolveMessageBucket = (message) => {
     const direct = resolveResponsibleBucket(message?.sender_name);
-    if (!direct) return fallbackOwnerBucket;
+    if (direct === null) return null;
 
     const senderNameToken = normalizeNameToken(message?.sender_name);
     const senderId = Number(message?.sender_id || 0);
@@ -92,10 +85,14 @@ function buildResponsibleTracking(messages, inboxId, assigneeName) {
       senderId === 1 &&
       /\bacesso infinity\b|\bacesso_infinity\b|\bassistant\b|\bbot\b|(^|\s)ia(\s|$)/.test(senderNameToken);
 
-    if (direct === "ia" && senderLooksLikeSystemIa && (fallbackOwnerBucket === "samuel" || fallbackOwnerBucket === "suellen")) {
+    if (
+      direct === "ia" &&
+      senderLooksLikeSystemIa &&
+      (fallbackOwnerBucket === "samuel" || fallbackOwnerBucket === "suellen")
+    ) {
       return fallbackOwnerBucket;
     }
-    return direct;
+    return enforceOwnerBucketByInbox(direct, inboxId);
   };
 
   const counts = { ia: 0, suellen: 0, samuel: 0 };
@@ -143,7 +140,9 @@ function buildResponsibleTracking(messages, inboxId, assigneeName) {
     if (byCount !== 0) return byCount;
     return Number(latestByBucket[b] || 0) - Number(latestByBucket[a] || 0);
   });
-  const ownerBucket = ranked[0] || "ia";
+  const rawWinner = ranked[0] || "ia";
+  const ownerBucket = enforceOwnerBucketByInbox(rawWinner, inboxId);
+  const safeCounts = sanitizeBreakdownByInbox(counts, inboxId);
 
   const toMetric = (bucket) => ({
     avg_response_sec:
@@ -157,8 +156,9 @@ function buildResponsibleTracking(messages, inboxId, assigneeName) {
   return {
     owner_bucket: ownerBucket,
     owner_label: responsibleLabel(ownerBucket),
-    message_count_agent: counts.ia + counts.suellen + counts.samuel,
-    message_breakdown: counts,
+    source_inbox_id: Number(inboxId || 0) || null,
+    message_count_agent: safeCounts.ia + safeCounts.suellen + safeCounts.samuel,
+    message_breakdown: safeCounts,
     response_metrics: {
       ia: toMetric("ia"),
       suellen: toMetric("suellen"),
@@ -427,8 +427,42 @@ export async function discoverChatwootTarget({ config }) {
   };
 }
 
-async function listAllConversations({ chatwootClient, accountId, inboxId, maxPages }) {
+function toUnixSecondsSafe(value) {
+  if (value === null || value === undefined || value === "") return 0;
+  const asNumber = Number(value);
+  if (Number.isFinite(asNumber) && asNumber > 0) {
+    return asNumber > 1e12 ? Math.floor(asNumber / 1000) : Math.floor(asNumber);
+  }
+  const parsed = new Date(String(value)).getTime();
+  if (!Number.isFinite(parsed) || parsed <= 0) return 0;
+  return Math.floor(parsed / 1000);
+}
+
+function isConversationRecentEnough(conversation, cutoffYmd, timezone, mode = "activity_or_created") {
+  const timestamps =
+    mode === "created_only"
+      ? [toUnixSecondsSafe(conversation?.created_at)].filter((item) => item > 0)
+      : [
+          toUnixSecondsSafe(conversation?.last_activity_at),
+          toUnixSecondsSafe(conversation?.updated_at),
+          toUnixSecondsSafe(conversation?.timestamp),
+          toUnixSecondsSafe(conversation?.created_at),
+        ].filter((item) => item > 0);
+  if (timestamps.length === 0) return false;
+  return timestamps.some((value) => toYmdInTimezone(value, timezone) >= cutoffYmd);
+}
+
+async function listAllConversations({
+  chatwootClient,
+  accountId,
+  inboxId,
+  maxPages,
+  cutoffYmd = null,
+  timezone = "America/Fortaleza",
+  recencyMode = "activity_or_created",
+}) {
   const all = [];
+  let stalePageStreak = 0;
 
   for (let page = 1; page <= maxPages; page += 1) {
     const payload = await chatwootClient.listConversationsPage({ inboxId, page, status: "all", accountId });
@@ -438,21 +472,55 @@ async function listAllConversations({ chatwootClient, accountId, inboxId, maxPag
     }
 
     all.push(...payload);
+
+    if (cutoffYmd) {
+      const hasRecentInPage = payload.some((conversation) =>
+        isConversationRecentEnough(conversation, cutoffYmd, timezone, recencyMode),
+      );
+      if (hasRecentInPage) {
+        stalePageStreak = 0;
+      } else {
+        stalePageStreak += 1;
+      }
+
+      // Heurística de otimização: ao receber 2 páginas seguidas sem nenhuma conversa recente,
+      // interrompemos a varredura para não percorrer histórico desnecessário.
+      if (stalePageStreak >= 2) break;
+    }
   }
 
   return all;
 }
 
-async function listAllConversationsByInboxes({ chatwootClient, accountId, inboxIds, maxPages }) {
+async function listAllConversationsByInboxes({
+  chatwootClient,
+  accountId,
+  inboxIds,
+  maxPages,
+  cutoffYmd = null,
+  timezone = "America/Fortaleza",
+  recencyMode = "activity_or_created",
+}) {
   const all = [];
   for (const inboxId of inboxIds) {
-    const rows = await listAllConversations({
-      chatwootClient,
-      accountId,
-      inboxId,
-      maxPages,
-    });
-    all.push(...rows);
+    try {
+      const rows = await listAllConversations({
+        chatwootClient,
+        accountId,
+        inboxId,
+        maxPages,
+        cutoffYmd,
+        timezone,
+        recencyMode,
+      });
+      all.push(...rows);
+    } catch (error) {
+      console.warn(
+        `[preview-day] inbox ${inboxId} falhou na varredura e foi ignorada: ${
+          error instanceof Error ? error.message : "erro desconhecido"
+        }`,
+      );
+    }
   }
   const uniqueById = new Map();
   for (const conversation of all) {
@@ -495,6 +563,10 @@ export async function buildDailyConversationLogs({ config, date }) {
   assertYmd(date);
 
   const toYmd = (unixSeconds) => toYmdInTimezone(unixSeconds, config.timezone);
+  const lookbackDays = Math.max(0, Number(config?.chatwoot?.scanLookbackDays || 0));
+  const cutoffDate = new Date(`${date}T00:00:00.000Z`);
+  cutoffDate.setUTCDate(cutoffDate.getUTCDate() - lookbackDays);
+  const cutoffYmd = cutoffDate.toISOString().slice(0, 10);
   const target = await discoverChatwootTarget({ config });
   const chatwootClient = createChatwootClient({
     baseUrl: config.chatwoot.baseUrl,
@@ -513,6 +585,9 @@ export async function buildDailyConversationLogs({ config, date }) {
     accountId: target.account.id,
     inboxIds: scopedInboxIds,
     maxPages: config.chatwoot.maxPages,
+    cutoffYmd,
+    timezone: config.timezone,
+    recencyMode: "created_only",
   });
   const scopedToInbox = allConversations.filter((conversation) => {
     const inboxId = Number(conversation?.inbox_id || 0);
@@ -524,23 +599,48 @@ export async function buildDailyConversationLogs({ config, date }) {
   );
 
   const enteredToday = extractEnteredToday(filteredByContact, date, toYmd);
-  const selectedConversations = unique(
+  let selectedConversations = unique(
     enteredToday
       .map((conversation) => Number(conversation?.id || 0))
       .filter((id) => id > 0),
   )
     .map((id) => filteredByContact.find((conversation) => Number(conversation?.id || 0) === id))
     .filter(Boolean);
+  const maxConversationsPerDay = Math.max(0, Number(config?.chatwoot?.maxConversationsPerDay || 0));
+  if (maxConversationsPerDay > 0 && selectedConversations.length > maxConversationsPerDay) {
+    selectedConversations = selectedConversations
+      .sort((a, b) => Number(b?.created_at || 0) - Number(a?.created_at || 0))
+      .slice(0, maxConversationsPerDay);
+    console.log(
+      `[preview-day] limite aplicado: ${selectedConversations.length} conversa(s) mais recentes de ${enteredToday.length} entraram no dia.`,
+    );
+  }
+  console.log(
+    `[preview-day] elegíveis para análise no dia ${date}: ${selectedConversations.length} conversa(s) (entraram no dia: ${enteredToday.length}).`,
+  );
   const detailed = [];
+  let skippedConversations = 0;
 
   for (const conversation of selectedConversations) {
     const conversationId = Number(conversation?.id || 0);
     if (!conversationId) continue;
 
-    const [conversationDetail, endpointMessages] = await Promise.all([
-      chatwootClient.getConversation(conversationId, target.account.id),
-      chatwootClient.getConversationMessages(conversationId, target.account.id),
-    ]);
+    let conversationDetail = null;
+    let endpointMessages = [];
+    try {
+      [conversationDetail, endpointMessages] = await Promise.all([
+        chatwootClient.getConversation(conversationId, target.account.id),
+        chatwootClient.getConversationMessages(conversationId, target.account.id),
+      ]);
+    } catch (error) {
+      skippedConversations += 1;
+      console.warn(
+        `[preview-day] conversa ${conversationId} ignorada por falha de rede/API: ${
+          error instanceof Error ? error.message : "erro desconhecido"
+        }`,
+      );
+      continue;
+    }
 
     const normalized = normalizeConversationLog({
       conversation: conversationDetail,
@@ -557,7 +657,11 @@ export async function buildDailyConversationLogs({ config, date }) {
 
     detailed.push(normalized);
   }
-  console.log(`[preview-day] conversas do dia ${date}: ${detailed.length}.`);
+  console.log(
+    `[preview-day] conversas do dia ${date}: ${detailed.length}${
+      skippedConversations > 0 ? ` (ignoradas por falha: ${skippedConversations})` : ""
+    }.`,
+  );
 
   const uniqueContacts = unique(detailed.map((item) => item.contact?.id || item.contact?.identifier));
   const contactLogs = buildContactLogs(detailed);
@@ -684,6 +788,7 @@ export async function runDailyAnalysis({
   const analyses = [];
   const failures = [];
   const totalToProcess = dailySnapshot.contact_logs.length;
+  const persistOnlyFullSuccess = String(process.env.REPORT_PERSIST_ONLY_ON_FULL_SUCCESS || "1") !== "0";
   const notify = typeof onProgress === "function" ? onProgress : null;
   const nowUnix = nowUnixSeconds();
   const operationalByConversation = new Map();
@@ -931,6 +1036,7 @@ export async function runDailyAnalysis({
         },
         contact_key: log.contact_key,
         contact: log.contact,
+        inbox_id: Number(log.inbox_id || 0) || null,
         conversation_ids: log.conversation_ids,
         conversation_operational: log.conversation_ids
           .map((id) => ({ conversation_id: Number(id), state: operationalByConversation.get(Number(id)) || null }))
@@ -940,7 +1046,6 @@ export async function runDailyAnalysis({
         responsible_tracking: buildResponsibleTracking(
           log.messages || [],
           log.inbox_id,
-          log.assignee_name || null,
         ),
         analysis: compactAnalysis(difyRaw),
       });
@@ -1001,12 +1106,27 @@ export async function runDailyAnalysis({
     }
   }
 
-  if (incrementalUpdates.length > 0) {
-    await upsertConversationDeltaStates({
-      tenantId: incrementalContext.tenantId,
-      channelId: incrementalContext.channelId,
-      items: incrementalUpdates,
-    });
+  const hasAnyFailures = failures.length > 0;
+  const canPersistIncrementalStates = !persistOnlyFullSuccess || !hasAnyFailures;
+  if (incrementalUpdates.length > 0 && canPersistIncrementalStates) {
+    try {
+      await upsertConversationDeltaStates({
+        tenantId: incrementalContext.tenantId,
+        channelId: incrementalContext.channelId,
+        items: incrementalUpdates,
+      });
+    } catch (error) {
+      console.warn(
+        `[analyze-day] falha ao persistir delta states (execução segue): ${
+          error instanceof Error ? error.message : "erro desconhecido"
+        }`,
+      );
+    }
+  }
+  if (incrementalUpdates.length > 0 && !canPersistIncrementalStates) {
+    console.warn(
+      `[analyze-day] persistência incremental ignorada: execução parcial (${analyses.length}/${totalToProcess} sucesso).`,
+    );
   }
 
   return {
@@ -1061,7 +1181,7 @@ export async function buildDailyReport({
 
     const gaps = extractGapEntriesFromAnalysis(entry.item);
     return gaps.some((gap) => {
-      const raw = String(gap?.severidade || gap?.severity || gap?.nivel || gap?.prioridade || "")
+      const raw = String(gap?.severity || "")
         .toLowerCase()
         .normalize("NFD")
         .replace(/[\u0300-\u036f]/g, "");
@@ -1151,7 +1271,7 @@ export async function buildDailyReport({
     const gaps = extractGapEntriesFromAnalysis(entry.item);
     bucketStats.gaps_count += gaps.length;
     for (const gap of gaps) {
-      const sev = toSeverityKey(gap?.severidade || gap?.severity || gap?.nivel || gap?.prioridade);
+      const sev = toSeverityKey(gap?.severity || "");
       if (sev.startsWith("crit") || sev === "critical") {
         bucketStats.critical_gaps_count += 1;
       }
