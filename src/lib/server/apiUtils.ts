@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
-import { getIsAuthorizedUser } from "@/lib/auth/server";
+import {
+  getAuthorizedUserContext,
+  hasRequiredRole,
+  registerAuthAuditEvent,
+  type AppAuthRole,
+} from "@/lib/auth/server";
 import { assertRequiredConfig, getConfig } from "@/lib/server/audit/config";
 import { assertYmd, todayYmd } from "@/lib/server/audit/dateUtils";
 import { createRouteHandlerSupabaseClient } from "@/lib/supabase/server";
@@ -25,7 +30,7 @@ export async function readJsonBody<T = Record<string, unknown>>(request: Request
     const body = await request.json();
     return (body || {}) as T;
   } catch {
-    throw new Error("Body JSON inválido.");
+    throw new Error("Body JSON invalido.");
   }
 }
 
@@ -35,27 +40,76 @@ export function isUnsafeDirectAnalysisAllowed(): boolean {
   return enabled && !isProduction;
 }
 
-export async function requireAuthorizedApiAccess() {
+export interface AuthorizedApiUser {
+  id: string;
+  email: string;
+  role: AppAuthRole;
+  allowedUserId: string | null;
+}
+
+export async function getAuthorizedApiUser() {
   const supabase = await createRouteHandlerSupabaseClient();
   const {
     data: { user },
     error,
   } = await supabase.auth.getUser();
 
-  if (error || !user) {
-    return NextResponse.json(
-      { error: "unauthorized", message: "Faça login para acessar esta rota." },
-      { status: 401 },
-    );
+  if (error || !user || !user.email) {
+    return {
+      response: NextResponse.json(
+        { error: "unauthorized", message: "Faca login para acessar esta rota." },
+        { status: 401 },
+      ),
+      user: null as AuthorizedApiUser | null,
+    };
   }
 
-  const authorized = await getIsAuthorizedUser(supabase, user.id);
-  if (!authorized) {
-    return NextResponse.json(
-      { error: "forbidden", message: "Este usuário não possui permissão para o painel." },
-      { status: 403 },
-    );
+  const access = await getAuthorizedUserContext(supabase, { id: user.id, email: user.email || null });
+  if (!access.authorized || !access.role) {
+    await registerAuthAuditEvent({
+      actorUserId: user.id,
+      actorEmail: user.email || null,
+      actorRole: null,
+      eventType: "auth_access_denied",
+      outcome: "denied",
+      reason: access.reason || "not_authorized",
+    });
+    return {
+      response: NextResponse.json(
+        { error: "forbidden", message: "Este usuario nao possui permissao para o painel." },
+        { status: 403 },
+      ),
+      user: null as AuthorizedApiUser | null,
+    };
   }
 
-  return null;
+  return {
+    response: null as NextResponse | null,
+    user: {
+      id: user.id,
+      email: user.email,
+      role: access.role,
+      allowedUserId: access.allowedUserId,
+    } satisfies AuthorizedApiUser,
+  };
+}
+
+export async function requireAuthorizedApiAccess() {
+  const { response } = await getAuthorizedApiUser();
+  return response;
+}
+
+export async function requireRole(requiredRole: AppAuthRole) {
+  const auth = await getAuthorizedApiUser();
+  if (auth.response) return auth;
+  if (!hasRequiredRole(auth.user?.role, requiredRole)) {
+    return {
+      response: NextResponse.json(
+        { error: "forbidden", message: "Permissao insuficiente para esta operacao." },
+        { status: 403 },
+      ),
+      user: auth.user,
+    };
+  }
+  return auth;
 }

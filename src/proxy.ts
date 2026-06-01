@@ -1,8 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { getIsAuthorizedUser } from "@/lib/auth/server";
+import { getAuthorizedUserContext } from "@/lib/auth/server";
 import { createProxySupabaseClient } from "@/lib/supabase/server";
 
-const PUBLIC_API_PATHS = new Set<string>(["/api/health"]);
+const PUBLIC_API_PATHS = new Set<string>(["/api/health", "/api/auth/health"]);
 
 function isPublicApiPath(pathname: string): boolean {
   return PUBLIC_API_PATHS.has(pathname);
@@ -33,15 +33,15 @@ export async function proxy(request: NextRequest) {
 
   if (error || !user) {
     return NextResponse.json(
-      { error: "unauthorized", message: "Faça login para acessar esta rota." },
+      { error: "unauthorized", message: "Faca login para acessar esta rota." },
       { status: 401 },
     );
   }
 
-  const authorized = await getIsAuthorizedUser(supabase, user.id);
-  if (!authorized) {
+  const access = await getAuthorizedUserContext(supabase, { id: user.id, email: user.email || null });
+  if (!access.authorized) {
     return NextResponse.json(
-      { error: "forbidden", message: "Este usuário não possui permissão para o painel." },
+      { error: "forbidden", message: "Este usuario nao possui permissao para o painel." },
       { status: 403 },
     );
   }
