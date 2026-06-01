@@ -7,5 +7,6 @@ export const VIEW_SECTION_KEYS: Record<Exclude<AppView, "dashboard">, string[]> 
   dissatisfaction: ["dissatisfaction-overview", "dissatisfaction-filters", "dissatisfaction-list"],
   products: ["products-overview", "products-ranking", "products-charts"],
   logs: ["logs-saude", "logs-execucao", "logs-recentes"],
+  superadmin: ["superadmin-accounts"],
   settings: ["settings-profile", "settings-security", "settings-preferences"],
 };

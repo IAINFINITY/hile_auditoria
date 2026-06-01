@@ -14,7 +14,6 @@ interface SettingsViewProps {
 }
 
 const LS_PROFILE_NAME = "hile_settings_profile_name";
-const LS_PROFILE_ROLE = "hile_settings_profile_role";
 const LS_NOTIFY_REPORT = "hile_settings_notify_report";
 const LS_NOTIFY_LOG = "hile_settings_notify_log";
 const LS_NOTIFY_CLIENT = "hile_settings_notify_client";
@@ -22,43 +21,73 @@ const PASSWORD_MAX_LENGTH = 64;
 const PASSWORD_COUNTER_WARN_AT = 12;
 
 function loadStr(key: string, fallback = ""): string {
-  try { return localStorage.getItem(key) || fallback; } catch { return fallback; }
-}
-function loadBool(key: string, fallback = true): boolean {
   try {
-    const v = localStorage.getItem(key);
-    return v === null ? fallback : v === "true";
-  } catch { return fallback; }
-}
-function saveStr(key: string, value: string) {
-  try { localStorage.setItem(key, value); } catch { /* noop */ }
-}
-function saveBool(key: string, value: boolean) {
-  try { localStorage.setItem(key, value ? "true" : "false"); } catch { /* noop */ }
+    return localStorage.getItem(key) || fallback;
+  } catch {
+    return fallback;
+  }
 }
 
-function passwordStrength(pw: string): { label: string; score: number; checks: { label: string; ok: boolean }[] } {
+function loadBool(key: string, fallback = true): boolean {
+  try {
+    const value = localStorage.getItem(key);
+    return value === null ? fallback : value === "true";
+  } catch {
+    return fallback;
+  }
+}
+
+function saveStr(key: string, value: string) {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // noop
+  }
+}
+
+function saveBool(key: string, value: boolean) {
+  try {
+    localStorage.setItem(key, value ? "true" : "false");
+  } catch {
+    // noop
+  }
+}
+
+function normalizeEmail(value: string): string {
+  return String(value || "").trim().toLowerCase();
+}
+
+function passwordStrength(password: string): {
+  label: string;
+  score: number;
+  checks: { label: string; ok: boolean }[];
+} {
   const checks = [
-    { label: "Mínimo 8 caracteres", ok: pw.length >= 8 },
-    { label: "Letra maiúscula", ok: /[A-Z]/.test(pw) },
-    { label: "Letra minúscula", ok: /[a-z]/.test(pw) },
-    { label: "Número", ok: /\d/.test(pw) },
-    { label: "Caractere especial", ok: /[^A-Za-z0-9]/.test(pw) },
+    { label: "Mínimo 8 caracteres", ok: password.length >= 8 },
+    { label: "Letra maiúscula", ok: /[A-Z]/.test(password) },
+    { label: "Letra minúscula", ok: /[a-z]/.test(password) },
+    { label: "Número", ok: /\d/.test(password) },
+    { label: "Caractere especial", ok: /[^A-Za-z0-9]/.test(password) },
   ];
-  const score = checks.filter((c) => c.ok).length;
+  const score = checks.filter((item) => item.ok).length;
   const label = score <= 1 ? "Fraca" : score <= 3 ? "Média" : "Forte";
   return { label, score, checks };
 }
 
 export function SettingsView({ currentUser, onUpdateProfile }: SettingsViewProps) {
-  const [profileName, setProfileName] = useState(() => loadStr(LS_PROFILE_NAME, currentUser.name));
-  const [profileRole, setProfileRole] = useState(() => loadStr(LS_PROFILE_ROLE, currentUser.role));
+  const userStorageSuffix = useMemo(() => normalizeEmail(currentUser.email), [currentUser.email]);
+  const profileNameKey = `${LS_PROFILE_NAME}:${userStorageSuffix}`;
+  const notifyReportKey = `${LS_NOTIFY_REPORT}:${userStorageSuffix}`;
+  const notifyLogKey = `${LS_NOTIFY_LOG}:${userStorageSuffix}`;
+  const notifyClientKey = `${LS_NOTIFY_CLIENT}:${userStorageSuffix}`;
+
+  const [profileName, setProfileName] = useState(() => loadStr(profileNameKey, currentUser.name));
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [notifyReport, setNotifyReport] = useState(() => loadBool(LS_NOTIFY_REPORT, true));
-  const [notifyLog, setNotifyLog] = useState(() => loadBool(LS_NOTIFY_LOG, true));
-  const [notifyClient, setNotifyClient] = useState(() => loadBool(LS_NOTIFY_CLIENT, true));
+  const [notifyReport, setNotifyReport] = useState(() => loadBool(notifyReportKey, true));
+  const [notifyLog, setNotifyLog] = useState(() => loadBool(notifyLogKey, true));
+  const [notifyClient, setNotifyClient] = useState(() => loadBool(notifyClientKey, true));
   const [profileSaved, setProfileSaved] = useState(false);
   const [securitySaved, setSecuritySaved] = useState(false);
   const [prefsSaved, setPrefsSaved] = useState(false);
@@ -66,57 +95,61 @@ export function SettingsView({ currentUser, onUpdateProfile }: SettingsViewProps
   const strength = useMemo(() => passwordStrength(newPassword), [newPassword]);
 
   useEffect(() => {
-    if (profileSaved) {
-      const t = setTimeout(() => setProfileSaved(false), 2000);
-      return () => clearTimeout(t);
-    }
+    if (!profileSaved) return;
+    const timer = setTimeout(() => setProfileSaved(false), 2000);
+    return () => clearTimeout(timer);
   }, [profileSaved]);
 
   useEffect(() => {
-    if (securitySaved) {
-      const t = setTimeout(() => setSecuritySaved(false), 2000);
-      return () => clearTimeout(t);
-    }
+    if (!securitySaved) return;
+    const timer = setTimeout(() => setSecuritySaved(false), 2000);
+    return () => clearTimeout(timer);
   }, [securitySaved]);
 
   useEffect(() => {
-    if (prefsSaved) {
-      const t = setTimeout(() => setPrefsSaved(false), 2000);
-      return () => clearTimeout(t);
-    }
+    if (!prefsSaved) return;
+    const timer = setTimeout(() => setPrefsSaved(false), 2000);
+    return () => clearTimeout(timer);
   }, [prefsSaved]);
 
   const handleSaveProfile = useCallback(async () => {
     const { error } = await supabaseBrowser.auth.updateUser({
-      data: { name: profileName, role: profileRole },
+      data: { name: profileName },
     });
     if (error) return;
-    saveStr(LS_PROFILE_NAME, profileName);
-    saveStr(LS_PROFILE_ROLE, profileRole);
-    onUpdateProfile({ name: profileName, role: profileRole });
+    saveStr(profileNameKey, profileName);
+    onUpdateProfile({ name: profileName });
     setProfileSaved(true);
-  }, [profileName, profileRole, onUpdateProfile]);
+  }, [onUpdateProfile, profileName, profileNameKey]);
 
   const handleSaveSecurity = useCallback(async () => {
     if (!currentPassword || !newPassword || !confirmPassword) return;
     if (newPassword !== confirmPassword) return;
     if (strength.score < 1) return;
+
     const { error } = await supabaseBrowser.auth.updateUser({ password: newPassword });
     if (error) return;
+
     setCurrentPassword("");
     setNewPassword("");
     setConfirmPassword("");
     setSecuritySaved(true);
-  }, [currentPassword, newPassword, confirmPassword, strength]);
+  }, [confirmPassword, currentPassword, newPassword, strength.score]);
 
   const handleSavePrefs = useCallback(() => {
-    saveBool(LS_NOTIFY_REPORT, notifyReport);
-    saveBool(LS_NOTIFY_LOG, notifyLog);
-    saveBool(LS_NOTIFY_CLIENT, notifyClient);
+    saveBool(notifyReportKey, notifyReport);
+    saveBool(notifyLogKey, notifyLog);
+    saveBool(notifyClientKey, notifyClient);
     setPrefsSaved(true);
-  }, [notifyReport, notifyLog, notifyClient]);
+  }, [notifyClient, notifyClientKey, notifyLog, notifyLogKey, notifyReport, notifyReportKey]);
 
-  const securityValid = currentPassword.length > 0 && newPassword.length > 0 && confirmPassword.length > 0 && newPassword === confirmPassword && strength.score >= 1;
+  const securityValid =
+    currentPassword.length > 0 &&
+    newPassword.length > 0 &&
+    confirmPassword.length > 0 &&
+    newPassword === confirmPassword &&
+    strength.score >= 1;
+
   const remainingCurrent = PASSWORD_MAX_LENGTH - currentPassword.length;
   const remainingNew = PASSWORD_MAX_LENGTH - newPassword.length;
   const remainingConfirm = PASSWORD_MAX_LENGTH - confirmPassword.length;
@@ -125,7 +158,6 @@ export function SettingsView({ currentUser, onUpdateProfile }: SettingsViewProps
     <div className="settings-shell">
       <div className="section-inner">
         <div className="section-header">
-          <span className="section-num">01</span>
           <div className="section-title">
             <h2>Configurações</h2>
             <p>Ajustes de perfil, segurança e preferências do dashboard.</p>
@@ -138,7 +170,7 @@ export function SettingsView({ currentUser, onUpdateProfile }: SettingsViewProps
         <div className="settings-card-body" style={{ gap: 18 }}>
           <div>
             <p style={{ margin: 0, fontSize: "var(--fs-small)", color: "var(--muted)", lineHeight: 1.55 }}>
-              Altere seu nome de perfil, visualize seu e-mail e informe seu cargo.
+              Altere seu nome de perfil e visualize os dados da sua conta.
             </p>
           </div>
           <hr className="gap-divider" style={{ margin: 0 }} />
@@ -147,29 +179,23 @@ export function SettingsView({ currentUser, onUpdateProfile }: SettingsViewProps
             <input
               type="text"
               value={profileName}
-              onChange={(e) => setProfileName(e.target.value)}
+              onChange={(event) => setProfileName(event.target.value)}
               placeholder="Seu nome"
             />
           </div>
           <div className="settings-field">
-            <label>Email</label>
+            <label>E-mail</label>
             <input type="email" value={currentUser.email} readOnly tabIndex={-1} />
           </div>
           <div className="settings-field">
             <label>Cargo</label>
-            <select
-              value={profileRole}
-              onChange={(e) => setProfileRole(e.target.value)}
-              className="settings-select"
-            >
-              <option value="Administrador">Administrador</option>
-            </select>
+            <input type="text" value={currentUser.role} readOnly tabIndex={-1} />
           </div>
           <div className="settings-save-row">
             <button className="btn btn-primary btn-sm" onClick={handleSaveProfile}>
               Salvar alterações
             </button>
-            {profileSaved && <span className="save-feedback">Salvo ✓</span>}
+            {profileSaved ? <span className="save-feedback">Salvo ✓</span> : null}
           </div>
         </div>
       </section>
@@ -179,16 +205,17 @@ export function SettingsView({ currentUser, onUpdateProfile }: SettingsViewProps
         <div className="settings-card-body" style={{ gap: 18 }}>
           <div>
             <p style={{ margin: 0, fontSize: "var(--fs-small)", color: "var(--muted)", lineHeight: 1.55 }}>
-              Altere sua senha. Insira a senha atual e depois a nova senha.
+              Altere sua senha. Informe a senha atual e depois defina uma nova senha.
             </p>
           </div>
           <hr className="gap-divider" style={{ margin: 0 }} />
+
           <div className="settings-field">
             <label>Senha atual</label>
             <input
               type="password"
               value={currentPassword}
-              onChange={(e) => setCurrentPassword(e.target.value)}
+              onChange={(event) => setCurrentPassword(event.target.value)}
               placeholder="••••••••"
               maxLength={PASSWORD_MAX_LENGTH}
             />
@@ -198,12 +225,13 @@ export function SettingsView({ currentUser, onUpdateProfile }: SettingsViewProps
               </span>
             ) : null}
           </div>
+
           <div className="settings-field">
             <label>Nova senha</label>
             <input
               type="password"
               value={newPassword}
-              onChange={(e) => setNewPassword(e.target.value)}
+              onChange={(event) => setNewPassword(event.target.value)}
               placeholder="Mínimo 8 caracteres"
               maxLength={PASSWORD_MAX_LENGTH}
             />
@@ -216,7 +244,8 @@ export function SettingsView({ currentUser, onUpdateProfile }: SettingsViewProps
               </span>
             ) : null}
           </div>
-          {newPassword.length > 0 && (
+
+          {newPassword.length > 0 ? (
             <div style={{ display: "grid", gap: 6 }}>
               <div className="strength-bar">
                 <div className="strength-track">
@@ -224,37 +253,47 @@ export function SettingsView({ currentUser, onUpdateProfile }: SettingsViewProps
                     className="strength-fill"
                     style={{
                       width: `${(strength.score / 5) * 100}%`,
-                      background: strength.label === "Forte" ? "var(--low)" : strength.label === "Média" ? "var(--high)" : "var(--critical)",
+                      background:
+                        strength.label === "Forte"
+                          ? "var(--low)"
+                          : strength.label === "Média"
+                            ? "var(--high)"
+                            : "var(--critical)",
                     }}
                   />
                 </div>
                 <span
                   className="strength-label"
-                  style={{ color: strength.label === "Forte" ? "var(--low)" : strength.label === "Média" ? "var(--high)" : "var(--critical)" }}
+                  style={{
+                    color:
+                      strength.label === "Forte"
+                        ? "var(--low)"
+                        : strength.label === "Média"
+                          ? "var(--high)"
+                          : "var(--critical)",
+                  }}
                 >
                   {strength.label}
                 </span>
               </div>
+
               <div className="strength-checks">
                 {strength.checks.map((check) => (
                   <div className="strength-check" key={check.label}>
-                    {check.ok ? (
-                      <FiCheck style={{ color: "var(--low)" }} />
-                    ) : (
-                      <FiX style={{ color: "var(--critical)" }} />
-                    )}
+                    {check.ok ? <FiCheck style={{ color: "var(--low)" }} /> : <FiX style={{ color: "var(--critical)" }} />}
                     <span>{check.label}</span>
                   </div>
                 ))}
               </div>
             </div>
-          )}
+          ) : null}
+
           <div className="settings-field">
             <label>Confirmar nova senha</label>
             <input
               type="password"
               value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
+              onChange={(event) => setConfirmPassword(event.target.value)}
               placeholder="Repita a nova senha"
               maxLength={PASSWORD_MAX_LENGTH}
             />
@@ -264,11 +303,12 @@ export function SettingsView({ currentUser, onUpdateProfile }: SettingsViewProps
               </span>
             ) : null}
           </div>
+
           <div className="settings-save-row">
             <button className="btn btn-primary btn-sm" onClick={handleSaveSecurity} disabled={!securityValid}>
               Salvar alterações
             </button>
-            {securitySaved && <span className="save-feedback">Salvo ✓</span>}
+            {securitySaved ? <span className="save-feedback">Salvo ✓</span> : null}
           </div>
         </div>
       </section>
@@ -282,21 +322,25 @@ export function SettingsView({ currentUser, onUpdateProfile }: SettingsViewProps
             </p>
           </div>
           <hr className="gap-divider" style={{ margin: 0 }} />
+
           <div className="settings-toggle-item">
             <span className="settings-toggle-dot" style={{ background: "var(--azul)" }} />
             <div className="settings-toggle-content">
-              <span className="settings-toggle-title">Relatório executado / finalizado</span>
+              <span className="settings-toggle-title">Relatório executado/finalizado</span>
               <span className="settings-toggle-desc">Notificação quando um relatório de auditoria é concluído</span>
             </div>
             <span
               className={`settings-toggle-pill${notifyReport ? " on" : ""}`}
-              onClick={() => setNotifyReport((v) => !v)}
-              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") setNotifyReport((v) => !v); }}
+              onClick={() => setNotifyReport((value) => !value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") setNotifyReport((value) => !value);
+              }}
               role="switch"
               aria-checked={notifyReport}
               tabIndex={0}
             />
           </div>
+
           <div className="settings-toggle-item">
             <span className="settings-toggle-dot" style={{ background: "var(--azul)" }} />
             <div className="settings-toggle-content">
@@ -305,13 +349,16 @@ export function SettingsView({ currentUser, onUpdateProfile }: SettingsViewProps
             </div>
             <span
               className={`settings-toggle-pill${notifyLog ? " on" : ""}`}
-              onClick={() => setNotifyLog((v) => !v)}
-              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") setNotifyLog((v) => !v); }}
+              onClick={() => setNotifyLog((value) => !value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") setNotifyLog((value) => !value);
+              }}
               role="switch"
               aria-checked={notifyLog}
               tabIndex={0}
             />
           </div>
+
           <div className="settings-toggle-item">
             <span className="settings-toggle-dot" style={{ background: "var(--azul)" }} />
             <div className="settings-toggle-content">
@@ -320,18 +367,21 @@ export function SettingsView({ currentUser, onUpdateProfile }: SettingsViewProps
             </div>
             <span
               className={`settings-toggle-pill${notifyClient ? " on" : ""}`}
-              onClick={() => setNotifyClient((v) => !v)}
-              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") setNotifyClient((v) => !v); }}
+              onClick={() => setNotifyClient((value) => !value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") setNotifyClient((value) => !value);
+              }}
               role="switch"
               aria-checked={notifyClient}
               tabIndex={0}
             />
           </div>
+
           <div className="settings-save-row">
             <button className="btn btn-primary btn-sm" onClick={handleSavePrefs}>
               Salvar alterações
             </button>
-            {prefsSaved && <span className="save-feedback">Salvo ✓</span>}
+            {prefsSaved ? <span className="save-feedback">Salvo ✓</span> : null}
           </div>
         </div>
       </section>

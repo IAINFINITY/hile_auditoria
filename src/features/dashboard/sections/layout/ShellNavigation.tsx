@@ -12,6 +12,7 @@ const DEFAULT_OPEN_SECTIONS: ShellOpenSections = {
   clients: false,
   products: false,
   logs: false,
+  superadmin: false,
   settings: false,
 };
 
@@ -28,12 +29,14 @@ export function ShellNavigation({
   onOpenDissatisfaction,
   onOpenProducts,
   onOpenLogs,
+  onOpenSuperadmin,
   onNavigateAnalysis,
   onNavigateAttendants,
   onNavigateDissatisfaction,
   onNavigateClients,
   onNavigateProducts,
   onNavigateLogs,
+  onNavigateSuperadmin,
   onNavigateSettings,
   currentUser,
   onLogout,
@@ -104,6 +107,7 @@ export function ShellNavigation({
         onOpenClients={onOpenClients}
         onOpenProducts={onOpenProducts}
         onOpenLogs={onOpenLogs}
+        onOpenSuperadmin={onOpenSuperadmin}
         onOpenSettings={onOpenSettings}
         onNavigateAnalysis={onNavigateAnalysis}
         onNavigateAttendants={onNavigateAttendants}
@@ -111,6 +115,7 @@ export function ShellNavigation({
         onNavigateClients={onNavigateClients}
         onNavigateProducts={onNavigateProducts}
         onNavigateLogs={onNavigateLogs}
+        onNavigateSuperadmin={onNavigateSuperadmin}
         onNavigateSettings={onNavigateSettings}
         toggleSection={toggleSection}
         openSection={openSection}

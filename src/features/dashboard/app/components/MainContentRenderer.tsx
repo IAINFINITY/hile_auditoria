@@ -11,6 +11,7 @@ import { MovementSection } from "@/features/dashboard/sections/dashboard/Movemen
 import { ProductsDualView } from "@/features/dashboard/sections/products/ProductsDualView";
 import { ProductsView } from "@/features/dashboard/sections/products/ProductsView";
 import { SettingsView } from "@/features/dashboard/sections/settings/SettingsView";
+import { SuperadminAccountsView } from "@/features/dashboard/sections/superadmin/SuperadminAccountsView";
 import type { DashboardController } from "../dashboardTypes";
 import type { AppView } from "../types";
 import type { OwnerScope } from "@/features/dashboard/shared/types";
@@ -465,9 +466,21 @@ export function MainContentRenderer({
     );
   }
 
+  if (activeView === "superadmin") {
+    return (
+      <div className="settings-animated" key="superadmin-view">
+        <SuperadminAccountsView
+          currentUserEmail={currentUser?.email || ""}
+          currentUserRole={currentUser?.role || ""}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="settings-animated" key="settings-view">
       <SettingsView
+        key={`settings-${currentUser?.email || "guest"}`}
         currentUser={currentUser || { name: "Usuário", email: "usuario@hile.com.br", role: "Operador" }}
         onUpdateProfile={onUpdateProfile}
       />

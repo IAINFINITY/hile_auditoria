@@ -16,6 +16,7 @@ import {
   FiHome,
   FiLayers,
   FiPieChart,
+  FiShield,
   FiSettings,
   FiUsers,
   FiZap,
@@ -41,6 +42,7 @@ interface ShellSidebarProps {
   onOpenClients: () => void;
   onOpenProducts: () => void;
   onOpenLogs: () => void;
+  onOpenSuperadmin: () => void;
   onOpenSettings: () => void;
   onNavigateAnalysis: (section: "analysis-overview" | "analysis-movimentacao" | "analysis-conteudo") => void;
   onNavigateAttendants: (section: "attendants-overview" | "attendants-breakdown" | "attendants-comparison") => void;
@@ -48,6 +50,7 @@ interface ShellSidebarProps {
   onNavigateClients: (section: "clients-filtros" | "clients-kanban") => void;
   onNavigateProducts: (section: "products-overview" | "products-ranking" | "products-charts") => void;
   onNavigateLogs: (section: "logs-saude" | "logs-execucao" | "logs-recentes") => void;
+  onNavigateSuperadmin: (section: "superadmin-accounts") => void;
   onNavigateSettings: (section: "settings-profile" | "settings-security" | "settings-preferences") => void;
   toggleSection: (section: ShellSectionKey) => void;
   openSection: (section: ShellSectionKey) => void;
@@ -68,6 +71,7 @@ export function ShellSidebar({
   onOpenClients,
   onOpenProducts,
   onOpenLogs,
+  onOpenSuperadmin,
   onOpenSettings,
   onNavigateAnalysis,
   onNavigateAttendants,
@@ -75,6 +79,7 @@ export function ShellSidebar({
   onNavigateClients,
   onNavigateProducts,
   onNavigateLogs,
+  onNavigateSuperadmin,
   onNavigateSettings,
   toggleSection,
   openSection,
@@ -476,6 +481,52 @@ export function ShellSidebar({
               Histórico
             </button>
           </div>
+        ) : null}
+
+        {String(currentUser.role || "")
+          .trim()
+          .toLowerCase()
+          .includes("superadmin") ? (
+          <>
+            <div className={`side-item-row ${activeView === "superadmin" ? "active" : ""}`}>
+              <button
+                type="button"
+                className={sideItemClass(activeView === "superadmin")}
+                onClick={() => {
+                  openSection("superadmin");
+                  onOpenSuperadmin();
+                }}
+              >
+                <span className="side-item-icon" aria-hidden="true">
+                  <FiShield />
+                </span>
+                <span>Superadmin</span>
+              </button>
+              <button
+                type="button"
+                className="side-item-toggle"
+                aria-label={openSections.superadmin ? "Recolher Superadmin" : "Expandir Superadmin"}
+                onClick={() => toggleSection("superadmin")}
+              >
+                {openSections.superadmin ? <FiChevronDown /> : <FiChevronRight />}
+              </button>
+            </div>
+            {openSections.superadmin ? (
+              <div className="side-subnav">
+                <button
+                  type="button"
+                  className={subItemClass(activeSubNavKey, "superadmin-accounts")}
+                  onClick={() => onNavigateSuperadmin("superadmin-accounts")}
+                >
+                  <span className="side-sub-dot" />
+                  <span className="side-sub-icon">
+                    <FiUsers />
+                  </span>
+                  Contas
+                </button>
+              </div>
+            ) : null}
+          </>
         ) : null}
 
         <div className={`side-item-row ${activeView === "settings" ? "active" : ""}`}>

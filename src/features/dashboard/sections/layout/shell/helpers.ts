@@ -33,6 +33,7 @@ export function resolveCurrentBreadcrumb(
   if (activeView === "dissatisfaction") return "Insatisfação";
   if (activeView === "products") return "Produtos (Geral)";
   if (activeView === "logs") return "Logs Operacionais";
+  if (activeView === "superadmin") return "Superadmin";
   return "Configurações";
 }
 

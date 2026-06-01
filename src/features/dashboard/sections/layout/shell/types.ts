@@ -8,6 +8,7 @@ export type ShellView =
   | "dissatisfaction"
   | "products"
   | "logs"
+  | "superadmin"
   | "settings";
 
 export type ShellSectionKey = ShellView;
@@ -25,12 +26,14 @@ export interface ShellNavigationProps {
   onOpenDissatisfaction: () => void;
   onOpenProducts: () => void;
   onOpenLogs: () => void;
+  onOpenSuperadmin: () => void;
   onNavigateAnalysis: (section: "analysis-overview" | "analysis-movimentacao" | "analysis-conteudo") => void;
   onNavigateAttendants: (section: "attendants-overview" | "attendants-breakdown" | "attendants-comparison") => void;
   onNavigateDissatisfaction: (section: "dissatisfaction-overview" | "dissatisfaction-filters" | "dissatisfaction-list") => void;
   onNavigateClients: (section: "clients-filtros" | "clients-kanban") => void;
   onNavigateProducts: (section: "products-overview" | "products-ranking" | "products-charts") => void;
   onNavigateLogs: (section: "logs-saude" | "logs-execucao" | "logs-recentes") => void;
+  onNavigateSuperadmin: (section: "superadmin-accounts") => void;
   onNavigateSettings: (section: "settings-profile" | "settings-security" | "settings-preferences") => void;
   currentUser: {
     name: string;
@@ -41,7 +44,7 @@ export interface ShellNavigationProps {
   notificationState: NotificationState;
   onClearNotifications: () => void;
   onClearNotification: (eventId: string) => void;
-  onOpenView: (view: "clients" | "logs") => void;
+  onOpenView: (view: "clients" | "logs" | "superadmin") => void;
   sidebarCollapsed: boolean;
   onToggleSidebar: () => void;
 }

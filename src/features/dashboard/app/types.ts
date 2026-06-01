@@ -6,6 +6,7 @@ export type AppView =
   | "dissatisfaction"
   | "products"
   | "logs"
+  | "superadmin"
   | "settings";
 
 export interface AuthStatusPayload {
@@ -14,5 +15,6 @@ export interface AuthStatusPayload {
   user: {
     id: string;
     email: string | null;
+    role: "superadmin" | "admin" | null;
   } | null;
 }

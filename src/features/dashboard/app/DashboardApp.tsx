@@ -16,6 +16,10 @@ import type { AppView, AuthStatusPayload } from "./types";
 import type { OwnerScope } from "@/features/dashboard/shared/types";
 
 export function DashboardApp() {
+  function normalizeEmail(value: string | null | undefined): string {
+    return String(value || "").trim().toLowerCase();
+  }
+
   const clearStaleAuthStorage = useCallback(() => {
     try {
       for (let i = localStorage.length - 1; i >= 0; i -= 1) {
@@ -49,6 +53,7 @@ export function DashboardApp() {
         saved === "dissatisfaction" ||
         saved === "products" ||
         saved === "logs" ||
+        saved === "superadmin" ||
         saved === "settings"
       ) {
         return saved;
@@ -95,25 +100,46 @@ export function DashboardApp() {
     return "all";
   });
   const [currentUser, setCurrentUser] = useState<{ name: string; email: string; role: string } | null>(null);
+  const isSuperadmin = String(currentUser?.role || "")
+    .trim()
+    .toLowerCase()
+    .includes("superadmin");
+  const effectiveActiveView: AppView = activeView === "superadmin" && !isSuperadmin ? "settings" : activeView;
 
-  useRevealOnScroll({ enabled: stage === "app", viewKey: activeView });
+  useRevealOnScroll({ enabled: stage === "app", viewKey: effectiveActiveView });
 
   const controller = useDashboardController({
     enabled: stage === "app",
-    syncNavOnScroll: stage === "app" && activeView === "dashboard",
+    syncNavOnScroll: stage === "app" && effectiveActiveView === "dashboard",
   });
 
   const notifyPrefs = useMemo(() => {
+    const userKey = normalizeEmail(currentUser?.email || "");
+    const reportScopedKey = userKey ? `hile_settings_notify_report:${userKey}` : null;
+    const logScopedKey = userKey ? `hile_settings_notify_log:${userKey}` : null;
+    const clientScopedKey = userKey ? `hile_settings_notify_client:${userKey}` : null;
+    const loadScoped = (scopedKey: string | null, legacyKey: string, fallback = true) => {
+      try {
+        if (scopedKey) {
+          const scoped = localStorage.getItem(scopedKey);
+          if (scoped !== null) return scoped === "true";
+        }
+        const legacy = localStorage.getItem(legacyKey);
+        return legacy === null ? fallback : legacy === "true";
+      } catch {
+        return fallback;
+      }
+    };
     try {
       return {
-        report: localStorage.getItem("hile_settings_notify_report") !== "false",
-        log: localStorage.getItem("hile_settings_notify_log") !== "false",
-        client: localStorage.getItem("hile_settings_notify_client") !== "false",
+        report: loadScoped(reportScopedKey, "hile_settings_notify_report", true),
+        log: loadScoped(logScopedKey, "hile_settings_notify_log", true),
+        client: loadScoped(clientScopedKey, "hile_settings_notify_client", true),
       };
     } catch {
       return { report: true, log: true, client: true };
     }
-  }, []);
+  }, [currentUser?.email]);
 
   const { state: notificationState, clear: clearNotifications, clearOne: clearNotification } = useNotifications({
     enabled: stage === "app",
@@ -157,6 +183,12 @@ export function DashboardApp() {
       .split(".")
       .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
       .join(" ");
+  }
+
+  function toPrettyRole(role: "superadmin" | "admin" | null | undefined): string {
+    if (role === "superadmin") return "Superadmin";
+    if (role === "admin") return "Admin";
+    return "Admin";
   }
 
   async function fetchAuthStatus(): Promise<AuthStatusPayload | null> {
@@ -234,7 +266,7 @@ export function DashboardApp() {
           setCurrentUser({
             name: meta.name || toPrettyName(status.user.email),
             email: status.user.email || "usuario@hile.com.br",
-            role: meta.role || "Administrador",
+            role: toPrettyRole(status.user.role),
           });
           setStage("app");
         }
@@ -250,11 +282,11 @@ export function DashboardApp() {
 
   useEffect(() => {
     try {
-      sessionStorage.setItem("hile_active_view", activeView);
+      sessionStorage.setItem("hile_active_view", effectiveActiveView);
     } catch {
       // noop
     }
-  }, [activeView]);
+  }, [effectiveActiveView]);
 
   useEffect(() => {
     try {
@@ -274,29 +306,31 @@ export function DashboardApp() {
 
   useEffect(() => {
     const nextKey =
-      activeView === "dashboard"
+      effectiveActiveView === "dashboard"
         ? "inicio"
-        : activeView === "clients"
+        : effectiveActiveView === "clients"
           ? "clients-filtros"
-          : activeView === "analysis"
+          : effectiveActiveView === "analysis"
             ? "analysis-overview"
-            : activeView === "attendants"
+            : effectiveActiveView === "attendants"
               ? "attendants-overview"
-              : activeView === "dissatisfaction"
+              : effectiveActiveView === "dissatisfaction"
                 ? "dissatisfaction-overview"
-                : activeView === "products"
+                : effectiveActiveView === "products"
                   ? "products-overview"
-                  : activeView === "logs"
+                  : effectiveActiveView === "logs"
                     ? "logs-saude"
+                    : effectiveActiveView === "superadmin"
+                      ? "superadmin-accounts"
                     : "settings-profile";
 
     const raf = requestAnimationFrame(() => setActiveSubNavKey(nextKey));
     return () => cancelAnimationFrame(raf);
-  }, [activeView]);
+  }, [effectiveActiveView]);
 
   useEffect(() => {
-    if (stage !== "app" || activeView === "dashboard") return;
-    const sectionKeys = VIEW_SECTION_KEYS[activeView];
+    if (stage !== "app" || effectiveActiveView === "dashboard") return;
+    const sectionKeys = VIEW_SECTION_KEYS[effectiveActiveView];
     if (!sectionKeys || sectionKeys.length === 0) return;
 
     const offsetTop = 96;
@@ -337,7 +371,7 @@ export function DashboardApp() {
       window.removeEventListener("scroll", handleScroll);
       window.removeEventListener("resize", handleScroll);
     };
-  }, [activeView, stage]);
+  }, [effectiveActiveView, stage]);
 
   useLayoutEffect(() => {
     if (stage !== "app") return;
@@ -346,7 +380,7 @@ export function DashboardApp() {
       forceScrollTop();
       requestAnimationFrame(forceScrollTop);
     });
-  }, [activeView, forceScrollTop, stage]);
+  }, [effectiveActiveView, forceScrollTop, stage]);
 
   useEffect(() => {
     if (stage !== "app" || !controller.isRunningOverview) {
@@ -424,7 +458,7 @@ export function DashboardApp() {
     const clean = String(contactName || "").trim();
     if (!clean) return;
 
-    if (activeView !== "dashboard") {
+    if (effectiveActiveView !== "dashboard") {
       openViewAndScrollTop("dashboard");
       window.setTimeout(() => {
         controller.focusReportByContact(clean);
@@ -437,7 +471,7 @@ export function DashboardApp() {
 
   function handleNavigate(section: string) {
     setActiveSubNavKey(section);
-    if (activeView !== "dashboard") {
+    if (effectiveActiveView !== "dashboard") {
       setActiveView("dashboard");
       setTimeout(() => controller.navigateToSection(section), 0);
       return;
@@ -446,7 +480,7 @@ export function DashboardApp() {
   }
 
   function handleNavigateAnalysis(section: "analysis-overview" | "analysis-movimentacao" | "analysis-conteudo") {
-    if (activeView !== "analysis") {
+    if (effectiveActiveView !== "analysis") {
       setActiveView("analysis");
       setTimeout(() => scrollToAnchoredSection(section), 0);
       return;
@@ -455,7 +489,7 @@ export function DashboardApp() {
   }
 
   function handleNavigateClients(section: "clients-filtros" | "clients-kanban") {
-    if (activeView !== "clients") {
+    if (effectiveActiveView !== "clients") {
       setActiveView("clients");
       setTimeout(() => scrollToAnchoredSection(section), 0);
       return;
@@ -464,7 +498,7 @@ export function DashboardApp() {
   }
 
   function handleNavigateLogs(section: "logs-saude" | "logs-execucao" | "logs-recentes") {
-    if (activeView !== "logs") {
+    if (effectiveActiveView !== "logs") {
       setActiveView("logs");
       setTimeout(() => scrollToAnchoredSection(section), 0);
       return;
@@ -473,7 +507,7 @@ export function DashboardApp() {
   }
 
   function handleNavigateProducts(section: "products-overview" | "products-ranking" | "products-charts") {
-    if (activeView !== "products") {
+    if (effectiveActiveView !== "products") {
       setActiveView("products");
       setTimeout(() => scrollToAnchoredSection(section), 0);
       return;
@@ -482,7 +516,7 @@ export function DashboardApp() {
   }
 
   function handleNavigateDissatisfaction(section: "dissatisfaction-overview" | "dissatisfaction-filters" | "dissatisfaction-list") {
-    if (activeView !== "dissatisfaction") {
+    if (effectiveActiveView !== "dissatisfaction") {
       setActiveView("dissatisfaction");
       setTimeout(() => scrollToAnchoredSection(section), 0);
       return;
@@ -491,7 +525,7 @@ export function DashboardApp() {
   }
 
   function handleNavigateAttendants(section: "attendants-overview" | "attendants-breakdown" | "attendants-comparison") {
-    if (activeView !== "attendants") {
+    if (effectiveActiveView !== "attendants") {
       setActiveView("attendants");
       setTimeout(() => scrollToAnchoredSection(section), 0);
       return;
@@ -499,9 +533,24 @@ export function DashboardApp() {
     scrollToAnchoredSection(section);
   }
 
-  function handleNavigateSettings(section: "settings-profile" | "settings-security" | "settings-preferences") {
-    if (activeView !== "settings") {
+  function handleNavigateSettings(
+    section: "settings-profile" | "settings-security" | "settings-preferences",
+  ) {
+    if (effectiveActiveView !== "settings") {
       setActiveView("settings");
+      setTimeout(() => scrollToAnchoredSection(section), 0);
+      return;
+    }
+    scrollToAnchoredSection(section);
+  }
+
+  function handleNavigateSuperadmin(section: "superadmin-accounts") {
+    if (!isSuperadmin) {
+      setActiveView("settings");
+      return;
+    }
+    if (effectiveActiveView !== "superadmin") {
+      setActiveView("superadmin");
       setTimeout(() => scrollToAnchoredSection(section), 0);
       return;
     }
@@ -549,7 +598,7 @@ export function DashboardApp() {
       setCurrentUser({
         name: meta.name || toPrettyName(status.user.email),
         email: status.user.email || "usuario@hile.com.br",
-        role: meta.role || "Administrador",
+        role: toPrettyRole(status.user.role),
       });
       setStage("app");
     } catch {
@@ -607,19 +656,19 @@ export function DashboardApp() {
   return (
     <div className={`app-shell${sidebarCollapsed ? " sidebar-collapsed" : ""}`}>
       <ShellNavigation
-        activeView={activeView}
+        activeView={effectiveActiveView}
         activeSubNavKey={activeSubNavKey}
         navClass={controller.navClass}
         onNavigate={handleNavigate}
         onOpenSettings={() => openViewAndScrollTop("settings")}
-        onOpenDashboard={() => {
-          setActiveSubNavKey("inicio");
-          if (activeView !== "dashboard") {
-            setActiveView("dashboard");
-            setTimeout(() => controller.navigateToSection("inicio"), 0);
-            return;
-          }
-          controller.navigateToSection("inicio");
+          onOpenDashboard={() => {
+            setActiveSubNavKey("inicio");
+            if (effectiveActiveView !== "dashboard") {
+              setActiveView("dashboard");
+              setTimeout(() => controller.navigateToSection("inicio"), 0);
+              return;
+            }
+            controller.navigateToSection("inicio");
         }}
         onOpenClients={() => openViewAndScrollTop("clients")}
         onOpenAnalysis={() => {
@@ -633,12 +682,14 @@ export function DashboardApp() {
         onOpenAttendants={() => openViewAndScrollTop("attendants", "attendants-overview")}
         onOpenProducts={() => openViewAndScrollTop("products", "products-overview")}
         onOpenLogs={() => openViewAndScrollTop("logs")}
+        onOpenSuperadmin={() => openViewAndScrollTop("superadmin", "superadmin-accounts")}
         onNavigateAnalysis={handleNavigateAnalysis}
         onNavigateDissatisfaction={handleNavigateDissatisfaction}
         onNavigateAttendants={handleNavigateAttendants}
         onNavigateClients={handleNavigateClients}
         onNavigateProducts={handleNavigateProducts}
         onNavigateLogs={handleNavigateLogs}
+        onNavigateSuperadmin={handleNavigateSuperadmin}
         onNavigateSettings={handleNavigateSettings}
         currentUser={currentUser || { name: "Usuário", email: "usuario@hile.com.br", role: "Operador" }}
         onLogout={() => setShowLogoutConfirmModal(true)}
@@ -653,7 +704,7 @@ export function DashboardApp() {
       <main className="main-content-shell">
         <div className="main-view-slot">
           <MainContentRenderer
-            activeView={activeView}
+            activeView={effectiveActiveView}
             analysisScope={analysisScope}
             dissatisfactionScope={dissatisfactionScope}
             controller={controller}
@@ -677,7 +728,7 @@ export function DashboardApp() {
         showConfirmModal={showConfirmModal}
         showRunWarningModal={showRunWarningModal}
         showLogoutConfirmModal={showLogoutConfirmModal}
-        isDashboardView={activeView === "dashboard"}
+        isDashboardView={effectiveActiveView === "dashboard"}
         selectedDateHasSavedReport={controller.selectedDateHasSavedReport}
         onCancelConfirmRun={() => setShowConfirmModal(false)}
         onConfirmRun={() => void handleConfirmRun()}
