@@ -661,6 +661,51 @@ export async function upsertConversationDeltaStates(params: {
   }
 }
 
+export async function getSyncCheckpoint(params: {
+  tenantId: string;
+  channelId: string;
+}) {
+  return prisma.syncCheckpoint.findUnique({
+    where: {
+      tenantId_channelId: {
+        tenantId: params.tenantId,
+        channelId: params.channelId,
+      },
+    },
+    select: {
+      lastSyncedAt: true,
+      lastChatwootCursor: true,
+      updatedAt: true,
+    },
+  });
+}
+
+export async function upsertSyncCheckpoint(params: {
+  tenantId: string;
+  channelId: string;
+  lastSyncedAtIso?: string | null;
+  lastChatwootCursor?: string | null;
+}) {
+  return prisma.syncCheckpoint.upsert({
+    where: {
+      tenantId_channelId: {
+        tenantId: params.tenantId,
+        channelId: params.channelId,
+      },
+    },
+    update: {
+      lastSyncedAt: params.lastSyncedAtIso ? new Date(params.lastSyncedAtIso) : null,
+      lastChatwootCursor: params.lastChatwootCursor || null,
+    },
+    create: {
+      tenantId: params.tenantId,
+      channelId: params.channelId,
+      lastSyncedAt: params.lastSyncedAtIso ? new Date(params.lastSyncedAtIso) : null,
+      lastChatwootCursor: params.lastChatwootCursor || null,
+    },
+  });
+}
+
 export async function getLatestConversationAnalysis(params: {
   config: AppConfig;
   account: { id: number; name: string | null };
@@ -758,6 +803,24 @@ export async function persistCompletedRun(params: {
         processed: Number(params.output.summary?.processed || analyses.length + failures.length),
         successCount: analyses.length,
         failureCount: failures.length,
+      },
+    });
+
+    await tx.syncCheckpoint.upsert({
+      where: {
+        tenantId_channelId: {
+          tenantId: tenant.id,
+          channelId: channel.id,
+        },
+      },
+      update: {
+        lastSyncedAt: new Date(params.finishedAtIso),
+      },
+      create: {
+        tenantId: tenant.id,
+        channelId: channel.id,
+        lastSyncedAt: new Date(params.finishedAtIso),
+        lastChatwootCursor: null,
       },
     });
 
@@ -1484,6 +1547,45 @@ export async function getLatestRunByDate(date: string) {
     report_json: (run.report?.reportJson as Record<string, unknown> | null) || null,
     report_markdown: run.report?.reportMarkdown || null,
   };
+}
+
+export async function listRunsByDate(date: string) {
+  const rows = await prisma.analysisRun.findMany({
+    where: {
+      dateRef: toDateRef(date),
+      status: RunStatus.completed,
+      report: {
+        isNot: null,
+      },
+    },
+    orderBy: { startedAt: "asc" },
+    include: {
+      report: true,
+      channel: true,
+      tenant: true,
+    },
+  });
+
+  return rows
+    .map((row) => {
+      const reportJson = (row.report?.reportJson as Record<string, unknown> | null) || null;
+      return {
+        report_json: reportJson,
+        id: row.id,
+        status: row.status,
+        date_ref: row.dateRef.toISOString().slice(0, 10),
+        started_at: row.startedAt.toISOString(),
+        finished_at: row.finishedAt ? row.finishedAt.toISOString() : null,
+        total_conversations: row.totalConversations,
+        processed: row.processed,
+        success_count: row.successCount,
+        failure_count: row.failureCount,
+        tenant: row.tenant.name,
+        channel: row.channel.name,
+        has_report: hasRenderableReportData(reportJson),
+      };
+    })
+    .filter((row) => row.has_report);
 }
 
 export async function getRunningRunByDate(date: string) {

@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
-import { getLatestRunByDate } from "@/lib/server/audit/auditPersistence";
+import { getLatestRunByDate, listRunsByDate } from "@/lib/server/audit/auditPersistence";
 import { requireAuthorizedApiAccess } from "@/lib/server/apiUtils";
+import { aggregateSnapshots } from "@/features/dashboard/hooks/controller/periodAggregation";
+import { mapRunToDashboardSnapshot } from "@/features/dashboard/hooks/controller/runSnapshotMapper";
+import type { ReportByDateResponse } from "@/types";
 
 export const runtime = "nodejs";
 
@@ -16,6 +19,40 @@ export async function GET(request: Request) {
         { error: "invalid_param", message: "Parâmetro date é obrigatório." },
         { status: 400 },
       );
+    }
+
+    const aggregateMode = ["1", "true", "yes"].includes(String(searchParams.get("aggregate") || "").trim().toLowerCase());
+    if (aggregateMode) {
+      const runs = await listRunsByDate(date);
+      if (!runs.length) {
+        return NextResponse.json(
+          { error: "run_not_found", message: "Sem relatório salvo para a data selecionada." },
+          { status: 404 },
+        );
+      }
+
+      const snapshots = runs.map((run) => mapRunToDashboardSnapshot(run as ReportByDateResponse["run"]));
+      const aggregated = aggregateSnapshots(snapshots, date);
+      const latest = runs[runs.length - 1];
+
+      return NextResponse.json({
+        run: {
+          id: latest.id,
+          status: latest.status,
+          date_ref: date,
+          started_at: latest.started_at,
+          finished_at: latest.finished_at,
+          total_conversations: aggregated.overview.overview.conversations_scanned,
+          processed: aggregated.report.summary.processed,
+          success_count: aggregated.report.summary.processed,
+          failure_count: aggregated.report.summary.failures_count,
+          tenant: latest.tenant,
+          channel: latest.channel,
+          has_report: true,
+          report_json: aggregated.report,
+          report_markdown: aggregated.rawOutput,
+        },
+      });
     }
 
     const run = await getLatestRunByDate(date);
