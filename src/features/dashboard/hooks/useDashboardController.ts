@@ -98,6 +98,7 @@ export function useDashboardController(options?: { enabled?: boolean; syncNavOnS
   const [hasLoadedAvailableDates, setHasLoadedAvailableDates] = useState<boolean>(false);
   const [isLoadingDateReport, setIsLoadingDateReport] = useState<boolean>(false);
   const lastLoadedDateRef = useRef<string | null>(null);
+  const latestHistoryRunIdRef = useRef<string | null>(null);
   const missingReportDatesRef = useRef<Set<string>>(new Set());
   const isBusy = loading !== null;
   const isRunningOverview = loading === "overview";
@@ -128,8 +129,9 @@ export function useDashboardController(options?: { enabled?: boolean; syncNavOnS
   const loadedPeriodDatesRef = useRef<string | null>(null);
   const isLoadingPeriodRef = useRef(false);
 
-  async function loadPeriodData(preset: PeriodPreset, dates: string[]) {
+  async function loadPeriodData(preset: PeriodPreset, dates: string[], options?: { background?: boolean }) {
     if (isLoadingPeriodRef.current) return;
+    const background = options?.background ?? false;
 
     const now = new Date();
     const toDate = toDateInputValue(now);
@@ -147,14 +149,16 @@ export function useDashboardController(options?: { enabled?: boolean; syncNavOnS
             .sort();
 
     if (datesInRange.length === 0) {
-      setStatus("Nenhum relatório salvo no período selecionado.");
-      setOverview(null);
-      setInsights([]);
-      setReport(null);
-      setFailures([]);
-      setRawOutput("Sem relatórios no período.");
-      setInsightsReady(false);
-      setShowTrend(false);
+      if (!background) {
+        setStatus("Nenhum relatório salvo no período selecionado.");
+        setOverview(null);
+        setInsights([]);
+        setReport(null);
+        setFailures([]);
+        setRawOutput("Sem relatórios no período.");
+        setInsightsReady(false);
+        setShowTrend(false);
+      }
       return;
     }
 
@@ -162,14 +166,16 @@ export function useDashboardController(options?: { enabled?: boolean; syncNavOnS
     if (loadedPeriodDatesRef.current === periodKey) return;
 
     isLoadingPeriodRef.current = true;
-    setStatus(`Agregando dados de ${datesInRange.length} dia(s)...`);
-    setOverview(null);
-    setInsights([]);
-    setReport(null);
-    setFailures([]);
-    setRawOutput("Carregando dados do período...");
-    setInsightsReady(false);
-    setShowTrend(false);
+    if (!background) {
+      setStatus(`Agregando dados de ${datesInRange.length} dia(s)...`);
+      setOverview(null);
+      setInsights([]);
+      setReport(null);
+      setFailures([]);
+      setRawOutput("Carregando dados do período...");
+      setInsightsReady(false);
+      setShowTrend(false);
+    }
 
     try {
       const promises = datesInRange.map((d) =>
@@ -181,7 +187,9 @@ export function useDashboardController(options?: { enabled?: boolean; syncNavOnS
       const results = (await Promise.all(promises)).filter((r): r is DashboardRunSnapshot => r !== null);
 
       if (results.length === 0) {
-        setStatus("Nenhum relatório carregado no período.");
+        if (!background) {
+          setStatus("Nenhum relatório carregado no período.");
+        }
         isLoadingPeriodRef.current = false;
         return;
       }
@@ -202,19 +210,82 @@ export function useDashboardController(options?: { enabled?: boolean; syncNavOnS
       setInsightsReady(true);
       setShowTrend(true);
       setLastRunAt(new Date().toISOString());
-      setStatus(`Período agregado: ${datesInRange.length} dia(s), ${aggregated.insights.length} contato(s), ${aggregated.overview.overview.critical_insights_count} crítico(s).`);
+      setStatus(
+        background
+          ? `Período atualizado automaticamente: ${datesInRange.length} dia(s), ${aggregated.insights.length} contato(s), ${aggregated.overview.overview.critical_insights_count} crítico(s).`
+          : `Período agregado: ${datesInRange.length} dia(s), ${aggregated.insights.length} contato(s), ${aggregated.overview.overview.critical_insights_count} crítico(s).`,
+      );
     } catch (err) {
       loadedPeriodDatesRef.current = null;
+      if (!background) {
+        setOverview(null);
+        setInsights([]);
+        setReport(null);
+        setFailures([]);
+        setRawOutput("Erro ao agregar período.");
+        setInsightsReady(false);
+        setShowTrend(false);
+        setStatus(`Erro ao carregar período: ${err instanceof Error ? err.message : "Erro desconhecido"}`);
+      }
+    } finally {
+      isLoadingPeriodRef.current = false;
+    }
+  }
+
+  async function loadSavedDateReport(targetDate: string, options?: { background?: boolean }) {
+    const background = options?.background ?? false;
+
+    if (!background) {
       setOverview(null);
       setInsights([]);
       setReport(null);
       setFailures([]);
-      setRawOutput("Erro ao agregar período.");
+      setRawOutput("Carregando relatÃ³rio salvo da data selecionada...");
       setInsightsReady(false);
       setShowTrend(false);
-      setStatus(`Erro ao carregar período: ${err instanceof Error ? err.message : "Erro desconhecido"}`);
+      setIsLoadingDateReport(true);
+      setStatus(`Carregando relatÃ³rio salvo de ${targetDate}...`);
+    }
+
+    try {
+      const payload = await apiGet<ReportByDateResponse>(`/api/report-day/by-date?date=${encodeURIComponent(targetDate)}`);
+      if (!payload?.run) {
+        throw new Error("Nenhum relatÃ³rio salvo encontrado para a data selecionada.");
+      }
+
+      const snapshot = mapRunToDashboardSnapshot(payload.run);
+      setOverview(snapshot.overview);
+      setInsights(snapshot.insights);
+      setReport(snapshot.report);
+      setFailures([]);
+      setRawOutput(snapshot.rawOutput || "RelatÃ³rio salvo sem conteÃºdo markdown.");
+      setInsightsReady(true);
+      setShowTrend(true);
+      setLastRunAt(payload.run.started_at || new Date().toISOString());
+      setStatus(background ? `Dados atualizados automaticamente para ${targetDate}.` : `Dados carregados para ${targetDate}.`);
+      missingReportDatesRef.current.delete(targetDate);
+      setAvailableReportDates((current) => (current.includes(targetDate) ? current : [targetDate, ...current]));
+      return snapshot;
+    } catch {
+      if (!background) {
+        missingReportDatesRef.current.add(targetDate);
+        setOverview(null);
+        setInsights([]);
+        setReport(null);
+        setFailures([]);
+        setRawOutput("Sem relatÃ³rio salvo para essa data. VocÃª pode gerar um novo overview.");
+        setInsightsReady(false);
+        setShowTrend(false);
+        setStatus(`NÃ£o encontramos relatÃ³rio salvo para ${targetDate}.`);
+        setAvailableReportDates((current) =>
+          current.includes(targetDate) ? current.filter((item) => item !== targetDate) : current,
+        );
+      }
+      return null;
     } finally {
-      isLoadingPeriodRef.current = false;
+      if (!background) {
+        setIsLoadingDateReport(false);
+      }
     }
   }
 
@@ -274,52 +345,6 @@ export function useDashboardController(options?: { enabled?: boolean; syncNavOnS
       .then((data) => setApiConfig(data))
       .catch(() => setApiConfig(null));
   }, [enabled]);
-
-  useEffect(() => {
-    if (!enabled) return;
-    apiGet<ReportHistoryResponse>("/api/report-day/history?limit=8")
-      .then((data) => {
-        const items = Array.isArray(data?.items) ? data.items : [];
-        setReportHistory(items);
-        setLastRunAt((current) => current || items[0]?.started_at || current);
-      })
-      .catch(() => setReportHistory([]));
-  }, [enabled]);
-
-  useEffect(() => {
-    if (!enabled) return;
-    apiGet<AvailableDatesResponse>("/api/report-day/available-dates?limit=1000")
-      .then((data) => {
-        const dates = Array.isArray(data?.dates) ? data.dates : [];
-        setAvailableReportDates(dates);
-        missingReportDatesRef.current = new Set(
-          [...missingReportDatesRef.current].filter((item) => !dates.includes(item)),
-        );
-        setHasLoadedAvailableDates(true);
-    if (
-      periodPreset === "week" ||
-      periodPreset === "month" ||
-      periodPreset === "year" ||
-      periodPreset === "total"
-    ) {
-      loadedPeriodDatesRef.current = null;
-      loadPeriodData(periodPreset, dates);
-    }
-      })
-      .catch(() => {
-        setAvailableReportDates([]);
-        setHasLoadedAvailableDates(true);
-        if (
-          periodPreset === "week" ||
-          periodPreset === "month" ||
-          periodPreset === "year" ||
-          periodPreset === "total"
-        ) {
-          loadedPeriodDatesRef.current = null;
-          loadPeriodData(periodPreset, []);
-        }
-      });
-  }, [enabled, periodPreset]);
 
   useEffect(() => {
     activeNavRef.current = activeNav;
@@ -382,7 +407,7 @@ export function useDashboardController(options?: { enabled?: boolean; syncNavOnS
     if (!hasLoadedAvailableDates) return;
     if (isPeriodMode) return;
 
-    const clearLoadedReportView = (message: string) => {
+    if (missingReportDatesRef.current.has(date)) {
       setOverview(null);
       setInsights([]);
       setReport(null);
@@ -390,57 +415,75 @@ export function useDashboardController(options?: { enabled?: boolean; syncNavOnS
       setRawOutput("Sem relatório salvo para essa data. Você pode gerar um novo overview.");
       setInsightsReady(false);
       setShowTrend(false);
-      setStatus(message);
-    };
-
-    if (missingReportDatesRef.current.has(date)) {
-      clearLoadedReportView(`Não encontramos relatório salvo para ${date}.`);
+      setStatus(`Não encontramos relatório salvo para ${date}.`);
       return;
     }
 
     if (lastLoadedDateRef.current === date) return;
+    lastLoadedDateRef.current = date;
+    void loadSavedDateReport(date);
+  }, [date, enabled, hasLoadedAvailableDates, isDateHydrated, isRunningOverview, isPeriodMode]);
+
+  useEffect(() => {
+    if (!enabled) return;
 
     let cancelled = false;
-    lastLoadedDateRef.current = date;
-    setOverview(null);
-    setInsights([]);
-    setReport(null);
-    setFailures([]);
-    setRawOutput("Carregando relatório salvo da data selecionada...");
-    setInsightsReady(false);
-    setShowTrend(false);
-    setIsLoadingDateReport(true);
-    setStatus(`Carregando relatório salvo de ${date}...`);
-    apiGet<ReportByDateResponse>(`/api/report-day/by-date?date=${encodeURIComponent(date)}`)
-      .then((payload) => {
-        if (cancelled || !payload?.run) return;
-        const snapshot = mapRunToDashboardSnapshot(payload.run);
-        setOverview(snapshot.overview);
-        setInsights(snapshot.insights);
-        setReport(snapshot.report);
-        setFailures([]);
-        setRawOutput(snapshot.rawOutput || "Relatório salvo sem conteúdo markdown.");
-        setInsightsReady(true);
-        setShowTrend(true);
-        setLastRunAt(payload.run.started_at || new Date().toISOString());
-        setStatus(`Dados atualizados automaticamente para ${date}.`);
-        setAvailableReportDates((current) => (current.includes(date) ? current : [date, ...current]));
-      })
-      .catch(() => {
+    const intervalMs = 60_000;
+
+    const syncLatestReport = async () => {
+      if (cancelled) return;
+      if (isRunningOverview || isBusy || isLoadingDateReport || isLoadingPeriodRef.current) return;
+
+      try {
+        const history = await apiGet<ReportHistoryResponse>("/api/report-day/history?limit=8");
         if (cancelled) return;
-        missingReportDatesRef.current.add(date);
-        clearLoadedReportView(`Não encontramos relatório salvo para ${date}.`);
-        setAvailableReportDates((current) => (current.includes(date) ? current.filter((item) => item !== date) : current));
-      })
-      .finally(() => {
+
+        const items = Array.isArray(history?.items) ? history.items : [];
+        const latest = items[0] || null;
+        if (!latest?.id) return;
+
+        if (latestHistoryRunIdRef.current === latest.id) return;
+        latestHistoryRunIdRef.current = latest.id;
+
+        setReportHistory(items);
+        setLastRunAt(latest.started_at || latest.finished_at || new Date().toISOString());
+
+        const datesResponse = await apiGet<AvailableDatesResponse>("/api/report-day/available-dates?limit=1000");
         if (cancelled) return;
-        setIsLoadingDateReport(false);
-      });
+
+        const dates = Array.isArray(datesResponse?.dates) ? datesResponse.dates : [];
+        setAvailableReportDates(dates);
+        missingReportDatesRef.current = new Set(
+          [...missingReportDatesRef.current].filter((item) => !dates.includes(item)),
+        );
+        setHasLoadedAvailableDates(true);
+
+        if (isPeriodMode) {
+          loadedPeriodDatesRef.current = null;
+          void loadPeriodData(periodPreset, dates, { background: true });
+          return;
+        }
+
+        if (String(latest.date_ref || "").trim() === date) {
+          lastLoadedDateRef.current = null;
+          void loadSavedDateReport(date, { background: true });
+        }
+      } catch {
+        // refresh silencioso
+      }
+    };
+
+    const timer = window.setInterval(() => {
+      void syncLatestReport();
+    }, intervalMs);
+
+    void syncLatestReport();
 
     return () => {
       cancelled = true;
+      window.clearInterval(timer);
     };
-  }, [availableReportDates, date, enabled, hasLoadedAvailableDates, isDateHydrated, isRunningOverview, isPeriodMode]);
+  }, [date, enabled, isBusy, isLoadingDateReport, isPeriodMode, isRunningOverview, periodPreset]);
 
   const informationalInsights = useMemo(() => {
     return buildInformationalInsights(report, insights);
@@ -787,7 +830,11 @@ export function useDashboardController(options?: { enabled?: boolean; syncNavOnS
       setRunProgress(100);
       setCurrentRunId(null);
       apiGet<ReportHistoryResponse>("/api/report-day/history?limit=8")
-        .then((data) => setReportHistory(Array.isArray(data?.items) ? data.items : []))
+        .then((data) => {
+          const items = Array.isArray(data?.items) ? data.items : [];
+          setReportHistory(items);
+          latestHistoryRunIdRef.current = items[0]?.id || latestHistoryRunIdRef.current;
+        })
         .catch(() => undefined);
       apiGet<AvailableDatesResponse>("/api/report-day/available-dates?limit=1000")
         .then((data) => {
@@ -902,6 +949,8 @@ export function useDashboardController(options?: { enabled?: boolean; syncNavOnS
     focusReportByContact,
   };
 }
+
+
 
 
 
