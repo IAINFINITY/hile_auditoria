@@ -5,6 +5,7 @@ import {
   appendRunEvent,
   createRunRecord,
   getSyncCheckpoint,
+  getRunningRunByDate,
   markRunFailed,
   persistCompletedRun,
 } from "@/lib/server/audit/auditPersistence";
@@ -30,7 +31,7 @@ function isCronAuthorized(request: Request): boolean {
   return providedSecret.length > 0 && providedSecret === expectedSecret;
 }
 
-export async function GET(request: Request) {
+async function handleAutoSync(request: Request) {
   try {
     if (!isCronAuthorized(request)) {
       return NextResponse.json(
@@ -83,7 +84,29 @@ export async function GET(request: Request) {
     }
 
     const startedAt = new Date().toISOString();
-    const runId = await createRunRecord({ config, date, startedAtIso: startedAt });
+    let runId: string;
+    try {
+      runId = await createRunRecord({ config, date, startedAtIso: startedAt });
+    } catch (error: unknown) {
+      const code = (error as { code?: string } | null)?.code;
+      if (code === "RUN_ALREADY_IN_PROGRESS") {
+        const runningDbRun = await getRunningRunByDate(date);
+        return NextResponse.json(
+          {
+            ok: true,
+            already_running: true,
+            job_id: runningDbRun?.id ? `db:${runningDbRun.id}` : null,
+            db_run_id: runningDbRun?.id || null,
+            status: "running",
+            date,
+            mode: "auto_sync",
+            message: "Existe uma sincronização em andamento para esta data.",
+          },
+          { status: 202 },
+        );
+      }
+      throw error;
+    }
 
     after(async () => {
       try {
@@ -136,4 +159,12 @@ export async function GET(request: Request) {
     const message = error instanceof Error ? error.message : "Falha ao iniciar a sincronização automática.";
     return NextResponse.json({ error: "auto_sync_failed", message }, { status: 400 });
   }
+}
+
+export async function GET(request: Request) {
+  return handleAutoSync(request);
+}
+
+export async function POST(request: Request) {
+  return handleAutoSync(request);
 }
