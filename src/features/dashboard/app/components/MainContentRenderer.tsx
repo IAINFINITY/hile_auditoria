@@ -101,6 +101,7 @@ export function MainContentRenderer({
           selectedDateHasSavedReport={controller.selectedDateHasSavedReport}
           clientAvgResponseMinutes={controller.clientAvgResponseMinutes}
           clientPeakHourLabel={controller.clientPeakHourLabel}
+          currentStatus={controller.status}
         />
 
         <GapsSection

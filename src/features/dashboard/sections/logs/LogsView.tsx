@@ -44,6 +44,14 @@ function riskLabel(value: "critical" | "non_critical" | null | undefined): strin
   return value === "critical" ? "Crítico" : "Não crítico";
 }
 
+function reportDateLabel(run: ReportHistoryItem): string {
+  const reportDate = String(run.report_date || "").trim();
+  if (reportDate) return reportDate;
+  const reportJsonDate = String(run.report_json?.date || "").trim();
+  if (reportJsonDate) return reportJsonDate;
+  return String(run.date_ref || "").trim() || "-";
+}
+
 export function LogsView({
   systemCheck,
   reportHistory,
@@ -202,8 +210,16 @@ export function LogsView({
                           </button>
                         ) : null}
                       </div>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 12, fontSize: "var(--fs-tiny)", color: "var(--muted)" }}>
+                        <span>
+                          <strong>Executado em:</strong> {fmtBr(run.started_at)}
+                        </span>
+                        <span>
+                          <strong>Relatório para:</strong> {reportDateLabel(run)}
+                        </span>
+                      </div>
                       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "2px 16px", fontSize: "var(--fs-tiny)", color: "var(--muted)" }}>
-                        <span>Início: {fmtBr(run.started_at)}</span>
+                        <span>Início da execução: {fmtBr(run.started_at)}</span>
                         <span>Término: {fmtBr(run.finished_at)}</span>
                         <span>Duração: {durationSec(run.started_at, run.finished_at)}</span>
                         <span>

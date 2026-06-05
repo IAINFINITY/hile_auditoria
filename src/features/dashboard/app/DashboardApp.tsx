@@ -77,7 +77,9 @@ export function DashboardApp() {
   const [loginError, setLoginError] = useState("");
   const [showForgotPasswordModal, setShowForgotPasswordModal] = useState(false);
   const [showLogoutConfirmModal, setShowLogoutConfirmModal] = useState(false);
-  const [showRunWarningModal, setShowRunWarningModal] = useState(false);
+  const [dismissedRunWarningId, setDismissedRunWarningId] = useState<string | null>(null);
+  const [dismissedRunFailureStatus, setDismissedRunFailureStatus] = useState("");
+  const [runFailureMessage, setRunFailureMessage] = useState("");
   const [activeSubNavKey, setActiveSubNavKey] = useState<string>("inicio");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     if (typeof window === "undefined") return false;
@@ -112,7 +114,6 @@ export function DashboardApp() {
     enabled: stage === "app",
     syncNavOnScroll: stage === "app" && effectiveActiveView === "dashboard",
   });
-
   const notifyPrefs = useMemo(() => {
     const userKey = normalizeEmail(currentUser?.email || "");
     const reportScopedKey = userKey ? `hile_settings_notify_report:${userKey}` : null;
@@ -169,6 +170,17 @@ export function DashboardApp() {
     }
     return bestRun?.id || null;
   }, [clientsSnapshotDate, controller.reportHistory]);
+
+  const runStatusText = String(controller.status || "").trim();
+  const normalizedRunStatus = runStatusText.toLowerCase();
+  const isRunFailure =
+    !controller.isRunningOverview &&
+    (normalizedRunStatus.startsWith("erro:") ||
+      normalizedRunStatus.includes("relatório falhou") ||
+      normalizedRunStatus.includes("relatorio falhou") ||
+      normalizedRunStatus.includes("falhou"));
+  const shouldShowRunWarningModal = controller.isRunningOverview && dismissedRunWarningId !== controller.currentRunId;
+  const shouldShowRunFailureModal = isRunFailure && dismissedRunFailureStatus !== runStatusText;
 
   const sessionIdleTimeoutMs = useMemo(() => {
     const minutes = Number(process.env.NEXT_PUBLIC_SESSION_TIMEOUT_MINUTES || 30);
@@ -559,7 +571,9 @@ export function DashboardApp() {
 
   async function handleConfirmRun() {
     setShowConfirmModal(false);
-    setShowRunWarningModal(true);
+    setDismissedRunWarningId(null);
+    setDismissedRunFailureStatus("");
+    setRunFailureMessage("");
     await controller.executeOverview();
   }
 
@@ -726,15 +740,19 @@ export function DashboardApp() {
 
       <AppModals
         showConfirmModal={showConfirmModal}
-        showRunWarningModal={showRunWarningModal}
+        showRunWarningModal={shouldShowRunWarningModal}
+        showRunFailureModal={shouldShowRunFailureModal}
         showLogoutConfirmModal={showLogoutConfirmModal}
         isDashboardView={effectiveActiveView === "dashboard"}
         selectedDateHasSavedReport={controller.selectedDateHasSavedReport}
+        runFailureMessage={runFailureMessage || runStatusText}
         onCancelConfirmRun={() => setShowConfirmModal(false)}
         onConfirmRun={() => void handleConfirmRun()}
-        onCloseRunWarning={() => setShowRunWarningModal(false)}
+        onCloseRunWarning={() => setDismissedRunWarningId(controller.currentRunId || "running")}
+        onCloseRunFailure={() => setDismissedRunFailureStatus(runStatusText)}
         onCancelLogout={() => setShowLogoutConfirmModal(false)}
         onConfirmLogout={() => void handleLogout()}
+        onOpenLogs={() => openViewAndScrollTop("logs")}
       />
     </div>
   );

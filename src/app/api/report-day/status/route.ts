@@ -104,6 +104,7 @@ export async function GET(request: Request) {
       job_id: jobId || `db:${runId}`,
       db_run_id: runId,
       date: snapshot.run.date_ref,
+      report_date: snapshot.run.report_date || snapshot.run.date_ref,
       status,
       started_at: snapshot.run.started_at,
       updated_at: snapshot.run.last_event_at || snapshot.run.finished_at || snapshot.run.started_at,

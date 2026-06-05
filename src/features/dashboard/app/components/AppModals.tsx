@@ -1,27 +1,35 @@
 interface AppModalsProps {
   showConfirmModal: boolean;
   showRunWarningModal: boolean;
+  showRunFailureModal: boolean;
   showLogoutConfirmModal: boolean;
   isDashboardView: boolean;
   selectedDateHasSavedReport: boolean;
+  runFailureMessage: string;
   onCancelConfirmRun: () => void;
   onConfirmRun: () => void;
   onCloseRunWarning: () => void;
+  onCloseRunFailure: () => void;
   onCancelLogout: () => void;
   onConfirmLogout: () => void;
+  onOpenLogs: () => void;
 }
 
 export function AppModals({
   showConfirmModal,
   showRunWarningModal,
+  showRunFailureModal,
   showLogoutConfirmModal,
   isDashboardView,
   selectedDateHasSavedReport,
+  runFailureMessage,
   onCancelConfirmRun,
   onConfirmRun,
   onCloseRunWarning,
+  onCloseRunFailure,
   onCancelLogout,
   onConfirmLogout,
+  onOpenLogs,
 }: AppModalsProps) {
   return (
     <>
@@ -63,6 +71,24 @@ export function AppModals({
         </div>
       ) : null}
 
+      {showRunFailureModal ? (
+        <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="runFailureTitle">
+          <div className="modal-card">
+            <h3 id="runFailureTitle">Execução interrompida</h3>
+            <p>A execução terminou com erro ou foi interrompida antes da finalização completa.</p>
+            {runFailureMessage ? <p style={{ color: "var(--critical)" }}>{runFailureMessage}</p> : null}
+            <div className="modal-actions">
+              <button className="btn btn-sm" onClick={onCloseRunFailure}>
+                Fechar
+              </button>
+              <button className="btn btn-primary btn-sm" onClick={onOpenLogs}>
+                Ver logs
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {showLogoutConfirmModal ? (
         <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="confirmLogoutTitle">
           <div className="modal-card">
@@ -82,4 +108,3 @@ export function AppModals({
     </>
   );
 }
-

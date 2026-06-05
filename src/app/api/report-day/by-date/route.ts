@@ -40,6 +40,7 @@ export async function GET(request: Request) {
           id: latest.id,
           status: latest.status,
           date_ref: date,
+          report_date: date,
           started_at: latest.started_at,
           finished_at: latest.finished_at,
           total_conversations: aggregated.overview.overview.conversations_scanned,

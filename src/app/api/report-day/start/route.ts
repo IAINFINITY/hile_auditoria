@@ -243,15 +243,16 @@ export async function POST(request: Request) {
     });
 
     return NextResponse.json(
-      {
-        ok: true,
-        job_id: jobId,
-        db_run_id: initialJob.db_run_id || null,
-        status: "running",
-        date,
-        has_previous_report: Boolean(previousRun),
-        previous_run_id: previousRun?.id || null,
-      },
+        {
+          ok: true,
+          job_id: jobId,
+          db_run_id: initialJob.db_run_id || null,
+          status: "running",
+          date,
+          report_date: date,
+          has_previous_report: Boolean(previousRun),
+          previous_run_id: previousRun?.id || null,
+        },
       { status: 202 },
     );
   } catch (error: unknown) {

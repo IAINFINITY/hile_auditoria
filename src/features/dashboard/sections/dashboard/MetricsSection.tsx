@@ -22,6 +22,7 @@ interface MetricsSectionProps {
   selectedDateHasSavedReport: boolean;
   clientAvgResponseMinutes: string;
   clientPeakHourLabel: string;
+  currentStatus: string;
 }
 
 const PRESETS: Array<{ key: PeriodPreset; label: string }> = [
@@ -103,6 +104,7 @@ export function MetricsSection({
   selectedDateHasSavedReport,
   clientAvgResponseMinutes,
   clientPeakHourLabel,
+  currentStatus,
 }: MetricsSectionProps) {
   const summary = overview?.overview;
   const hasOverviewData = Boolean(summary);
@@ -150,6 +152,26 @@ export function MetricsSection({
   const isAggregateMode =
     periodPreset === "week" || periodPreset === "month" || periodPreset === "year" || periodPreset === "total";
   const isCustomDay = !isAggregateMode && relativePreset === null;
+  const statusText = currentStatus.trim();
+  const normalizedStatus = statusText.toLowerCase();
+  const executionNoticeStyle =
+    normalizedStatus.includes("falhou") || normalizedStatus.includes("erro")
+      ? {
+          borderColor: "var(--critical)",
+          background: "rgba(244, 67, 54, 0.06)",
+          color: "var(--critical)",
+        }
+      : normalizedStatus.includes("conclu")
+        ? {
+            borderColor: "var(--low)",
+            background: "rgba(46, 125, 50, 0.06)",
+            color: "var(--low)",
+          }
+        : {
+            borderColor: "var(--line)",
+            background: "rgba(17, 99, 202, 0.04)",
+            color: "var(--navy)",
+          };
 
   return (
     <div className="section reveal" id="inicio">
@@ -246,13 +268,20 @@ export function MetricsSection({
                     </div>
                   </div>
                 ) : (
-                  <div className="orq-hint-box">
-                    Se quiser acompanhar o processo detalhado da execução, abra a seção{" "}
-                    <button type="button" className="link-btn" onClick={onOpenLogs}>
-                      Logs
-                    </button>
-                    .
-                  </div>
+                  <>
+                    {statusText ? (
+                      <div className="orq-hint-box" style={executionNoticeStyle}>
+                        <strong>Última execução:</strong> {statusText}
+                      </div>
+                    ) : null}
+                    <div className="orq-hint-box">
+                      Se quiser acompanhar o processo detalhado da execução, abra a seção{" "}
+                      <button type="button" className="link-btn" onClick={onOpenLogs}>
+                        Logs
+                      </button>
+                      .
+                    </div>
+                  </>
                 )}
               </div>
             </div>

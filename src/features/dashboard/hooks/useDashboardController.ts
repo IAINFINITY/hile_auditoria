@@ -100,6 +100,8 @@ export function useDashboardController(options?: { enabled?: boolean; syncNavOnS
   const lastLoadedDateRef = useRef<string | null>(null);
   const latestHistoryRunIdRef = useRef<string | null>(null);
   const missingReportDatesRef = useRef<Set<string>>(new Set());
+  const initialReportDateResolvedRef = useRef<boolean>(false);
+  const userSelectedDateRef = useRef<boolean>(false);
   const isBusy = loading !== null;
   const isRunningOverview = loading === "overview";
   const insightsPageSize = clampInsightsPageSize();
@@ -108,6 +110,7 @@ export function useDashboardController(options?: { enabled?: boolean; syncNavOnS
     const normalized = normalizeDateInput(value, maxDate);
     const safe = clampDateInput(normalized, minDate, maxDate);
     if (safe > maxDate) return;
+    userSelectedDateRef.current = true;
     if (
       periodPreset === "week" ||
       periodPreset === "month" ||
@@ -426,6 +429,28 @@ export function useDashboardController(options?: { enabled?: boolean; syncNavOnS
 
   useEffect(() => {
     if (!enabled) return;
+    if (!isDateHydrated) return;
+    if (!hasLoadedAvailableDates) return;
+    if (isRunningOverview) return;
+    if (isPeriodMode) return;
+    if (initialReportDateResolvedRef.current) return;
+
+    const latestAvailableDate = availableReportDates[0] || null;
+    if (!latestAvailableDate) {
+      initialReportDateResolvedRef.current = true;
+      return;
+    }
+
+    if (!userSelectedDateRef.current && latestAvailableDate !== date) {
+      lastLoadedDateRef.current = null;
+      setDateState(latestAvailableDate);
+    }
+
+    initialReportDateResolvedRef.current = true;
+  }, [availableReportDates, date, enabled, hasLoadedAvailableDates, isDateHydrated, isPeriodMode, isRunningOverview]);
+
+  useEffect(() => {
+    if (!enabled) return;
 
     let cancelled = false;
     const intervalMs = 60_000;
@@ -461,6 +486,18 @@ export function useDashboardController(options?: { enabled?: boolean; syncNavOnS
         if (isPeriodMode) {
           loadedPeriodDatesRef.current = null;
           void loadPeriodData(periodPreset, dates, { background: true });
+          return;
+        }
+
+        const latestAvailableDate = dates[0] || null;
+        if (
+          latestAvailableDate &&
+          !userSelectedDateRef.current &&
+          latestAvailableDate !== date &&
+          !isRunningOverview
+        ) {
+          lastLoadedDateRef.current = null;
+          setDateState(latestAvailableDate);
           return;
         }
 

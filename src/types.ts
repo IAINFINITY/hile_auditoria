@@ -248,6 +248,7 @@ export interface ReportJobStartResponse {
   db_run_id?: string | null;
   status: "running";
   date: string;
+  report_date?: string;
   has_previous_report?: boolean;
   previous_run_id?: string | null;
 }
@@ -256,6 +257,7 @@ export interface ReportJobStatusResponse {
   job_id: string;
   db_run_id?: string | null;
   date: string;
+  report_date?: string;
   status: "running" | "completed" | "failed";
   started_at: string;
   updated_at: string;
@@ -291,6 +293,7 @@ export interface ReportRunResponse {
     id: string;
     status: "running" | "completed" | "failed";
     date_ref: string;
+    report_date?: string;
     started_at: string;
     finished_at: string | null;
     total_conversations: number;
@@ -306,6 +309,7 @@ export interface ReportHistoryItem {
   id: string;
   status: "running" | "completed" | "failed";
   date_ref: string;
+  report_date?: string;
   started_at: string;
   finished_at: string | null;
   total_conversations: number;

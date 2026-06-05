@@ -1357,8 +1357,54 @@ export async function markRunFailed(runId: string, finishedAtIso: string, messag
   }
 }
 
+function getRunningStaleMinutes(): number {
+  const raw = Number(process.env.REPORT_JOB_RUNNING_STALE_MINUTES || process.env.ANALYSIS_RUNNING_STALE_MINUTES || 30);
+  if (!Number.isFinite(raw)) return 30;
+  return Math.min(240, Math.max(5, Math.floor(raw)));
+}
+
+async function cleanupStaleRunningRuns(where: {
+  tenantId?: string;
+  channelId?: string;
+  dateRef?: Date;
+} = {}) {
+  const staleMinutes = getRunningStaleMinutes();
+  const staleBefore = new Date(Date.now() - staleMinutes * 60 * 1000);
+
+  const rows = await prisma.analysisRun.findMany({
+    where: {
+      status: RunStatus.running,
+      finishedAt: null,
+      ...(where.tenantId ? { tenantId: where.tenantId } : {}),
+      ...(where.channelId ? { channelId: where.channelId } : {}),
+      ...(where.dateRef ? { dateRef: where.dateRef } : {}),
+    },
+    select: {
+      id: true,
+      startedAt: true,
+      events: {
+        orderBy: { createdAt: "desc" },
+        take: 1,
+        select: { createdAt: true },
+      },
+    },
+  });
+
+  for (const run of rows) {
+    const heartbeat = run.events?.[0]?.createdAt || run.startedAt;
+    if (!(heartbeat instanceof Date) || Number.isNaN(heartbeat.getTime())) continue;
+    if (heartbeat >= staleBefore) continue;
+    await markRunFailed(
+      run.id,
+      new Date().toISOString(),
+      `Execução marcada como falha por inatividade superior a ${staleMinutes} minuto(s).`,
+    );
+  }
+}
+
 export async function listRecentRuns(limit: number) {
   const safeLimit = Math.max(1, Math.min(50, Number(limit || 10)));
+  await cleanupStaleRunningRuns();
   const rows = await prisma.analysisRun.findMany({
     where: {
       status: RunStatus.completed,
@@ -1383,6 +1429,7 @@ export async function listRecentRuns(limit: number) {
         id: row.id,
         status: row.status,
         date_ref: row.dateRef.toISOString().slice(0, 10),
+        report_date: row.dateRef.toISOString().slice(0, 10),
         started_at: row.startedAt.toISOString(),
         finished_at: row.finishedAt ? row.finishedAt.toISOString() : null,
         total_conversations: row.totalConversations,
@@ -1417,6 +1464,7 @@ export async function getRunSnapshot(runId: string) {
       id: run.id,
       status: run.status,
       date_ref: run.dateRef.toISOString().slice(0, 10),
+      report_date: run.dateRef.toISOString().slice(0, 10),
       started_at: run.startedAt.toISOString(),
       finished_at: run.finishedAt ? run.finishedAt.toISOString() : null,
       last_event_at: run.events?.[0]?.createdAt ? run.events[0].createdAt.toISOString() : null,
@@ -1473,6 +1521,7 @@ export async function getCurrentContactFromRunEvents(runId: string): Promise<{
 }
 
 export async function listAvailableReportDates(limit = 365) {
+  await cleanupStaleRunningRuns();
   const rows = await prisma.analysisRun.findMany({
     where: {
       status: RunStatus.completed,
@@ -1507,6 +1556,7 @@ export async function listAvailableReportDates(limit = 365) {
 }
 
 export async function getLatestRunByDate(date: string) {
+  await cleanupStaleRunningRuns({ dateRef: toDateRef(date) });
   const runs = await prisma.analysisRun.findMany({
     where: {
       dateRef: toDateRef(date),
@@ -1535,6 +1585,7 @@ export async function getLatestRunByDate(date: string) {
     id: run.id,
     status: run.status,
     date_ref: run.dateRef.toISOString().slice(0, 10),
+    report_date: run.dateRef.toISOString().slice(0, 10),
     started_at: run.startedAt.toISOString(),
     finished_at: run.finishedAt ? run.finishedAt.toISOString() : null,
     total_conversations: run.totalConversations,
@@ -1550,6 +1601,7 @@ export async function getLatestRunByDate(date: string) {
 }
 
 export async function listRunsByDate(date: string) {
+  await cleanupStaleRunningRuns({ dateRef: toDateRef(date) });
   const rows = await prisma.analysisRun.findMany({
     where: {
       dateRef: toDateRef(date),
@@ -1574,6 +1626,7 @@ export async function listRunsByDate(date: string) {
         id: row.id,
         status: row.status,
         date_ref: row.dateRef.toISOString().slice(0, 10),
+        report_date: row.dateRef.toISOString().slice(0, 10),
         started_at: row.startedAt.toISOString(),
         finished_at: row.finishedAt ? row.finishedAt.toISOString() : null,
         total_conversations: row.totalConversations,
@@ -1589,6 +1642,7 @@ export async function listRunsByDate(date: string) {
 }
 
 export async function getRunningRunByDate(date: string) {
+  await cleanupStaleRunningRuns({ dateRef: toDateRef(date) });
   const run = await prisma.analysisRun.findFirst({
     where: {
       dateRef: toDateRef(date),
