@@ -2,7 +2,11 @@ import { NextResponse, type NextRequest } from "next/server";
 import { getAuthorizedUserContext } from "@/lib/auth/server";
 import { createProxySupabaseClient } from "@/lib/supabase/server";
 
-const PUBLIC_API_PATHS = new Set<string>(["/api/health", "/api/auth/health"]);
+const PUBLIC_API_PATHS = new Set<string>([
+  "/api/health",
+  "/api/auth/health",
+  "/api/report-day/auto-sync",
+]);
 
 function isPublicApiPath(pathname: string): boolean {
   return PUBLIC_API_PATHS.has(pathname);

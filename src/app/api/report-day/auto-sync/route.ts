@@ -1,13 +1,14 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
 import { buildDailyReport } from "@/lib/server/audit/auditService";
 import {
   appendRunEvent,
   createRunRecord,
-  getSyncCheckpoint,
   getRunningRunByDate,
+  getSyncCheckpoint,
   markRunFailed,
   persistCompletedRun,
+  updateRunProgress,
 } from "@/lib/server/audit/auditPersistence";
 import { resolveTenantAndChannel } from "@/lib/server/audit/persistence/helpers";
 import { getAppConfig, parseDateInput } from "@/lib/server/apiUtils";
@@ -15,6 +16,20 @@ import type { ReportPayload } from "@/types";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
+
+type ProgressEvent = {
+  type?: "contact_start" | "contact_done";
+  total?: number;
+  sequence?: number;
+  contact_name?: string;
+  contact_key?: string;
+  analysis_key?: string | null;
+  conversation_ids?: number[];
+  processed?: number;
+  success?: boolean;
+  error_message?: string;
+  error_code?: string | null;
+};
 
 function isCronAuthorized(request: Request): boolean {
   const cronHeader = String(request.headers.get("x-vercel-cron") || "").trim();
@@ -100,93 +115,108 @@ async function handleAutoSync(request: Request) {
       if (code === "RUN_ALREADY_IN_PROGRESS") {
         const runningDbRun = await getRunningRunByDate(date);
         return NextResponse.json(
-        {
-          ok: true,
-          already_running: true,
-          job_id: runningDbRun?.id ? `db:${runningDbRun.id}` : null,
-          db_run_id: runningDbRun?.id || null,
-          status: "running",
-          date,
-          report_date: date,
-          mode: "auto_sync",
-          message: "Existe uma sincronização em andamento para esta data.",
-        },
+          {
+            ok: true,
+            already_running: true,
+            job_id: runningDbRun?.id ? `db:${runningDbRun.id}` : null,
+            db_run_id: runningDbRun?.id || null,
+            status: "running",
+            date,
+            report_date: date,
+            mode: "auto_sync",
+            message: "Existe uma sincronização em andamento para esta data.",
+          },
           { status: 202 },
         );
       }
       throw error;
     }
 
-    try {
-      const output = await buildDailyReport({
-        config,
-        date,
-        mode: "reuse",
+    const fireAndForget = (promise: Promise<unknown>, label: string) => {
+      void promise.catch((error) => {
+        console.warn(`[report-day/auto-sync] async failure in ${label}:`, error);
       });
-      const reportOutput = output as ReportPayload;
+    };
 
-      const finishedAt = new Date().toISOString();
-      const result = {
-        ...reportOutput,
-        summary: {
-          ...reportOutput.summary,
-          execution_order_count: reportOutput.execution_order?.length || 0,
-        },
-      };
-
-      await persistCompletedRun({
-        runId,
-        config,
-        date,
-        finishedAtIso: finishedAt,
-        output: result as ReportPayload,
-      });
-      await appendRunEvent(runId, "run_completed", {
-        processed: result.summary.processed,
-        total: result.summary.total_to_process,
-        source: "cron",
-      });
-
-      return NextResponse.json(
-        {
-          ok: true,
-          job_id: runId,
-          status: "completed",
-          date,
-          report_date: date,
-          mode: "auto_sync",
-        },
-        { status: 200 },
-      );
-    } catch (error) {
-      const finishedAt = new Date().toISOString();
-      const message = error instanceof Error ? error.message : "Falha ao gerar sincronização automática.";
+    after(async () => {
       try {
-        await markRunFailed(runId, finishedAt, message);
-      } catch (markError) {
-        console.error("[report-day/auto-sync] falha ao marcar execução como failed:", markError);
-        await prisma.analysisRun.updateMany({
-          where: { id: runId },
-          data: {
-            status: "failed",
-            finishedAt: new Date(finishedAt),
+        const output = await buildDailyReport({
+          config,
+          date,
+          mode: "reuse",
+          onProgress: (event: ProgressEvent) => {
+            if (!event?.type) return;
+
+            if (event.type === "contact_start") {
+              fireAndForget(appendRunEvent(runId, "contact_start", event), "appendRunEvent(contact_start)");
+              return;
+            }
+
+            if (event.type === "contact_done") {
+              fireAndForget(appendRunEvent(runId, "contact_done", event), "appendRunEvent(contact_done)");
+              fireAndForget(
+                updateRunProgress(runId, {
+                  total: Number(event.total || 0),
+                  processed: Number(event.processed || 0),
+                }),
+                "updateRunProgress",
+              );
+            }
           },
         });
-      }
+        const reportOutput = output as ReportPayload;
 
-      return NextResponse.json(
-        {
-          ok: false,
-          job_id: runId,
-          status: "failed",
+        const finishedAt = new Date().toISOString();
+        const result = {
+          ...reportOutput,
+          summary: {
+            ...reportOutput.summary,
+            execution_order_count: reportOutput.execution_order?.length || 0,
+          },
+        };
+
+        await persistCompletedRun({
+          runId,
+          config,
           date,
-          report_date: date,
-          mode: "auto_sync",
-          message,
-        },
-        { status: 500 },
-      );
-    }
+          finishedAtIso: finishedAt,
+          output: result as ReportPayload,
+        });
+        await appendRunEvent(runId, "run_completed", {
+          processed: result.summary.processed,
+          total: result.summary.total_to_process,
+          source: "cron",
+          requested_date: date,
+        });
+      } catch (error) {
+        const finishedAt = new Date().toISOString();
+        const message = error instanceof Error ? error.message : "Falha ao gerar sincronização automática.";
+        try {
+          await markRunFailed(runId, finishedAt, message);
+        } catch (markError) {
+          console.error("[report-day/auto-sync] failed to mark run as failed:", markError);
+          await prisma.analysisRun.updateMany({
+            where: { id: runId },
+            data: {
+              status: "failed",
+              finishedAt: new Date(finishedAt),
+            },
+          });
+        }
+      }
+    });
+
+    return NextResponse.json(
+      {
+        ok: true,
+        job_id: runId,
+        status: "running",
+        date,
+        report_date: date,
+        mode: "auto_sync",
+      },
+      { status: 202 },
+    );
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Falha ao iniciar a sincronização automática.";
     return NextResponse.json({ error: "auto_sync_failed", message }, { status: 400 });
