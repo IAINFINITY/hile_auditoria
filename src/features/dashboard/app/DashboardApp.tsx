@@ -15,11 +15,44 @@ import { SplashScreen } from "./components/SplashScreen";
 import type { AppView, AuthStatusPayload } from "./types";
 import type { OwnerScope } from "@/features/dashboard/shared/types";
 
-export function DashboardApp() {
-  function normalizeEmail(value: string | null | undefined): string {
-    return String(value || "").trim().toLowerCase();
-  }
+function normalizeEmail(value: string | null | undefined): string {
+  return String(value || "").trim().toLowerCase();
+}
 
+function activityStorageKey(emailValue: string | null | undefined): string {
+  const normalized = normalizeEmail(emailValue);
+  return normalized ? `hile_last_activity:${normalized}` : "hile_last_activity";
+}
+
+function readLastActivity(emailValue: string | null | undefined): number | null {
+  try {
+    const raw = localStorage.getItem(activityStorageKey(emailValue));
+    if (!raw) return null;
+    const timestamp = Number(raw);
+    if (!Number.isFinite(timestamp) || timestamp <= 0) return null;
+    return timestamp;
+  } catch {
+    return null;
+  }
+}
+
+function writeLastActivity(emailValue: string | null | undefined, timestamp = Date.now()): void {
+  try {
+    localStorage.setItem(activityStorageKey(emailValue), String(timestamp));
+  } catch {
+    // noop
+  }
+}
+
+function clearLastActivity(emailValue: string | null | undefined): void {
+  try {
+    localStorage.removeItem(activityStorageKey(emailValue));
+  } catch {
+    // noop
+  }
+}
+
+export function DashboardApp() {
   const clearStaleAuthStorage = useCallback(() => {
     try {
       for (let i = localStorage.length - 1; i >= 0; i -= 1) {
@@ -273,8 +306,24 @@ export function DashboardApp() {
           return;
         }
 
+        const lastActivityAt = readLastActivity(status.user.email);
+        if (lastActivityAt && Date.now() - lastActivityAt > sessionIdleTimeoutMs) {
+          clearLastActivity(status.user.email);
+          try {
+            await supabaseBrowser.auth.signOut();
+          } catch {
+            // noop
+          }
+          if (!cancelled) {
+            setLoginError("SessÃ£o encerrada por inatividade. Entre novamente para continuar.");
+            setStage("login");
+          }
+          return;
+        }
+
         if (!cancelled) {
           const meta = session.user?.user_metadata || {};
+          writeLastActivity(status.user.email);
           setCurrentUser({
             name: meta.name || toPrettyName(status.user.email),
             email: status.user.email || "usuario@hile.com.br",
@@ -290,7 +339,7 @@ export function DashboardApp() {
       if (splashTimer) window.clearTimeout(splashTimer);
       window.clearTimeout(timer);
     };
-  }, [clearStaleAuthStorage]);
+  }, [clearStaleAuthStorage, sessionIdleTimeoutMs]);
 
   useEffect(() => {
     try {
@@ -416,10 +465,12 @@ export function DashboardApp() {
     if (stage !== "app") return;
     let timer: number | null = null;
     let didLogout = false;
+    const currentEmail = currentUser?.email || null;
 
     const forceLogoutByInactivity = async () => {
       if (didLogout) return;
       didLogout = true;
+      clearLastActivity(currentEmail);
       await supabaseBrowser.auth.signOut();
       setCurrentUser(null);
       setStage("login");
@@ -434,6 +485,7 @@ export function DashboardApp() {
     };
 
     const resetIdleTimer = () => {
+      writeLastActivity(currentEmail);
       if (timer) window.clearTimeout(timer);
       timer = window.setTimeout(() => void forceLogoutByInactivity(), sessionIdleTimeoutMs);
     };
@@ -446,7 +498,7 @@ export function DashboardApp() {
       if (timer) window.clearTimeout(timer);
       for (const eventName of events) window.removeEventListener(eventName, resetIdleTimer);
     };
-  }, [sessionIdleTimeoutMs, stage]);
+  }, [currentUser?.email, sessionIdleTimeoutMs, stage]);
 
   function scrollToAnchoredSection(sectionId: string) {
     const target = document.getElementById(sectionId);
@@ -607,6 +659,7 @@ export function DashboardApp() {
       if (rememberMe) localStorage.setItem("hile_remember", "true");
       else localStorage.removeItem("hile_remember");
       sessionStorage.setItem("hile_tab_session", "true");
+      writeLastActivity(status.user.email);
 
       const meta = data.session.user?.user_metadata || {};
       setCurrentUser({
@@ -623,6 +676,7 @@ export function DashboardApp() {
   }
 
   async function handleLogout() {
+    clearLastActivity(currentUser?.email || null);
     await supabaseBrowser.auth.signOut();
     setStage("login");
     setCurrentUser(null);
