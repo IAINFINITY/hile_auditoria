@@ -52,6 +52,13 @@ function dotClassForSeverity(value: Severity): string {
   return "report-card-dot-info";
 }
 
+function shouldShowOperationalReason(summary: string, reason: string | null | undefined): boolean {
+  const normalizedReason = String(reason || "").trim();
+  if (!normalizedReason) return false;
+  const normalizedSummary = String(summary || "").trim().toLowerCase();
+  return normalizedReason.toLowerCase() !== normalizedSummary;
+}
+
 function readCachedJson<T>(key: string): T | null {
   if (typeof window === "undefined") return null;
   try {
@@ -636,6 +643,11 @@ export function AnalysisOverallView({ refreshHint, sectionStart = 1, ownerScope 
                     <div className="report-card-content">
                       <h4>{toTitleCaseName(item.contact_name)}</h4>
                       <p>{item.summary}</p>
+                      {shouldShowOperationalReason(item.summary, item.operational_reason) ? (
+                        <p>
+                          <strong>Motivo operacional:</strong> {item.operational_reason}
+                        </p>
+                      ) : null}
                       <p>
                         <strong>Data:</strong> {item.date} • <strong>Severidade:</strong> {severityLabel(item.severity)}
                       </p>

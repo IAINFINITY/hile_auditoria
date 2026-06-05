@@ -175,6 +175,40 @@ function maxSeverityFromParsedAnswer(parsed: Record<string, unknown> | null): Se
   return current;
 }
 
+function deriveOperationalReasonFromParsedAnswer(parsed: Record<string, unknown> | null): string | null {
+  if (!parsed) return null;
+
+  const gaps = Array.isArray(parsed.gaps_operacionais) ? parsed.gaps_operacionais : [];
+  let bestReason: string | null = null;
+  let bestWeight = -1;
+
+  for (const gap of gaps) {
+    if (!gap || typeof gap !== "object") continue;
+    const row = gap as Record<string, unknown>;
+    const gapSeverity = normalizeSeverity(row.severidade ?? row.severity ?? row.nivel ?? row.prioridade ?? null);
+    const weight = severityWeight[gapSeverity];
+    if (weight < bestWeight) continue;
+
+    const name = String(row.nome_gap ?? row.nome ?? row.title ?? "").trim();
+    const description = String(row.descricao ?? row.description ?? "").trim();
+    const reference = String(row.mensagem_referencia ?? row.message_reference ?? row.trecho ?? "").trim();
+    const reason =
+      description ||
+      name ||
+      reference ||
+      null;
+
+    if (!reason) continue;
+    bestWeight = weight;
+    bestReason = reason;
+  }
+
+  if (bestReason) return bestReason;
+
+  const topLevelReason = String(parsed.resumo_operacional ?? parsed.resumo ?? "").trim();
+  return topLevelReason || null;
+}
+
 export async function GET(request: Request) {
   try {
     const authResponse = await requireAuthorizedApiAccess();
@@ -238,6 +272,7 @@ export async function GET(request: Request) {
         contact_name: string;
         summary: string;
         severity: Severity;
+        operational_reason: string | null;
         at_ms: number;
       }
     >();
@@ -262,6 +297,7 @@ export async function GET(request: Request) {
       const reportJson = (run.report?.reportJson as Record<string, unknown> | null) || null;
       const overviewObj = extractOverviewRecord(reportJson);
       const analysisSeverityByContact = new Map<string, Severity>();
+      const analysisReasonByContact = new Map<string, string | null>();
       const analysisByContact = new Map<string, Record<string, unknown>>();
       const allowedContactKeys = new Set<string>();
       const rawAnalysis = reportJson?.raw_analysis as Record<string, unknown> | undefined;
@@ -283,6 +319,7 @@ export async function GET(request: Request) {
         const analysisObj = row.analysis as Record<string, unknown> | undefined;
         const answerParsed = parseJsonRecord(analysisObj?.answer ?? null);
         analysisSeverityByContact.set(key, maxSeverityFromParsedAnswer(answerParsed));
+        analysisReasonByContact.set(key, deriveOperationalReasonFromParsedAnswer(answerParsed));
 
         const parsedRoles = parseHourlyRolesFromLogText(row.log_text ?? "");
         runMessagesFromParsedLogs += parsedRoles.length;
@@ -340,6 +377,7 @@ export async function GET(request: Request) {
             String((analysisEntry?.analysis as Record<string, unknown> | undefined)?.answer || "").trim() ||
             "Sem resumo estruturado.",
           severity,
+          operational_reason: analysisReasonByContact.get(contactKey) || null,
           at_ms: Number.isFinite(atMs) ? atMs : run.startedAt.getTime(),
         };
         const previous = latestByContact.get(contactKey);
@@ -438,7 +476,14 @@ export async function GET(request: Request) {
       context_items: Array.from(latestByContact.values())
         .sort((a, b) => b.at_ms - a.at_ms)
         .slice(0, 200)
-        .map(({ id, date, contact_name, summary, severity }) => ({ id, date, contact_name, summary, severity })),
+        .map(({ id, date, contact_name, summary, severity, operational_reason }) => ({
+          id,
+          date,
+          contact_name,
+          summary,
+          severity,
+          operational_reason,
+        })),
     });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Falha ao carregar análise total.";

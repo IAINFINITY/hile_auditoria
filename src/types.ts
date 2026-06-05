@@ -446,6 +446,7 @@ export interface AnalysisOverallContextItem {
   contact_name: string;
   summary: string;
   severity: Severity;
+  operational_reason?: string | null;
 }
 
 export interface AnalysisOverallResponse {
