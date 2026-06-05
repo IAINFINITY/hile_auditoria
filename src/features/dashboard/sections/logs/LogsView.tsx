@@ -52,6 +52,12 @@ function reportDateLabel(run: ReportHistoryItem): string {
   return String(run.date_ref || "").trim() || "-";
 }
 
+function triggerSourceLabel(value: ReportHistoryItem["trigger_source"]): string {
+  if (value === "auto_sync") return "Automática";
+  if (value === "manual") return "Manual";
+  return "Não identificada";
+}
+
 export function LogsView({
   systemCheck,
   reportHistory,
@@ -217,8 +223,13 @@ export function LogsView({
                         <span>
                           <strong>Relatório para:</strong> {reportDateLabel(run)}
                         </span>
+                        <span>
+                          <strong>Origem:</strong> {triggerSourceLabel(run.trigger_source)}
+                        </span>
                       </div>
                       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "2px 16px", fontSize: "var(--fs-tiny)", color: "var(--muted)" }}>
+                        <span>Solicitado para: {run.requested_date || reportDateLabel(run)}</span>
+                        <span>Solicitado em: {fmtBr(run.requested_at || null)}</span>
                         <span>Início da execução: {fmtBr(run.started_at)}</span>
                         <span>Término: {fmtBr(run.finished_at)}</span>
                         <span>Duração: {durationSec(run.started_at, run.finished_at)}</span>

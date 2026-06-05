@@ -752,6 +752,47 @@ export async function appendRunEvent(runId: string, eventType: string, payloadJs
   });
 }
 
+type RunTriggerSource = "manual" | "auto_sync" | "unknown";
+
+function normalizeRunTriggerSource(value: unknown): RunTriggerSource {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (normalized === "manual") return "manual";
+  if (normalized === "auto_sync" || normalized === "cron" || normalized === "automatic") return "auto_sync";
+  return "unknown";
+}
+
+function extractRunTriggerMeta(
+  requestEvent: { payloadJson?: Prisma.JsonValue | null; createdAt?: Date } | null | undefined,
+  completionEvent: { payloadJson?: Prisma.JsonValue | null } | null | undefined,
+  fallbackDate: string,
+) {
+  const requestPayload =
+    requestEvent?.payloadJson && typeof requestEvent.payloadJson === "object"
+      ? (requestEvent.payloadJson as Record<string, unknown>)
+      : {};
+  const completionPayload =
+    completionEvent?.payloadJson && typeof completionEvent.payloadJson === "object"
+      ? (completionEvent.payloadJson as Record<string, unknown>)
+      : {};
+
+  const source = normalizeRunTriggerSource(
+    requestPayload.source || requestPayload.trigger_source || completionPayload.source || completionPayload.trigger_source,
+  );
+  const requestedDate = String(requestPayload.requested_date || fallbackDate || "").trim() || fallbackDate;
+  const requestedAtRaw = String(requestPayload.requested_at || "").trim();
+  const requestedAt =
+    requestedAtRaw ||
+    (requestEvent?.createdAt instanceof Date && !Number.isNaN(requestEvent.createdAt.getTime())
+      ? requestEvent.createdAt.toISOString()
+      : null);
+
+  return {
+    trigger_source: source,
+    requested_date: requestedDate,
+    requested_at: requestedAt,
+  };
+}
+
 export async function updateRunProgress(
   runId: string,
   payload: { total?: number; processed?: number; successCount?: number; failureCount?: number },
@@ -1418,18 +1459,35 @@ export async function listRecentRuns(limit: number) {
       report: true,
       channel: true,
       tenant: true,
+      events: {
+        where: {
+          eventType: { in: ["run_requested", "run_completed"] },
+        },
+        orderBy: { createdAt: "asc" },
+        select: {
+          eventType: true,
+          payloadJson: true,
+          createdAt: true,
+        },
+      },
     },
   });
 
   return rows
     .map((row) => {
       const reportJson = (row.report?.reportJson as Record<string, unknown> | null) || null;
+      const requestEvent = row.events.find((event) => event.eventType === "run_requested");
+      const completionEvent = row.events.find((event) => event.eventType === "run_completed");
+      const triggerMeta = extractRunTriggerMeta(requestEvent, completionEvent, row.dateRef.toISOString().slice(0, 10));
       return {
         report_json: reportJson,
         id: row.id,
         status: row.status,
         date_ref: row.dateRef.toISOString().slice(0, 10),
         report_date: row.dateRef.toISOString().slice(0, 10),
+        trigger_source: triggerMeta.trigger_source,
+        requested_date: triggerMeta.requested_date,
+        requested_at: triggerMeta.requested_at,
         started_at: row.startedAt.toISOString(),
         finished_at: row.finishedAt ? row.finishedAt.toISOString() : null,
         total_conversations: row.totalConversations,
@@ -1450,14 +1508,25 @@ export async function getRunSnapshot(runId: string) {
     include: {
       report: true,
       events: {
+        where: {
+          eventType: { in: ["run_requested", "run_completed", "contact_start", "contact_done", "run_failed"] },
+        },
         orderBy: { createdAt: "desc" },
-        take: 1,
-        select: { createdAt: true },
+        select: {
+          eventType: true,
+          payloadJson: true,
+          createdAt: true,
+        },
       },
     },
   });
 
   if (!run) return null;
+
+  const requestEvent = [...run.events].reverse().find((event) => event.eventType === "run_requested");
+  const completionEvent = [...run.events].reverse().find((event) => event.eventType === "run_completed");
+  const latestEventAt = run.events?.[0]?.createdAt ? run.events[0].createdAt.toISOString() : null;
+  const triggerMeta = extractRunTriggerMeta(requestEvent, completionEvent, run.dateRef.toISOString().slice(0, 10));
 
   return {
     run: {
@@ -1465,9 +1534,12 @@ export async function getRunSnapshot(runId: string) {
       status: run.status,
       date_ref: run.dateRef.toISOString().slice(0, 10),
       report_date: run.dateRef.toISOString().slice(0, 10),
+      trigger_source: triggerMeta.trigger_source,
+      requested_date: triggerMeta.requested_date,
+      requested_at: triggerMeta.requested_at,
       started_at: run.startedAt.toISOString(),
       finished_at: run.finishedAt ? run.finishedAt.toISOString() : null,
-      last_event_at: run.events?.[0]?.createdAt ? run.events[0].createdAt.toISOString() : null,
+      last_event_at: latestEventAt,
       total_conversations: run.totalConversations,
       processed: run.processed,
       success_count: run.successCount,

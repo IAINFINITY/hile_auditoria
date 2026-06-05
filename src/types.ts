@@ -258,6 +258,9 @@ export interface ReportJobStatusResponse {
   db_run_id?: string | null;
   date: string;
   report_date?: string;
+  trigger_source?: "manual" | "auto_sync" | "unknown";
+  requested_date?: string | null;
+  requested_at?: string | null;
   status: "running" | "completed" | "failed";
   started_at: string;
   updated_at: string;
@@ -294,6 +297,9 @@ export interface ReportRunResponse {
     status: "running" | "completed" | "failed";
     date_ref: string;
     report_date?: string;
+    trigger_source?: "manual" | "auto_sync" | "unknown";
+    requested_date?: string | null;
+    requested_at?: string | null;
     started_at: string;
     finished_at: string | null;
     total_conversations: number;
@@ -310,6 +316,9 @@ export interface ReportHistoryItem {
   status: "running" | "completed" | "failed";
   date_ref: string;
   report_date?: string;
+  trigger_source?: "manual" | "auto_sync" | "unknown";
+  requested_date?: string | null;
+  requested_at?: string | null;
   started_at: string;
   finished_at: string | null;
   total_conversations: number;

@@ -88,6 +88,13 @@ async function handleAutoSync(request: Request) {
     let runId: string;
     try {
       runId = await createRunRecord({ config, date, startedAtIso: startedAt });
+      await appendRunEvent(runId, "run_requested", {
+        source: "auto_sync",
+        requested_date: date,
+        requested_at: startedAt,
+        force,
+        trigger: "cron",
+      });
     } catch (error: unknown) {
       const code = (error as { code?: string } | null)?.code;
       if (code === "RUN_ALREADY_IN_PROGRESS") {

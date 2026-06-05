@@ -93,6 +93,12 @@ export async function POST(request: Request) {
     jobs.set(jobId, initialJob);
     try {
       initialJob.db_run_id = await createRunRecord({ config, date, startedAtIso: now });
+      await appendRunEvent(initialJob.db_run_id, "run_requested", {
+        source: "manual",
+        requested_date: date,
+        requested_at: now,
+        job_id: jobId,
+      });
     } catch (error: unknown) {
       jobs.delete(jobId);
       const message =
