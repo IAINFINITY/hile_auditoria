@@ -3,7 +3,11 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
 import type { ClientRecordItem, Severity } from "@/types";
 import { requireAuthorizedApiAccess } from "@/lib/server/apiUtils";
-import { enforceOwnerBucketByInbox, sanitizeBreakdownByInbox } from "@/lib/server/audit/ownerBuckets";
+import {
+  enforceOwnerBucketByInbox,
+  resolveResponsibleBucketBySenderName,
+  sanitizeBreakdownByInbox,
+} from "@/lib/server/audit/ownerBuckets";
 
 export const runtime = "nodejs";
 
@@ -16,22 +20,8 @@ function normalizeOwnerScope(value: string | null): OwnerScope {
   return "all";
 }
 
-function normalizeLabelText(value: unknown): string {
-  return String(value || "")
-    .toLowerCase()
-    .trim()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "");
-}
-
 function resolveResponsibleBucket(senderName: unknown, inboxId: unknown): ResponsibleBucket | null {
-  const normalized = normalizeLabelText(senderName);
-  if (!normalized) return "ia";
-  if (/\b(grupo|group|equipe|team|channel)\b/.test(normalized)) return null;
-  if (/\bsamuel\b/.test(normalized)) return enforceOwnerBucketByInbox("samuel", inboxId);
-  if (/\bsuelen\b|\bsuellen\b/.test(normalized)) return enforceOwnerBucketByInbox("suellen", inboxId);
-  if (/\bacesso infinity\b|\bassistant\b|\bbot\b|(^|\s)ia(\s|$)/.test(normalized)) return enforceOwnerBucketByInbox("ia", inboxId);
-  return enforceOwnerBucketByInbox("ia", inboxId);
+  return resolveResponsibleBucketBySenderName(senderName, inboxId);
 }
 
 function responsibleLabel(bucket: ResponsibleBucket): string {

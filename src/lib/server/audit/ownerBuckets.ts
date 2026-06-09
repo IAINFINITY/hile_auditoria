@@ -13,11 +13,41 @@ export function resolveInboxOwnerBucket(inboxId: unknown): ResponsibleBucket {
   return "ia";
 }
 
+export function resolveDedicatedHumanInboxOwner(inboxId: unknown): Exclude<ResponsibleBucket, "ia"> | null {
+  const bucket = resolveInboxOwnerBucket(inboxId);
+  return bucket === "ia" ? null : bucket;
+}
+
 export function enforceOwnerBucketByInbox(owner: unknown, inboxId: unknown): ResponsibleBucket {
-  const normalizedOwner = normalizeResponsibleBucket(owner);
-  if (normalizedOwner === "ia") return "ia";
-  const inboxOwner = resolveInboxOwnerBucket(inboxId);
-  return inboxOwner === normalizedOwner ? normalizedOwner : "ia";
+  const inboxOwner = resolveDedicatedHumanInboxOwner(inboxId);
+  if (inboxOwner) return inboxOwner;
+  return normalizeResponsibleBucket(owner);
+}
+
+export function resolveResponsibleBucketBySenderName(
+  senderName: unknown,
+  inboxId: unknown,
+): ResponsibleBucket | null {
+  const normalized = String(senderName || "")
+    .toLowerCase()
+    .trim()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+
+  if (!normalized) return "ia";
+  if (/\b(grupo|group|equipe|team|channel)\b/.test(normalized)) return null;
+  if (/\bsamuel\b/.test(normalized)) return enforceOwnerBucketByInbox("samuel", inboxId);
+  if (/\bsuelen\b|\bsuellen\b/.test(normalized)) return enforceOwnerBucketByInbox("suellen", inboxId);
+
+  const looksLikeGenericInfinity =
+    /\bacesso infinity\b|\bacesso_infinity\b|\bassistant\b|\bchatbot\b|\bbot\b|(^|\s)ia(\s|$)/.test(normalized);
+  if (looksLikeGenericInfinity) {
+    const inboxOwner = resolveDedicatedHumanInboxOwner(inboxId);
+    if (inboxOwner) return inboxOwner;
+    return "ia";
+  }
+
+  return "ia";
 }
 
 export function sanitizeBreakdownByInbox(
@@ -32,13 +62,13 @@ export function sanitizeBreakdownByInbox(
   const ia = Math.max(0, Number(breakdownObj?.ia || 0) || 0);
   const suellen = Math.max(0, Number(breakdownObj?.suellen || 0) || 0);
   const samuel = Math.max(0, Number(breakdownObj?.samuel || 0) || 0);
-  const inboxOwner = resolveInboxOwnerBucket(inboxId);
+  const inboxOwner = resolveDedicatedHumanInboxOwner(inboxId);
 
   if (inboxOwner === "suellen") {
-    return { ia: ia + samuel, suellen, samuel: 0 };
+    return { ia: 0, suellen: ia + suellen + samuel, samuel: 0 };
   }
   if (inboxOwner === "samuel") {
-    return { ia: ia + suellen, suellen: 0, samuel };
+    return { ia: 0, suellen: 0, samuel: ia + suellen + samuel };
   }
   return { ia: ia + suellen + samuel, suellen: 0, samuel: 0 };
 }

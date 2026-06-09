@@ -189,6 +189,7 @@ export function buildContactLogs(conversationLogs) {
         analysis_key: key,
         contact_key: baseContactKey,
         contact: log.contact,
+        inbox_id: Number(log.inbox_id || 0) || null,
         conversation_ids: [],
         messages: [],
       });

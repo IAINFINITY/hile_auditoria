@@ -148,6 +148,7 @@ function buildContactLogs(conversationLogs) {
         analysis_key: key,
         contact_key: baseContactKey,
         contact: log.contact,
+        inbox_id: Number(log.inbox_id || 0) || null,
         conversation_ids: [],
         assignee_name: log.assignee_name || null,
         assignee_id: Number(log.assignee_id || 0) || null,

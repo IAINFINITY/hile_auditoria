@@ -4,7 +4,11 @@ import type { AppConfig } from "./types";
 import type { ReportPayload } from "@/types";
 import { buildClientRecordsFromAnalyses } from "./clientRecords";
 import { toTitleCaseName } from "./nameFormat";
-import { enforceOwnerBucketByInbox, sanitizeBreakdownByInbox } from "./ownerBuckets";
+import {
+  enforceOwnerBucketByInbox,
+  resolveResponsibleBucketBySenderName,
+  sanitizeBreakdownByInbox,
+} from "./ownerBuckets";
 import {
   allInsightsFromAnalysis,
   asBool,
@@ -1972,20 +1976,8 @@ export async function listClientsByDate(date: string) {
     if (bucket === "suellen") return "Comercial Suellen";
     return "IA";
   };
-  const resolveResponsibleBucket = (senderName: unknown, inboxId: unknown): ResponsibleBucket | null => {
-    const raw = String(senderName || "").trim();
-    const normalized = normalizeLabelText(raw);
-    if (!normalized) return "ia";
-    if (/\b(grupo|group|equipe|team)\b/.test(normalized)) return null;
-    if (/\bsamuel\b/.test(normalized)) return enforceOwnerBucketByInbox("samuel", inboxId);
-    if (/\bsuelen\b|\bsuellen\b/.test(normalized)) return enforceOwnerBucketByInbox("suellen", inboxId);
-    if (
-      /\bacesso infinity\b|\bacesso_infinity\b|\bassistant\b|\bchatbot\b|\bbot\b|(^|\s)ia(\s|$)/.test(normalized)
-    ) {
-      return enforceOwnerBucketByInbox("ia", inboxId);
-    }
-    return enforceOwnerBucketByInbox("ia", inboxId);
-  };
+  const resolveResponsibleBucket = (senderName: unknown, inboxId: unknown): ResponsibleBucket | null =>
+    resolveResponsibleBucketBySenderName(senderName, inboxId);
   const classifyPipelineBlock = (params: {
     status: string;
     severity: string;

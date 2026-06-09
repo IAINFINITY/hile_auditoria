@@ -223,7 +223,7 @@ export function mapRunToDashboardSnapshot(run: ReportByDateResponse["run"]): Das
 
   const uniqueContacts = new Set(logs.map((log) => String(log.contact_key || "")).filter(Boolean));
   const finalizedCount = logs.filter((log) => String(log.finalization_status || "").toLowerCase() === "finalizada").length;
-  const criticalCount = logs.filter((log) => String(log.risk_level || "").toLowerCase() === "critical").length;
+  const criticalCount = logs.filter((log) => inferSeverityFromValue(log.risk_level) === "critical").length;
   const messageCountFromRaw = rawAnalyses.reduce((acc, item) => acc + asNumber(item.message_count_day, 0), 0);
   const messageCountFromLogs = logs.reduce((acc, item) => acc + asNumber(item.message_count_day, 0), 0);
   const messageCountFromOperations = operationalRows.reduce((acc, item) => acc + asNumber(item.message_count_day, 0), 0);
@@ -356,7 +356,7 @@ export function mapRunToDashboardSnapshot(run: ReportByDateResponse["run"]): Das
                   proximos_passos: Array.isArray(matchedLog?.next_steps)
                     ? matchedLog.next_steps.map((v) => String(v))
                     : [],
-                  risco_critico: asString(matchedLog?.risk_level || "").toLowerCase() === "critical",
+                  risco_critico: inferSeverityFromValue(matchedLog?.risk_level) === "critical",
                 };
 
           const rawOperational = Array.isArray(rawItem.conversation_operational)
@@ -417,7 +417,7 @@ export function mapRunToDashboardSnapshot(run: ReportByDateResponse["run"]): Das
           const contactName = toTitleCaseName(String(log.contact_name || log.contact_key || `Contato ${index + 1}`));
           const improvements = Array.isArray(log.improvements) ? log.improvements.map((v) => String(v)) : [];
           const nextSteps = Array.isArray(log.next_steps) ? log.next_steps.map((v) => String(v)) : [];
-          const riskCritical = String(log.risk_level || "").toLowerCase() === "critical";
+          const riskCritical = inferSeverityFromValue(log.risk_level) === "critical";
           const conversationIds = Array.isArray(log.conversation_ids) ? log.conversation_ids.map((v) => asNumber(v, 0)) : [];
           const operationalItems: NonNullable<AnalysisItem["conversation_operational"]> = conversationIds.map((conversationId) => {
             const stateRaw = asRecord(operationalByConversation.get(conversationId));
