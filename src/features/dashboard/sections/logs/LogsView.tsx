@@ -1,6 +1,7 @@
-import { useMemo, useState } from "react";
+﻿import { useMemo, useState } from "react";
 import { FiCheckCircle, FiClock, FiXCircle } from "react-icons/fi";
 import type { ReportHistoryItem, SystemCheckResponse } from "../../../../types";
+import { HileCardGrid, HileEmptyPanel, HileInlineInsight, HileKpiCard, HileSectionShell, HileSurfaceCard } from "../../shared/ui/HilePrimitives";
 
 interface LogsViewProps {
   systemCheck: SystemCheckResponse | null;
@@ -79,8 +80,6 @@ export function LogsView({
   }, [reportHistory]);
 
   const hasRecentRuns = runsByDate.length > 0;
-  const dimExec = !isRunningOverview;
-  const dimRecent = !hasRecentRuns;
   const [downloadingRunId, setDownloadingRunId] = useState<string | null>(null);
 
   async function handleDownloadRunTxt(runId: string, dateRef: string) {
@@ -115,180 +114,185 @@ export function LogsView({
   }
 
   return (
-    <div className="settings-shell">
+    <section className="settings-shell reveal">
       <div className="section-inner">
-        <div className="section-header">
-          <span className="section-num">01</span>
-          <div className="section-title">
-            <h2>Logs Operacionais</h2>
-            <p>Registro de execuções, integrações e eventos do sistema.</p>
-          </div>
-        </div>
-      </div>
+        <HileSectionShell
+          eyebrow="01"
+          title="Logs Operacionais"
+          description="Registro de execuções, integrações e eventos do sistema em uma linha do tempo consolidada."
+        >
+          <div className="hile-section-stack">
+            <HileCardGrid cols={3}>
+              <HileKpiCard
+                label="Chatwoot"
+                value={systemCheck?.chatwoot?.ok ? "OK" : "Aguardando"}
+                hint="Saúde da integração"
+                tone={systemCheck?.chatwoot?.ok ? "success" : "default"}
+                accent={systemCheck?.chatwoot?.ok ? "success" : "default"}
+              />
+              <HileKpiCard
+                label="Dify"
+                value={systemCheck?.dify?.ok ? "OK" : "Aguardando"}
+                hint="Status do motor de análise"
+                tone={systemCheck?.dify?.ok ? "success" : "default"}
+                accent={systemCheck?.dify?.ok ? "success" : "default"}
+              />
+              <HileKpiCard
+                label="Execuções recentes"
+                value={reportHistory.length}
+                hint={currentStatus || "Sem execução no momento"}
+                tone={reportHistory.length > 0 ? "accent" : "default"}
+                accent="accent"
+              />
+            </HileCardGrid>
 
-      <article className="settings-card" id="logs-saude">
-        <div className="settings-card-head">Saúde rápida</div>
-        <div className="settings-card-body logs-grid">
-          <p>
-            <strong>Status Chatwoot:</strong> {systemCheck?.chatwoot?.ok ? "OK" : "Aguardando/Erro"}
-          </p>
-          <p>
-            <strong>Status Dify:</strong> {systemCheck?.dify?.ok ? "OK" : "Aguardando/Erro"}
-          </p>
-          <p>
-            <strong>Status geral:</strong> {currentStatus || "Sem execução no momento"}
-          </p>
-        </div>
-      </article>
-
-      <article className={`settings-card ${dimExec ? "data-dim" : ""}`} id="logs-execucao">
-        <div className="settings-card-head">Execução em andamento</div>
-        <div className="settings-card-body">
-          {!isRunningOverview ? (
-            <p className="empty-state">Nenhuma execução em andamento no momento.</p>
-          ) : (
-            <>
-              <p>
-                <strong>Run:</strong> {currentRunId ? currentRunId : "em criação..."}
-              </p>
-              <p><strong>Contato atual:</strong> {runCurrentContact || "preparando execução..."}</p>
-              <p><strong>Progresso:</strong> {runProgress}%</p>
-              <div className="orq-progress-track" role="progressbar" aria-valuenow={runProgress} aria-valuemin={0} aria-valuemax={100}>
-                <div className="orq-progress-fill" style={{ width: `${runProgress}%` }} />
+            <HileSurfaceCard title="Saúde rápida" description="Leitura resumida dos pontos mais sensíveis do ambiente." tone="soft">
+              <div className="hile-section-stack">
+                <HileInlineInsight title="Status geral">{currentStatus || "Sem execução no momento"}</HileInlineInsight>
+                {!systemCheck?.chatwoot?.ok ? (
+                  <HileInlineInsight title="Atenção no Chatwoot" tone="warning">
+                    A integração não retornou como saudável na última checagem.
+                  </HileInlineInsight>
+                ) : null}
+                {!systemCheck?.dify?.ok ? (
+                  <HileInlineInsight title="Atenção no Dify" tone="warning">
+                    O motor de análise ainda não respondeu como esperado na última verificação.
+                  </HileInlineInsight>
+                ) : null}
               </div>
-              <div className="logs-list" style={{ marginTop: 10 }}>
-                {runTimeline.slice(-30).map((line, idx) => (
-                  <article className="log-item" key={`line-${idx}`}>
-                    <p>{line}</p>
-                  </article>
-                ))}
-              </div>
-            </>
-          )}
-        </div>
-      </article>
+            </HileSurfaceCard>
 
-      <article className={`settings-card ${dimRecent ? "data-dim" : ""}`} id="logs-recentes">
-        <div className="settings-card-head">Execuções recentes</div>
-        <div className="settings-card-body" style={{ gap: 0 }}>
-          {runsByDate.length === 0 ? (
-            <p className="empty-state">Nenhuma execução encontrada.</p>
-          ) : (
-            runsByDate.map(([dateLabel, runs]) => (
-              <div key={dateLabel}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "12px 0 6px", borderBottom: "1px solid var(--line)", marginBottom: 6 }}>
-                  <FiClock style={{ width: 14, height: 14, color: "var(--azul)", flexShrink: 0 }} />
-                  <strong style={{ fontSize: "var(--fs-small)", color: "var(--navy)" }}>
-                    {dateLabel || "Sem data"}
-                  </strong>
-                  <span style={{ fontSize: "var(--fs-tiny)", color: "var(--muted)" }}>
-                    ({runs.length} execução{ runs.length !== 1 ? "ões" : "" })
-                  </span>
+            <HileSurfaceCard
+              title="Execução em andamento"
+              description="Acompanhamento em tempo real da orquestração atual."
+              tone={isRunningOverview ? "accent" : "soft"}
+            >
+              {!isRunningOverview ? (
+                <HileEmptyPanel title="Nenhuma execução em andamento" description="Quando uma nova rodada iniciar, o progresso e os logs aparecerão aqui." />
+              ) : (
+                <div className="hile-section-stack">
+                  <HileCardGrid cols={3}>
+                    <HileKpiCard label="Run" value={currentRunId ? currentRunId.slice(0, 8) : "criando"} hint={currentRunId || "Em criação"} accent="accent" />
+                    <HileKpiCard label="Contato atual" value={runCurrentContact || "preparando"} hint="Item em processamento" />
+                    <HileKpiCard label="Progresso" value={`${runProgress}%`} hint="Percentual concluído" tone="accent" accent="accent" />
+                  </HileCardGrid>
+                  <div className="orq-progress-track" role="progressbar" aria-valuenow={runProgress} aria-valuemin={0} aria-valuemax={100}>
+                    <div className="orq-progress-fill" style={{ width: `${runProgress}%` }} />
+                  </div>
+                  <div className="logs-list" style={{ marginTop: 10 }}>
+                    {runTimeline.slice(-30).map((line, idx) => (
+                      <article className="log-item" key={`line-${idx}`}>
+                        <p>{line}</p>
+                      </article>
+                    ))}
+                  </div>
                 </div>
-                <div className="logs-list" style={{ marginBottom: 10 }}>
-                  {runs.map((run) => (
-                    <article className="log-item" key={run.id} style={{ display: "grid", gap: 4 }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                        {run.status === "completed" ? (
-                          <FiCheckCircle style={{ width: 14, height: 14, color: "var(--low)", flexShrink: 0 }} />
-                        ) : run.status === "failed" ? (
-                          <FiXCircle style={{ width: 14, height: 14, color: "var(--critical)", flexShrink: 0 }} />
-                        ) : (
-                          <FiClock style={{ width: 14, height: 14, color: "var(--high)", flexShrink: 0 }} />
-                        )}
-                        <strong style={{ fontSize: "var(--fs-small)", color: "var(--navy)", textTransform: "capitalize" }}>
-                          {run.status}
-                        </strong>
-                        <span style={{ fontSize: "var(--fs-tiny)", color: "var(--azul)", fontFamily: "var(--font-mono)", display: "inline-flex", alignItems: "center", gap: 8 }}>
-                          {run.id.slice(0, 8)}
+              )}
+            </HileSurfaceCard>
+
+            <HileSurfaceCard title="Execuções recentes" description="Histórico agrupado por data de referência do relatório." tone={hasRecentRuns ? "default" : "soft"}>
+              {!hasRecentRuns ? (
+                <HileEmptyPanel title="Nenhuma execução encontrada" description="Assim que houver rodadas salvas, elas serão listadas nesta área." />
+              ) : (
+                <div className="hile-section-stack">
+                  {runsByDate.map(([dateLabel, runs]) => (
+                    <div key={dateLabel}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "0 0 10px", borderBottom: "1px solid var(--line)", marginBottom: 10 }}>
+                        <FiClock style={{ width: 14, height: 14, color: "var(--azul)", flexShrink: 0 }} />
+                        <strong style={{ fontSize: "var(--fs-small)", color: "var(--navy)" }}>{dateLabel || "Sem data"}</strong>
+                        <span style={{ fontSize: "var(--fs-tiny)", color: "var(--muted)" }}>
+                          ({runs.length} execução{runs.length !== 1 ? "ões" : ""})
                         </span>
-                        {run.has_report && (
-                          <span style={{ fontSize: "var(--fs-tiny)", color: "var(--low)", fontWeight: 600 }}>c/ relatório</span>
-                        )}
-                        {run.has_report && run.status === "completed" ? (
-                          <button
-                            type="button"
-                            className="btn btn-sm"
-                            onClick={() => void handleDownloadRunTxt(run.id, run.date_ref)}
-                            disabled={downloadingRunId === run.id}
-                          >
-                            {downloadingRunId === run.id ? "Baixando..." : "Baixar relatório TXT"}
-                          </button>
-                        ) : null}
-                      </div>
-                      <div style={{ display: "flex", flexWrap: "wrap", gap: 12, fontSize: "var(--fs-tiny)", color: "var(--muted)" }}>
-                        <span>
-                          <strong>Executado em:</strong> {fmtBr(run.started_at)}
-                        </span>
-                        <span>
-                          <strong>Relatório para:</strong> {reportDateLabel(run)}
-                        </span>
-                        <span>
-                          <strong>Origem:</strong> {triggerSourceLabel(run.trigger_source)}
-                        </span>
-                      </div>
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "2px 16px", fontSize: "var(--fs-tiny)", color: "var(--muted)" }}>
-                        <span>Solicitado para: {run.requested_date || reportDateLabel(run)}</span>
-                        <span>Solicitado em: {fmtBr(run.requested_at || null)}</span>
-                        <span>Início da execução: {fmtBr(run.started_at)}</span>
-                        <span>Término: {fmtBr(run.finished_at)}</span>
-                        <span>Duração: {durationSec(run.started_at, run.finished_at)}</span>
-                        <span>
-                          Média por contato:{" "}
-                          {(() => {
-                            const seconds = durationSecondsValue(run.started_at, run.finished_at);
-                            if (seconds === null || run.processed <= 0) return "-";
-                            return `${Math.max(1, Math.round(seconds / run.processed))}s`;
-                          })()}
-                        </span>
-                        <span>Conversas: {run.processed}/{run.total_conversations}</span>
-                        <span>Sucesso: {run.success_count}</span>
-                        <span>Falhas: {run.failure_count}</span>
                       </div>
 
-                      {(run.report_json?.logs?.length || 0) > 0 ? (
-                        <div style={{ marginTop: 4, borderTop: "1px dashed var(--line)", paddingTop: 8 }}>
-                          <p style={{ margin: 0, fontSize: "var(--fs-tiny)", color: "var(--muted)" }}>
-                            Contatos desta execução ({run.report_json?.logs?.length})
-                          </p>
-                          <div style={{ display: "grid", gap: 6, marginTop: 6 }}>
-                            {run.report_json!.logs!.slice(0, 8).map((log) => (
-                              <div
-                                key={`${run.id}-${log.contact_key}`}
-                                style={{
-                                  border: "1px solid var(--line)",
-                                  borderRadius: 8,
-                                  padding: "6px 8px",
-                                  display: "grid",
-                                  gap: 3,
-                                }}
-                              >
-                                <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                                  <strong style={{ color: "var(--navy)" }}>{log.contact_name || log.contact_key}</strong>
-                                  <span style={{ fontSize: "var(--fs-tiny)", color: log.risk_level === "critical" ? "var(--critical)" : "var(--azul-line)" }}>
-                                    {riskLabel(log.risk_level)}
-                                  </span>
-                                  <span style={{ fontSize: "var(--fs-tiny)", color: "var(--muted)" }}>
-                                    {log.finalization_status || "sem status final"}
-                                  </span>
-                                </div>
+                      <div className="logs-list" style={{ marginBottom: 10 }}>
+                        {runs.map((run) => (
+                          <article className="log-item" key={run.id} style={{ display: "grid", gap: 10 }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                              {run.status === "completed" ? (
+                                <FiCheckCircle style={{ width: 14, height: 14, color: "var(--low)", flexShrink: 0 }} />
+                              ) : run.status === "failed" ? (
+                                <FiXCircle style={{ width: 14, height: 14, color: "var(--critical)", flexShrink: 0 }} />
+                              ) : (
+                                <FiClock style={{ width: 14, height: 14, color: "var(--high)", flexShrink: 0 }} />
+                              )}
+                              <strong style={{ fontSize: "var(--fs-small)", color: "var(--navy)", textTransform: "capitalize" }}>{run.status}</strong>
+                              <span style={{ fontSize: "var(--fs-tiny)", color: "var(--azul)", fontFamily: "var(--font-mono)" }}>{run.id.slice(0, 8)}</span>
+                              {run.has_report ? <span style={{ fontSize: "var(--fs-tiny)", color: "var(--low)", fontWeight: 600 }}>c/ relatório</span> : null}
+                              {run.has_report && run.status === "completed" ? (
+                                <button
+                                  type="button"
+                                  className="btn btn-sm"
+                                  onClick={() => void handleDownloadRunTxt(run.id, run.date_ref)}
+                                  disabled={downloadingRunId === run.id}
+                                >
+                                  {downloadingRunId === run.id ? "Baixando..." : "Baixar relatório TXT"}
+                                </button>
+                              ) : null}
+                            </div>
+
+                            <div style={{ display: "flex", flexWrap: "wrap", gap: 12, fontSize: "var(--fs-tiny)", color: "var(--muted)" }}>
+                              <span><strong>Executado em:</strong> {fmtBr(run.started_at)}</span>
+                              <span><strong>Relatório para:</strong> {reportDateLabel(run)}</span>
+                              <span><strong>Origem:</strong> {triggerSourceLabel(run.trigger_source)}</span>
+                            </div>
+
+                            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "6px 16px", fontSize: "var(--fs-tiny)", color: "var(--muted)" }}>
+                              <span>Solicitado para: {run.requested_date || reportDateLabel(run)}</span>
+                              <span>Solicitado em: {fmtBr(run.requested_at || null)}</span>
+                              <span>Início: {fmtBr(run.started_at)}</span>
+                              <span>Término: {fmtBr(run.finished_at)}</span>
+                              <span>Duração: {durationSec(run.started_at, run.finished_at)}</span>
+                              <span>
+                                Média por contato:{" "}
+                                {(() => {
+                                  const seconds = durationSecondsValue(run.started_at, run.finished_at);
+                                  if (seconds === null || run.processed <= 0) return "-";
+                                  return `${Math.max(1, Math.round(seconds / run.processed))}s`;
+                                })()}
+                              </span>
+                              <span>Conversas: {run.processed}/{run.total_conversations}</span>
+                              <span>Sucesso: {run.success_count}</span>
+                              <span>Falhas: {run.failure_count}</span>
+                            </div>
+
+                            {(run.report_json?.logs?.length || 0) > 0 ? (
+                              <div style={{ marginTop: 4, borderTop: "1px dashed var(--line)", paddingTop: 8 }}>
                                 <p style={{ margin: 0, fontSize: "var(--fs-tiny)", color: "var(--muted)" }}>
-                                  Conversas: {log.conversation_ids?.length || 0} • Links: {log.chatwoot_links?.length || 0}
+                                  Contatos desta execução ({run.report_json?.logs?.length})
                                 </p>
+                                <div style={{ display: "grid", gap: 6, marginTop: 6 }}>
+                                  {run.report_json!.logs!.slice(0, 8).map((log) => (
+                                    <div
+                                      key={`${run.id}-${log.contact_key}`}
+                                      style={{ border: "1px solid var(--line)", borderRadius: 8, padding: "6px 8px", display: "grid", gap: 3 }}
+                                    >
+                                      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                                        <strong style={{ color: "var(--navy)" }}>{log.contact_name || log.contact_key}</strong>
+                                        <span style={{ fontSize: "var(--fs-tiny)", color: log.risk_level === "critical" ? "var(--critical)" : "var(--azul-line)" }}>
+                                          {riskLabel(log.risk_level)}
+                                        </span>
+                                        <span style={{ fontSize: "var(--fs-tiny)", color: "var(--muted)" }}>{log.finalization_status || "sem status final"}</span>
+                                      </div>
+                                      <p style={{ margin: 0, fontSize: "var(--fs-tiny)", color: "var(--muted)" }}>
+                                        Conversas: {log.conversation_ids?.length || 0} • Links: {log.chatwoot_links?.length || 0}
+                                      </p>
+                                    </div>
+                                  ))}
+                                </div>
                               </div>
-                            ))}
-                          </div>
-                        </div>
-                      ) : null}
-                    </article>
+                            ) : null}
+                          </article>
+                        ))}
+                      </div>
+                    </div>
                   ))}
                 </div>
-              </div>
-            ))
-          )}
-        </div>
-      </article>
-    </div>
+              )}
+            </HileSurfaceCard>
+          </div>
+        </HileSectionShell>
+      </div>
+    </section>
   );
 }
-

@@ -1,7 +1,8 @@
-"use client";
+﻿"use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { FiEye, FiEyeOff } from "react-icons/fi";
+import { HileCardGrid, HileEmptyPanel, HileKpiCard, HileSectionShell, HileSurfaceCard } from "../../shared/ui/HilePrimitives";
 
 interface AllowedUserItem {
   id: string;
@@ -56,10 +57,7 @@ function sortAllowedUsers(items: AllowedUserItem[]): AllowedUserItem[] {
 }
 
 export function SuperadminAccountsView({ currentUserEmail, currentUserRole }: SuperadminAccountsViewProps) {
-  const isSuperadmin = String(currentUserRole || "")
-    .trim()
-    .toLowerCase()
-    .includes("superadmin");
+  const isSuperadmin = String(currentUserRole || "").trim().toLowerCase().includes("superadmin");
 
   const [items, setItems] = useState<AllowedUserItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -93,11 +91,7 @@ export function SuperadminAccountsView({ currentUserEmail, currentUserRole }: Su
     }
     try {
       const response = await fetch("/api/auth/users", { method: "GET", cache: "no-store" });
-      const payload = (await response.json().catch(() => ({}))) as {
-        items?: AllowedUserItem[];
-        revision?: string;
-        message?: string;
-      };
+      const payload = (await response.json().catch(() => ({}))) as { items?: AllowedUserItem[]; revision?: string; message?: string };
       if (!response.ok) {
         if (!silent) {
           setItems([]);
@@ -266,232 +260,179 @@ export function SuperadminAccountsView({ currentUserEmail, currentUserRole }: Su
 
   if (!isSuperadmin) {
     return (
-      <div className="settings-shell">
+      <section className="settings-shell">
         <div className="section-inner">
-          <div className="section-header">
-            <div className="section-title">
-              <h2>Superadmin</h2>
-              <p>Área restrita para gestão de contas administrativas.</p>
-            </div>
-          </div>
+          <HileSectionShell eyebrow="01" title="Superadmin" description="Área restrita para gestão de contas administrativas.">
+            <HileEmptyPanel title="Acesso negado" description="Você não possui permissão para acessar esta área." />
+          </HileSectionShell>
         </div>
-        <section className="settings-card">
-          <div className="settings-card-head">Contas</div>
-          <div className="settings-card-body">
-            <p className="accounts-admin-empty">Você não possui permissão para acessar esta área.</p>
-          </div>
-        </section>
-      </div>
+      </section>
     );
   }
 
   return (
-    <div className="settings-shell superadmin-shell">
+    <section className="settings-shell superadmin-shell">
       <div className="section-inner" id="superadmin-accounts">
-        <div className="section-header">
-          <div className="section-title">
-            <h2>Superadmin</h2>
-            <p>Gestão central das contas do sistema, com criação, status e histórico de acesso.</p>
-          </div>
-        </div>
-      </div>
+        <HileSectionShell
+          eyebrow="01"
+          title="Superadmin"
+          description="Gestão central das contas do sistema, com criação, status e histórico de acesso."
+        >
+          <div className="hile-section-stack">
+            <HileCardGrid cols={4}>
+              <HileKpiCard label="Total" value={summary.total} hint="Contas cadastradas" tone={summary.total > 0 ? "accent" : "default"} accent="accent" />
+              <HileKpiCard label="Ativas" value={summary.active} hint="Contas habilitadas" tone={summary.active > 0 ? "success" : "default"} accent={summary.active > 0 ? "success" : "default"} />
+              <HileKpiCard label="Inativas" value={summary.inactive} hint="Contas desabilitadas" />
+              <HileKpiCard label="Superadmin" value={summary.superadmins} hint={`Admins: ${summary.admins}`} />
+            </HileCardGrid>
 
-      <section className="settings-card">
-        <div className="settings-card-head">Resumo de contas</div>
-        <div className="settings-card-body superadmin-kpis">
-          <article className="analysis-overall-mini-item">
-            <span>Total</span>
-            <strong>{summary.total}</strong>
-          </article>
-          <article className="analysis-overall-mini-item">
-            <span>Ativas</span>
-            <strong>{summary.active}</strong>
-          </article>
-          <article className="analysis-overall-mini-item">
-            <span>Inativas</span>
-            <strong>{summary.inactive}</strong>
-          </article>
-          <article className="analysis-overall-mini-item">
-            <span>Superadmin</span>
-            <strong>{summary.superadmins}</strong>
-          </article>
-          <article className="analysis-overall-mini-item">
-            <span>Admin</span>
-            <strong>{summary.admins}</strong>
-          </article>
-        </div>
-      </section>
-
-      <section className="settings-card">
-        <div className="settings-card-head">Adicionar conta</div>
-        <div className="settings-card-body accounts-admin-body">
-          <form className="accounts-admin-form" onSubmit={handleCreate}>
-            <div className="accounts-admin-grid">
-              <div className="settings-field">
-                <label>E-mail</label>
-                <input
-                  type="email"
-                  value={newEmail}
-                  onChange={(event) => setNewEmail(event.target.value)}
-                  placeholder="admin@empresa.com"
-                  autoComplete="off"
-                />
-              </div>
-              <div className="settings-field">
-                <label>Nome</label>
-                <input
-                  type="text"
-                  value={newName}
-                  onChange={(event) => setNewName(event.target.value)}
-                  placeholder="Nome da pessoa"
-                  autoComplete="off"
-                />
-              </div>
-              <div className="settings-field">
-                <label>Senha inicial</label>
-                <div className="accounts-password-wrap">
-                  <input
-                    type={showInitialPassword ? "text" : "password"}
-                    value={newPassword}
-                    onChange={(event) => setNewPassword(event.target.value)}
-                    placeholder="Mínimo 8 caracteres"
-                    minLength={8}
-                    maxLength={INITIAL_PASSWORD_MAX_LENGTH}
-                    autoComplete="new-password"
-                  />
-                  <button
-                    type="button"
-                    className="accounts-password-visibility-btn"
-                    onClick={() => setShowInitialPassword((value) => !value)}
-                    aria-label={showInitialPassword ? "Ocultar senha" : "Mostrar senha"}
-                    title={showInitialPassword ? "Ocultar senha" : "Mostrar senha"}
-                  >
-                    {showInitialPassword ? <FiEyeOff aria-hidden="true" /> : <FiEye aria-hidden="true" />}
-                  </button>
+            <HileSurfaceCard title="Adicionar conta" description="Crie novas contas administrativas com senha inicial definida manualmente." tone="accent">
+              <form className="accounts-admin-form" onSubmit={handleCreate}>
+                <div className="accounts-admin-grid">
+                  <div className="settings-field">
+                    <label>E-mail</label>
+                    <input type="email" value={newEmail} onChange={(event) => setNewEmail(event.target.value)} placeholder="admin@empresa.com" autoComplete="off" />
+                  </div>
+                  <div className="settings-field">
+                    <label>Nome</label>
+                    <input type="text" value={newName} onChange={(event) => setNewName(event.target.value)} placeholder="Nome da pessoa" autoComplete="off" />
+                  </div>
+                  <div className="settings-field">
+                    <label>Senha inicial</label>
+                    <div className="accounts-password-wrap">
+                      <input
+                        type={showInitialPassword ? "text" : "password"}
+                        value={newPassword}
+                        onChange={(event) => setNewPassword(event.target.value)}
+                        placeholder="Mínimo 8 caracteres"
+                        minLength={8}
+                        maxLength={INITIAL_PASSWORD_MAX_LENGTH}
+                        autoComplete="new-password"
+                      />
+                      <button
+                        type="button"
+                        className="accounts-password-visibility-btn"
+                        onClick={() => setShowInitialPassword((value) => !value)}
+                        aria-label={showInitialPassword ? "Ocultar senha" : "Mostrar senha"}
+                        title={showInitialPassword ? "Ocultar senha" : "Mostrar senha"}
+                      >
+                        {showInitialPassword ? <FiEyeOff aria-hidden="true" /> : <FiEye aria-hidden="true" />}
+                      </button>
+                    </div>
+                  </div>
                 </div>
-              </div>
-            </div>
-            <div className="accounts-admin-form-footer">
-              <div className="accounts-admin-password-meta">
-                <span>Máximo de {INITIAL_PASSWORD_MAX_LENGTH} caracteres</span>
-                {remainingInitialPassword <= INITIAL_PASSWORD_COUNTER_WARN_AT ? (
-                  <span style={{ color: remainingInitialPassword <= 5 ? "var(--critical)" : "var(--muted)" }}>
-                    {newPassword.length}/{INITIAL_PASSWORD_MAX_LENGTH}
-                  </span>
-                ) : null}
-              </div>
-              <div className="settings-save-row">
-              <button type="submit" className="btn btn-primary btn-sm" disabled={!canCreate || isCreating}>
-                {isCreating ? "Adicionando..." : "Adicionar conta"}
-              </button>
-              </div>
-            </div>
-          </form>
-        </div>
-      </section>
+                <div className="accounts-admin-form-footer">
+                  <div className="accounts-admin-password-meta">
+                    <span>Máximo de {INITIAL_PASSWORD_MAX_LENGTH} caracteres</span>
+                    {remainingInitialPassword <= INITIAL_PASSWORD_COUNTER_WARN_AT ? (
+                      <span style={{ color: remainingInitialPassword <= 5 ? "var(--critical)" : "var(--muted)" }}>
+                        {newPassword.length}/{INITIAL_PASSWORD_MAX_LENGTH}
+                      </span>
+                    ) : null}
+                  </div>
+                  <div className="settings-save-row">
+                    <button type="submit" className="btn btn-primary btn-sm" disabled={!canCreate || isCreating}>
+                      {isCreating ? "Adicionando..." : "Adicionar conta"}
+                    </button>
+                  </div>
+                </div>
+              </form>
+            </HileSurfaceCard>
 
-      <section className="settings-card">
-        <div className="settings-card-head">Lista de contas</div>
-        <div className="settings-card-body accounts-admin-body">
-          <div className="accounts-filter-row superadmin-filters">
-            <label>
-              Buscar
-              <input
-                type="text"
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                placeholder="Nome, e-mail ou cargo"
-              />
-            </label>
-            <label>
-              Status
-              <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as typeof statusFilter)}>
-                <option value="all">Todos</option>
-                <option value="active">Ativas</option>
-                <option value="inactive">Inativas</option>
-              </select>
-            </label>
-            <label>
-              Cargo
-              <select value={roleFilter} onChange={(event) => setRoleFilter(event.target.value as typeof roleFilter)}>
-                <option value="all">Todos</option>
-                <option value="superadmin">Superadmin</option>
-                <option value="admin">Admin</option>
-              </select>
-            </label>
+            <HileSurfaceCard title="Lista de contas" description="Acompanhe status, papel e último acesso das contas administrativas." tone="soft">
+              <div className="accounts-admin-body">
+                <div className="accounts-filter-row superadmin-filters">
+                  <label>
+                    Buscar
+                    <input type="text" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Nome, e-mail ou cargo" />
+                  </label>
+                  <label>
+                    Status
+                    <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as typeof statusFilter)}>
+                      <option value="all">Todos</option>
+                      <option value="active">Ativas</option>
+                      <option value="inactive">Inativas</option>
+                    </select>
+                  </label>
+                  <label>
+                    Cargo
+                    <select value={roleFilter} onChange={(event) => setRoleFilter(event.target.value as typeof roleFilter)}>
+                      <option value="all">Todos</option>
+                      <option value="superadmin">Superadmin</option>
+                      <option value="admin">Admin</option>
+                    </select>
+                  </label>
+                </div>
+
+                {error ? <p className="accounts-admin-error">{error}</p> : null}
+
+                {isLoading ? (
+                  <HileEmptyPanel title="Carregando contas" description="Estamos consultando a base administrativa do sistema." />
+                ) : filteredItems.length === 0 ? (
+                  <HileEmptyPanel title="Nenhuma conta encontrada" description="Os filtros atuais não retornaram contas para exibir." />
+                ) : (
+                  <div className="superadmin-table-wrap">
+                    <table className="superadmin-table">
+                      <thead>
+                        <tr>
+                          <th>Nome</th>
+                          <th>E-mail</th>
+                          <th>Papel</th>
+                          <th>Status</th>
+                          <th>Criado em</th>
+                          <th>Último login</th>
+                          <th>Alterar</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredItems.map((item) => {
+                          const isSelf = normalizeEmail(item.email) === normalizeEmail(currentUserEmail);
+                          const isProtectedSuperadmin = item.role === "superadmin";
+                          const disableToggle = Boolean(updatingId) || isSelf || isProtectedSuperadmin;
+                          const title = item.displayName || item.email.split("@")[0] || "Usuário";
+                          const initials = toInitials(title);
+                          return (
+                            <tr key={item.id}>
+                              <td>
+                                <div className="superadmin-user-cell">
+                                  <span className="superadmin-user-avatar">{initials}</span>
+                                  <div className="superadmin-user-meta">
+                                    <strong>{title}</strong>
+                                  </div>
+                                </div>
+                              </td>
+                              <td>{item.email}</td>
+                              <td>
+                                <span className={`superadmin-role-pill ${item.role === "superadmin" ? "role-superadmin" : "role-admin"}`}>
+                                  {toRoleLabel(item.role)}
+                                </span>
+                              </td>
+                              <td>
+                                <span className={`tag ${item.active ? "tag-ok" : "tag-warn"}`}>{item.active ? "Ativo" : "Inativo"}</span>
+                              </td>
+                              <td>{formatDateTime(item.createdAt)}</td>
+                              <td>{formatDateTime(item.lastLoginAt) === "-" ? "Nunca" : formatDateTime(item.lastLoginAt)}</td>
+                              <td>
+                                {disableToggle ? (
+                                  <span className="superadmin-no-permission">Sem permissão</span>
+                                ) : (
+                                  <button type="button" className="btn btn-sm" disabled={disableToggle} onClick={() => setPendingToggleUser(item)}>
+                                    {item.active ? "Desativar" : "Reativar"}
+                                  </button>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </HileSurfaceCard>
           </div>
-
-          {error ? <p className="accounts-admin-error">{error}</p> : null}
-
-          {isLoading ? (
-            <p className="accounts-admin-empty">Carregando contas...</p>
-          ) : filteredItems.length === 0 ? (
-            <p className="accounts-admin-empty">Nenhuma conta encontrada com os filtros atuais.</p>
-          ) : (
-            <div className="superadmin-table-wrap">
-              <table className="superadmin-table">
-                <thead>
-                  <tr>
-                    <th>Nome</th>
-                    <th>E-mail</th>
-                    <th>Papel</th>
-                    <th>Status</th>
-                    <th>Criado em</th>
-                    <th>Último login</th>
-                    <th>Alterar</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredItems.map((item) => {
-                    const isSelf = normalizeEmail(item.email) === normalizeEmail(currentUserEmail);
-                    const isProtectedSuperadmin = item.role === "superadmin";
-                    const disableToggle = Boolean(updatingId) || isSelf || isProtectedSuperadmin;
-                    const title = item.displayName || item.email.split("@")[0] || "Usuário";
-                    const initials = toInitials(title);
-                    return (
-                      <tr key={item.id}>
-                        <td>
-                          <div className="superadmin-user-cell">
-                            <span className="superadmin-user-avatar">{initials}</span>
-                            <div className="superadmin-user-meta">
-                              <strong>{title}</strong>
-                            </div>
-                          </div>
-                        </td>
-                        <td>{item.email}</td>
-                        <td>
-                          <span className={`superadmin-role-pill ${item.role === "superadmin" ? "role-superadmin" : "role-admin"}`}>
-                            {toRoleLabel(item.role)}
-                          </span>
-                        </td>
-                        <td>
-                          <span className={`tag ${item.active ? "tag-ok" : "tag-warn"}`}>{item.active ? "Ativo" : "Inativo"}</span>
-                        </td>
-                        <td>{formatDateTime(item.createdAt)}</td>
-                        <td>{formatDateTime(item.lastLoginAt) === "-" ? "Nunca" : formatDateTime(item.lastLoginAt)}</td>
-                        <td>
-                          {disableToggle ? (
-                            <span className="superadmin-no-permission">Sem permissão</span>
-                          ) : (
-                            <button
-                              type="button"
-                              className="btn btn-sm"
-                              disabled={disableToggle}
-                              onClick={() => setPendingToggleUser(item)}
-                            >
-                              {item.active ? "Desativar" : "Reativar"}
-                            </button>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      </section>
+        </HileSectionShell>
+      </div>
 
       {showCreateConfirmModal ? (
         <div className="modal-backdrop" role="presentation" onClick={() => (isCreating ? null : setShowCreateConfirmModal(false))}>
@@ -519,9 +460,7 @@ export function SuperadminAccountsView({ currentUserEmail, currentUserRole }: Su
           <div className="modal-card" role="dialog" aria-modal="true" aria-label="Confirmar alteração de conta" onClick={(event) => event.stopPropagation()}>
             <h3>{pendingToggleUser.active ? "Confirmar desativação" : "Confirmar reativação"}</h3>
             <p>
-              {pendingToggleUser.active
-                ? "Deseja realmente desativar este usuário?"
-                : "Deseja realmente reativar este usuário?"}
+              {pendingToggleUser.active ? "Deseja realmente desativar este usuário?" : "Deseja realmente reativar este usuário?"}
               <br />
               <strong>{pendingToggleUser.email}</strong>
             </p>
@@ -536,6 +475,8 @@ export function SuperadminAccountsView({ currentUserEmail, currentUserRole }: Su
           </div>
         </div>
       ) : null}
-    </div>
+    </section>
   );
 }
+
+

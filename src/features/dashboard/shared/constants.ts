@@ -15,13 +15,44 @@ export const severityLabel: Record<Severity, string> = {
   high: "Alto",
   medium: "Médio",
   low: "Baixo",
-  info: "Informação",
+  info: "Informativo",
 };
 
 export const severityColors: Record<Severity, string> = {
-  critical: "#ff3b3b",
-  high: "#ff8a1f",
-  medium: "#ffd400",
-  low: "#3fd47a",
-  info: "#5aa8ff",
+  critical: "var(--critical)",
+  high: "var(--high)",
+  medium: "var(--medium)",
+  low: "var(--low)",
+  info: "var(--info)",
 };
+
+export function normalizeSeverity(value: unknown, fallback: Severity = "info"): Severity {
+  const text = String(value || "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+
+  if (text.includes("crit")) return "critical";
+  if (text.includes("alt")) return "high";
+  if (text.includes("med")) return "medium";
+  if (text.includes("baix")) return "low";
+  if (text.includes("info")) return "info";
+  return fallback;
+}
+
+export function severityDotClass(severity: Severity): string {
+  if (severity === "critical") return "report-card-dot-critical";
+  if (severity === "high") return "report-card-dot-high";
+  if (severity === "medium") return "report-card-dot-medium";
+  if (severity === "low") return "report-card-dot-low";
+  return "report-card-dot-info";
+}
+
+export function severityBadgeClass(severity: Severity): string {
+  if (severity === "critical") return "sev-critical";
+  if (severity === "high") return "sev-high";
+  if (severity === "medium") return "sev-medium";
+  if (severity === "low") return "sev-low";
+  return "sev-info";
+}
