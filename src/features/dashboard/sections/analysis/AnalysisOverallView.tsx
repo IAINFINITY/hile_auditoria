@@ -4,7 +4,15 @@ import { apiGet } from "@/lib/api";
 import { toTitleCaseName } from "../../hooks/controller/common";
 import { MovementSection } from "../dashboard/MovementSection";
 import { canonicalizeProductLabel, normalizeProductForMatch } from "@/lib/products/canonical";
+import { severityDotClass, severityLabel } from "../../shared/constants";
 import type { OwnerScope } from "../../shared/types";
+import {
+  HileCardGrid,
+  HileEmptyPanel,
+  HileKpiCard,
+  HileSectionShell,
+  HileSurfaceCard,
+} from "../../shared/ui/HilePrimitives";
 
 interface AnalysisOverallViewProps {
   refreshHint?: string | null;
@@ -35,22 +43,6 @@ const ANALYSIS_OVERALL_META_KEY = "hile_analysis_overall_meta_v3";
 const PRODUCTS_OVERALL_REVALIDATE_MS = 5 * 60 * 1000;
 const PRODUCTS_OVERALL_CACHE_KEY = "hile_analysis_overall_products_cache_v2";
 const PRODUCTS_OVERALL_META_KEY = "hile_analysis_overall_products_meta_v2";
-
-function severityLabel(value: Severity): string {
-  if (value === "critical") return "Crítico";
-  if (value === "high") return "Alto";
-  if (value === "medium") return "Médio";
-  if (value === "low") return "Baixo";
-  return "Informativo";
-}
-
-function dotClassForSeverity(value: Severity): string {
-  if (value === "critical") return "report-card-dot-critical";
-  if (value === "high") return "report-card-dot-high";
-  if (value === "medium") return "report-card-dot-medium";
-  if (value === "low") return "report-card-dot-low";
-  return "report-card-dot-info";
-}
 
 function shouldShowOperationalReason(summary: string, reason: string | null | undefined): boolean {
   const normalizedReason = String(reason || "").trim();
@@ -329,79 +321,84 @@ export function AnalysisOverallView({ refreshHint, sectionStart = 1, ownerScope 
     <div className="settings-animated analysis-animated">
       <div className="section reveal" id="analysis-overview">
         <div className="section-inner">
-          <div className="section-header">
-            <span className="section-num">{sectionOne}</span>
-            <div className="section-title">
-              <h2>Análise Geral Total</h2>
-              <p>
-                Consolidado de todas as execuções salvas
-                {payload?.date_range?.from && payload?.date_range?.to
-                  ? ` (${payload.date_range.from} até ${payload.date_range.to})`
-                  : "."}{" "}
-                • Responsável: {ownerScopeLabel(ownerScope)}.
-              </p>
+          <HileSectionShell
+            eyebrow={sectionOne}
+            title="Análise Geral Total"
+            description={
+              payload?.date_range?.from && payload?.date_range?.to
+                ? `Consolidado salvo entre ${payload.date_range.from} e ${payload.date_range.to} para ${ownerScopeLabel(ownerScope)}.`
+                : `Consolidado de todas as execuções salvas para ${ownerScopeLabel(ownerScope)}.`
+            }
+            muted={!hasScopedData}
+          >
+            <div className="hile-section-stack">
+              <HileCardGrid cols={4}>
+                <HileKpiCard
+                  label="Relatorios"
+                  value={payload?.total_runs || 0}
+                  hint={
+                    payload?.date_range?.from && payload?.date_range?.to
+                      ? `${payload.date_range.from} ate ${payload.date_range.to}`
+                      : "Periodo consolidado"
+                  }
+                  tone={(payload?.total_runs || 0) > 0 ? "accent" : "default"}
+                  accent="accent"
+                />
+                <HileKpiCard
+                  label="Conversas"
+                  value={analyzed}
+                  hint="Total consolidado no período"
+                  tone={analyzed > 0 ? "accent" : "default"}
+                  accent="accent"
+                />
+                <HileKpiCard
+                  label="Mensagens"
+                  value={messages}
+                  hint="IA + usuário no consolidado"
+                  accent="accent"
+                />
+                <HileKpiCard
+                  label="Críticos"
+                  value={critical}
+                  hint={`${totalInsights} insights â€¢ taxa crítica ${formatPercent(criticalRate)}`}
+                  tone={critical > 0 ? "critical" : "default"}
+                  accent={critical > 0 ? "critical" : "default"}
+                />
+              </HileCardGrid>
+
+              <HileSurfaceCard title="Indicadores complementares" description="Leitura operacional do consolidado salvo." tone="soft">
+                <HileCardGrid cols={4}>
+                  <HileKpiCard label="Média msg/conversa" value={avgMessagesPerConversation.toFixed(1)} hint="Volume médio por atendimento" />
+                  <HileKpiCard label="Finalizadas" value={finalized} hint="Conversas encerradas no consolidado" accent="success" />
+                  <HileKpiCard label="Continuadas" value={continued} hint="Conversas que permaneceram abertas" />
+                  <HileKpiCard
+                    label="Taxa de finalização"
+                    value={hasFinalizationBase ? formatPercent(finalizedRate) : "-"}
+                    hint="Finalizadas / (finalizadas + continuadas)"
+                    tone={hasFinalizationBase ? "success" : "default"}
+                    accent={hasFinalizationBase ? "success" : "default"}
+                  />
+                </HileCardGrid>
+              </HileSurfaceCard>
+
+              {loading && !payload ? (
+                <HileEmptyPanel title="Carregando análise total" description="Estamos preparando o resumo consolidado mais recente deste owner." />
+              ) : null}
+
+              {!loading && error && !payload ? (
+                <HileEmptyPanel title="Falha ao carregar a análise total" description={error} />
+              ) : null}
+
+              {!loading && !error && !hasScopedData ? (
+                <HileEmptyPanel
+                  title="Sem dados no consolidado selecionado"
+                  description="Assim que houver execuções salvas para este owner, o resumo consolidado será preenchido aqui."
+                />
+              ) : null}
             </div>
-          </div>
+          </HileSectionShell>
         </div>
       </div>
-
-      <section className={`analysis-content-shell reveal ${hasScopedData ? "" : "data-dim"}`}>
-        <article className="settings-card">
-          <div className="settings-card-head">Resumo total</div>
-          <div className="settings-card-body analysis-overall-summary">
-            <div className="analysis-overall-summary-main">
-              <article className="analysis-overall-stat">
-                <span className="analysis-overall-stat-label">Relatórios</span>
-                <strong className="analysis-overall-stat-value">{payload?.total_runs || 0}</strong>
-                <small className="analysis-overall-stat-sub">
-                  {payload?.date_range?.from && payload?.date_range?.to
-                    ? `${payload.date_range.from} até ${payload.date_range.to}`
-                    : "Período consolidado"}
-                </small>
-              </article>
-
-              <article className="analysis-overall-stat">
-                <span className="analysis-overall-stat-label">Conversas</span>
-                <strong className="analysis-overall-stat-value">{analyzed}</strong>
-                <small className="analysis-overall-stat-sub">Total consolidado no período</small>
-              </article>
-
-              <article className="analysis-overall-stat">
-                <span className="analysis-overall-stat-label">Mensagens</span>
-                <strong className="analysis-overall-stat-value">{messages}</strong>
-                <small className="analysis-overall-stat-sub">IA + usuário no consolidado</small>
-              </article>
-
-              <article className={`analysis-overall-stat ${critical > 0 ? "is-alert" : ""}`}>
-                <span className="analysis-overall-stat-label">Críticos</span>
-                <strong className="analysis-overall-stat-value">{critical}</strong>
-                <small className="analysis-overall-stat-sub">
-                  {totalInsights} insights • taxa crítica {formatPercent(criticalRate)}
-                </small>
-              </article>
-            </div>
-
-            <div className="analysis-overall-summary-mini">
-              <div className="analysis-overall-mini-item">
-                <span>Média msg/conversa</span>
-                <strong>{avgMessagesPerConversation.toFixed(1)}</strong>
-              </div>
-              <div className="analysis-overall-mini-item">
-                <span>Finalizadas</span>
-                <strong>{finalized}</strong>
-              </div>
-              <div className="analysis-overall-mini-item">
-                <span>Continuadas</span>
-                <strong>{continued}</strong>
-              </div>
-              <div className="analysis-overall-mini-item">
-                <span>Taxa de finalização</span>
-                <strong>{hasFinalizationBase ? formatPercent(finalizedRate) : "-"}</strong>
-              </div>
-            </div>
-          </div>
-        </article>
-      </section>
 
       {!loading && !error ? (
         <MovementSection
@@ -426,23 +423,18 @@ export function AnalysisOverallView({ refreshHint, sectionStart = 1, ownerScope 
 
       <div className="section reveal" id="analysis-produtos-gerais">
         <div className="section-inner">
-          <div className="section-header">
-            <span className="section-num">{sectionThree}</span>
-            <div className="section-title">
-              <h2>Produtos Gerais</h2>
-              <p>Produtos consolidados de todas as execuções salvas</p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <section className={`analysis-content-shell reveal ${visibleProducts.length > 0 ? "" : "data-dim"}`}>
-        <div className="metrics-block">
-          <div className="metrics-block-header">
-            <span>Produtos procurados</span>
-            <span>{filteredProducts.length} produto(s)</span>
-          </div>
-          <div className="metrics-block-body products-context-body">
+          <HileSectionShell
+            eyebrow={sectionThree}
+            title="Produtos Gerais"
+            description="Produtos consolidados de todas as execuções salvas."
+            muted={visibleProducts.length === 0 && !productsLoading}
+          >
+            <HileSurfaceCard
+              title="Produtos procurados"
+              description={`${filteredProducts.length} produto(s) no consolidado filtrado`}
+              tone={visibleProducts.length > 0 ? "default" : "soft"}
+            >
+              <div className="products-context-body">
             <div className="report-filters-shell" style={{ marginBottom: "12px" }}>
               <div className="report-filters-grid">
                 <div className="report-filter-field">
@@ -525,7 +517,7 @@ export function AnalysisOverallView({ refreshHint, sectionStart = 1, ownerScope 
             {filteredProducts.length > productsPageSize ? (
               <div className="pagination-row">
                 <span>
-                  {filteredProducts.length} registros • Pagina {safeProductsPage} de {totalProductsPages}
+                  {filteredProducts.length} registros â€¢ Página {safeProductsPage} de {totalProductsPages}
                 </span>
                 <button type="button" onClick={() => setProductsPage(Math.max(1, safeProductsPage - 1))} disabled={safeProductsPage <= 1}>
                   {"<"}
@@ -535,29 +527,25 @@ export function AnalysisOverallView({ refreshHint, sectionStart = 1, ownerScope 
                 </button>
               </div>
             ) : null}
-          </div>
-        </div>
-      </section>
-
-      <div className="section reveal" id="analysis-conteudo">
-        <div className="section-inner">
-          <div className="section-header">
-            <span className="section-num">{sectionFour}</span>
-            <div className="section-title">
-              <h2>Contexto Total</h2>
-              <p>Resumo dos contatos mais recentes no consolidado geral</p>
-            </div>
-          </div>
+              </div>
+            </HileSurfaceCard>
+          </HileSectionShell>
         </div>
       </div>
 
-      <section className={`analysis-content-shell reveal ${visibleContext.length > 0 ? "" : "data-dim"}`}>
-        <div className="metrics-block">
-          <div className="metrics-block-header">
-            <span>Contexto informativo</span>
-            <span>{filteredContextItems.length} registro(s)</span>
-          </div>
-          <div className="metrics-block-body">
+      <div className="section reveal" id="analysis-conteudo">
+        <div className="section-inner">
+          <HileSectionShell
+            eyebrow={sectionFour}
+            title="Contexto Total"
+            description="Resumo dos contatos mais recentes no consolidado geral."
+            muted={visibleContext.length === 0 && !loading}
+          >
+            <HileSurfaceCard
+              title="Contexto informativo"
+              description={`${filteredContextItems.length} registro(s) apos os filtros aplicados`}
+              tone={visibleContext.length > 0 ? "default" : "soft"}
+            >
             <div className="report-filters-shell" style={{ marginBottom: "12px" }}>
               <div className="report-filters-grid">
                 <div className="report-filter-field">
@@ -571,11 +559,11 @@ export function AnalysisOverallView({ refreshHint, sectionStart = 1, ownerScope 
                     }}
                   >
                     <option value="all">Todas</option>
-                    <option value="critical">{severityLabel("critical")}</option>
-                    <option value="high">{severityLabel("high")}</option>
-                    <option value="medium">{severityLabel("medium")}</option>
-                    <option value="low">{severityLabel("low")}</option>
-                    <option value="info">{severityLabel("info")}</option>
+                    <option value="critical">{severityLabel.critical}</option>
+                    <option value="high">{severityLabel.high}</option>
+                    <option value="medium">{severityLabel.medium}</option>
+                    <option value="low">{severityLabel.low}</option>
+                    <option value="info">{severityLabel.info}</option>
                   </select>
                 </div>
 
@@ -639,7 +627,7 @@ export function AnalysisOverallView({ refreshHint, sectionStart = 1, ownerScope 
               <div className="report-list-animated">
                 {visibleContext.map((item) => (
                   <article className="report-card" key={item.id}>
-                    <span className={`report-card-dot ${dotClassForSeverity(item.severity)}`} />
+                    <span className={`report-card-dot ${severityDotClass(item.severity)}`} />
                     <div className="report-card-content">
                       <h4>{toTitleCaseName(item.contact_name)}</h4>
                       <p>{item.summary}</p>
@@ -649,7 +637,7 @@ export function AnalysisOverallView({ refreshHint, sectionStart = 1, ownerScope 
                         </p>
                       ) : null}
                       <p>
-                        <strong>Data:</strong> {item.date} • <strong>Severidade:</strong> {severityLabel(item.severity)}
+                        <strong>Data:</strong> {item.date} â€¢ <strong>Severidade:</strong> {severityLabel[item.severity]}
                       </p>
                     </div>
                   </article>
@@ -660,7 +648,7 @@ export function AnalysisOverallView({ refreshHint, sectionStart = 1, ownerScope 
             {filteredContextItems.length > contextPageSize ? (
               <div className="pagination-row">
                 <span>
-                  {filteredContextItems.length} registros • Página {safeContextPage} de {totalContextPages}
+                  {filteredContextItems.length} registros â€¢ Página {safeContextPage} de {totalContextPages}
                 </span>
                 <button type="button" onClick={() => setContextPage(Math.max(1, safeContextPage - 1))} disabled={safeContextPage <= 1}>
                   {"<"}
@@ -670,9 +658,14 @@ export function AnalysisOverallView({ refreshHint, sectionStart = 1, ownerScope 
                 </button>
               </div>
             ) : null}
-          </div>
+            </HileSurfaceCard>
+          </HileSectionShell>
         </div>
-      </section>
+      </div>
     </div>
   );
 }
+
+
+
+

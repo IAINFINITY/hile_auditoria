@@ -1,5 +1,6 @@
-﻿import { FiSearch } from "react-icons/fi";
+import { FiSearch } from "react-icons/fi";
 import type { ClientPhase, Severity } from "../../../../../types";
+import { HileSurfaceCard } from "../../../shared/ui/HilePrimitives";
 import type { AccountStatus, ResponsibleFilter } from "./types";
 
 interface AccountsFiltersCardProps {
@@ -46,9 +47,12 @@ export function AccountsFiltersCard({
   onPinnedOnlyChange,
 }: AccountsFiltersCardProps) {
   return (
-    <article className="settings-card" id="clients-filtros">
-      <div className="settings-card-head">Filtros</div>
-      <div className="settings-card-body accounts-filters">
+    <HileSurfaceCard
+      title="Filtros"
+      description="Refine a leitura por status, etiquetas, severidade, responsável e fase do cliente."
+      className="accounts-filters-card"
+    >
+      <div className="accounts-filters" id="clients-filtros">
         <div className="accounts-search">
           <FiSearch aria-hidden="true" />
           <input
@@ -112,8 +116,8 @@ export function AccountsFiltersCard({
             <select value={phaseFilter} onChange={(event) => onPhaseFilterChange(event.target.value as "all" | ClientPhase)}>
               <option value="all">Todas</option>
               <option value="inicial">Inicial</option>
-              <option value="intermediario">Intermediário</option>
-              <option value="avancado">Avançado</option>
+              <option value="intermediário">Intermediário</option>
+              <option value="avancado">Avancado</option>
             </select>
           </label>
         </div>
@@ -130,9 +134,7 @@ export function AccountsFiltersCard({
           </label>
         </div>
       </div>
-    </article>
+    </HileSurfaceCard>
   );
 }
-
-
 

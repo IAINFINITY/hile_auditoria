@@ -1,15 +1,24 @@
-﻿import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { apiGet } from "@/lib/api";
 import type { ClientPhase, ClientRecordItem, ClientsByDateResponse, Severity } from "../../../../types";
+import { HileCardGrid, HileKpiCard, HilePill, HilePillRow, HileSectionShell, HileSurfaceCard } from "../../shared/ui/HilePrimitives";
 import { AccountDetailModal } from "./accounts/AccountDetailModal";
 import { AccountsFiltersCard } from "./accounts/AccountsFiltersCard";
 import { AccountsKanbanCard } from "./accounts/AccountsKanbanCard";
 import { dateKeyNowFortaleza, mapStatus, normalizeClientPhase, normalizeFilterText, normalizeResponsibleBucket } from "./accounts/helpers";
 import type { AccountStatus, AccountsViewProps, ClientsScope, ResponsibleFilter } from "./accounts/types";
 import { STATUS_ORDER } from "./accounts/types";
+
 const CLIENTS_REVALIDATE_MS = 5 * 60 * 1000;
 const CLIENTS_REVALIDATE_TODAY_MS = 60 * 1000;
 const CLIENTS_CACHE_VERSION = "v8";
+
+function ownerScopeLabel(scope: ResponsibleFilter | "all"): string {
+  if (scope === "ia") return "IA";
+  if (scope === "suellen") return "Comercial Suellen";
+  if (scope === "samuel") return "Comercial Samuel";
+  return "Todos";
+}
 
 export function AccountsView({
   selectedDate,
@@ -86,7 +95,7 @@ export function AccountsView({
         });
       }
     } catch {
-      // cache inválido
+      // cache invalido
     }
     return () => cancelAnimationFrame(raf);
   }, [cacheKey]);
@@ -186,8 +195,8 @@ export function AccountsView({
     };
   }, [cacheKey, fetchMetaKey, knownRunId, ownerScope, records.length, refreshHint, scope, selectedDate]);
 
-  const effectiveResponsibleFilter: ResponsibleFilter =
-    ownerScope === "all" ? responsibleFilter : ownerScope;
+  const effectiveResponsibleFilter: ResponsibleFilter = ownerScope === "all" ? responsibleFilter : ownerScope;
+  const ownerLabel = ownerScopeLabel(ownerScope);
 
   const labelsAvailable = useMemo(() => {
     const set = new Set<string>();
@@ -209,9 +218,7 @@ export function AccountsView({
     const hasLow = records.some((record) => record.severity === "low");
     const hasInfo = records.some((record) => record.severity === "info");
 
-    const options: Array<{ value: "all" | "gaps_insights" | Severity; label: string }> = [
-      { value: "all", label: "Todos" },
-    ];
+    const options: Array<{ value: "all" | "gaps_insights" | Severity; label: string }> = [{ value: "all", label: "Todos" }];
     if (hasGapsOrInsights) options.push({ value: "gaps_insights", label: "Gaps/insights" });
     if (hasCritical) options.push({ value: "critical", label: "Crítico" });
     if (hasHigh) options.push({ value: "high", label: "Alto" });
@@ -222,10 +229,7 @@ export function AccountsView({
     return options;
   }, [records]);
 
-  const availableAnalysisValues = useMemo(
-    () => new Set(analysisFilterOptions.map((item) => item.value)),
-    [analysisFilterOptions],
-  );
+  const availableAnalysisValues = useMemo(() => new Set(analysisFilterOptions.map((item) => item.value)), [analysisFilterOptions]);
 
   const effectiveAnalysisFilter: "all" | "gaps_insights" | Severity = availableAnalysisValues.has(analysisFilter)
     ? analysisFilter
@@ -307,9 +311,16 @@ export function AccountsView({
     if (!hasActiveFilters) return STATUS_ORDER;
     return STATUS_ORDER.filter((status) => recordsByStatus[status].length > 0);
   }, [hasActiveFilters, recordsByStatus]);
-  const filteredColsClass = hasActiveFilters
-    ? `cols-${Math.min(4, Math.max(1, visibleStatuses.length))}`
-    : "";
+  const filteredColsClass = hasActiveFilters ? `cols-${Math.min(4, Math.max(1, visibleStatuses.length))}` : "";
+  const statusSummary = useMemo(
+    () => ({
+      entrada: recordsByStatus.entrada.length,
+      remarketing: recordsByStatus.remarketing.length,
+      atencao: recordsByStatus.atencao.length,
+      resolvido: recordsByStatus.resolvido.length,
+    }),
+    [recordsByStatus],
+  );
 
   function toggleFavorite(phonePk: string) {
     setFavoritePhones((current) =>
@@ -326,142 +337,144 @@ export function AccountsView({
   return (
     <section className="accounts-shell">
       <div className="section-inner">
-        <div className="section-header">
-          <span className="section-num">01</span>
-          <div className="section-title">
-            <h2>Clientes</h2>
-            <p>
-              Chave primária operacional: <strong>telefone</strong>.{" "}
-              {scope === "day" ? (
-                <>
-                  Registros carregados do banco para <strong>{selectedDate}</strong>
-                  {runId ? <> (execução: <code>{runId}</code>)</> : null}.
-                </>
-              ) : (
-                <>Base geral de clientes consolidada a partir de <code>client_states</code>.</>
-              )}
-            </p>
-          </div>
-        </div>
-      </div>
-
-      <article className="settings-card">
-        <div className="settings-card-head">Escopo dos clientes</div>
-        <div className="settings-card-body">
-          <div className="btn-group">
-            <button
-              type="button"
-              className={`gap-chip ${scope === "day" ? "active" : ""}`}
-              onClick={() => {
-                setScopeAnimationSeed((value) => value + 1);
-                setSelectedRecord(null);
-                setScope("day");
-              }}
+        <HileSectionShell
+          eyebrow="01"
+          title="Clientes"
+          description={
+            scope === "day"
+              ? `Registros salvos para ${selectedDate}${runId ? ` (execução ${runId})` : ""} com leitura de ${ownerLabel}.`
+              : `Base geral consolidada a partir de client_states para ${ownerLabel}.`
+          }
+        >
+          <div className="hile-section-stack">
+            <HileSurfaceCard
+              title="Escopo dos clientes"
+              description="Alterne entre o dia selecionado e a base consolidada, mantendo o owner ativo."
+              tone="accent"
             >
-              Clientes do dia
-            </button>
-            <button
-              type="button"
-              className={`gap-chip ${scope === "overall" ? "active" : ""}`}
-              onClick={() => {
-                setScopeAnimationSeed((value) => value + 1);
-                setSelectedRecord(null);
-                setScope("overall");
-              }}
-            >
-              Base geral de clientes
-            </button>
-          </div>
-          <div className="btn-group" style={{ marginTop: "10px" }}>
-            <button type="button" className={`gap-chip ${ownerScope === "all" ? "active" : ""}`} onClick={() => onSetOwnerScope("all")}>
-              Todos
-            </button>
-            <button type="button" className={`gap-chip ${ownerScope === "ia" ? "active" : ""}`} onClick={() => onSetOwnerScope("ia")}>
-              IA
-            </button>
-            <button
-              type="button"
-              className={`gap-chip ${ownerScope === "suellen" ? "active" : ""}`}
-              onClick={() => onSetOwnerScope("suellen")}
-            >
-              Suellen
-            </button>
-            <button
-              type="button"
-              className={`gap-chip ${ownerScope === "samuel" ? "active" : ""}`}
-              onClick={() => onSetOwnerScope("samuel")}
-            >
-              Samuel
-            </button>
-          </div>
-        </div>
-      </article>
+              <div className="btn-group">
+                <button
+                  type="button"
+                  className={`gap-chip ${scope === "day" ? "active" : ""}`}
+                  onClick={() => {
+                    setScopeAnimationSeed((value) => value + 1);
+                    setSelectedRecord(null);
+                    setScope("day");
+                  }}
+                >
+                  Clientes do dia
+                </button>
+                <button
+                  type="button"
+                  className={`gap-chip ${scope === "overall" ? "active" : ""}`}
+                  onClick={() => {
+                    setScopeAnimationSeed((value) => value + 1);
+                    setSelectedRecord(null);
+                    setScope("overall");
+                  }}
+                >
+                  Base geral de clientes
+                </button>
+              </div>
+              <div className="btn-group" style={{ marginTop: "10px" }}>
+                <button type="button" className={`gap-chip ${ownerScope === "all" ? "active" : ""}`} onClick={() => onSetOwnerScope("all")}>
+                  Todos
+                </button>
+                <button type="button" className={`gap-chip ${ownerScope === "ia" ? "active" : ""}`} onClick={() => onSetOwnerScope("ia")}>
+                  IA
+                </button>
+                <button type="button" className={`gap-chip ${ownerScope === "suellen" ? "active" : ""}`} onClick={() => onSetOwnerScope("suellen")}>
+                  Suellen
+                </button>
+                <button type="button" className={`gap-chip ${ownerScope === "samuel" ? "active" : ""}`} onClick={() => onSetOwnerScope("samuel")}>
+                  Samuel
+                </button>
+              </div>
+            </HileSurfaceCard>
 
-      <div className="scope-switch-animated" key={`clients-scope-${scope}-${scopeAnimationSeed}`}>
-        <article className="settings-card">
-          <div className="settings-card-head">Como funciona a classificação</div>
-          <div className="settings-card-body">
-            <p>
-              <strong>Entrada:</strong> conversa no fluxo normal da IA, sem necessidade de ação imediata.
-            </p>
-            <p>
-              <strong>Remarketing:</strong> lead com indício de consultor/reunião e entre 6h e 24h aguardando retorno da equipe.
-            </p>
-            <p>
-              <strong>Atenção:</strong> conversa ainda no fluxo da IA com sinais operacionais que merecem acompanhamento.
-            </p>
-            <p>
-              <strong>Fora da IA:</strong> conversa com etiqueta de saída do fluxo da IA, como{" "}
-              <code>lead_agendado</code> ou <code>pausar_ia</code>.
-            </p>
-            <p>
-              <strong>Fase do cliente:</strong> inicial (ideia sem estrutura), intermediário (já tem CNPJ/presença de marca) e avançado (já opera marca e busca otimização de terceirização com a Hilê).
-            </p>
+            <HileSurfaceCard title="Leitura ativa" description="Contexto rapido do recorte aplicado no kanban." tone="soft">
+              <HilePillRow>
+                <HilePill active>{scope === "day" ? "Clientes do dia" : "Base geral"}</HilePill>
+                <HilePill tone="ghost">Owner: {ownerLabel}</HilePill>
+                <HilePill tone="ghost">{scope === "day" ? `Data: ${selectedDate}` : "Consolidado salvo"}</HilePill>
+              </HilePillRow>
+            </HileSurfaceCard>
+
+            <HileCardGrid cols={4}>
+              <HileKpiCard label="Clientes" value={filteredRecords.length} hint="Registros apos filtros" tone={filteredRecords.length > 0 ? "accent" : "default"} accent="accent" />
+              <HileKpiCard label="Entrada" value={statusSummary.entrada} hint="Fluxo normal da IA" />
+              <HileKpiCard label="Remarketing" value={statusSummary.remarketing} hint="Aguardando retorno comercial" />
+              <HileKpiCard label="Atenção" value={statusSummary.atencao} hint="Casos com sinal operacional" tone={statusSummary.atencao > 0 ? "critical" : "default"} accent={statusSummary.atencao > 0 ? "high" : "default"} />
+            </HileCardGrid>
+
+            <div className="scope-switch-animated" key={`clients-scope-${scope}-${scopeAnimationSeed}`}>
+              <div className="hile-section-stack">
+                <HileSurfaceCard
+                  title="Como funciona a classificacao"
+                  description="Regras operacionais que organizam os cartoes no funil de clientes."
+                >
+                  <p>
+                    <strong>Entrada:</strong> conversa no fluxo normal da IA, sem necessidade de acao imediata.
+                  </p>
+                  <p>
+                    <strong>Remarketing:</strong> lead com indicio de consultor/reuniao e entre 6h e 24h aguardando retorno da equipe.
+                  </p>
+                  <p>
+                    <strong>Atenção:</strong> conversa ainda no fluxo da IA com sinais operacionais que merecem acompanhamento.
+                  </p>
+                  <p>
+                    <strong>Fora da IA:</strong> conversa com etiqueta de saida do fluxo da IA, como <code>lead_agendado</code> ou <code>pausar_ia</code>.
+                  </p>
+                  <p>
+                    <strong>Fase do cliente:</strong> inicial (ideia sem estrutura), intermediário (ja tem CNPJ/presenca de marca) e avancado (ja opera marca e busca otimizacao de terceirizacao com a Hile).
+                  </p>
+                </HileSurfaceCard>
+
+                <AccountsFiltersCard
+                  query={query}
+                  onQueryChange={setQuery}
+                  statusFilter={statusFilter}
+                  onStatusFilterChange={setStatusFilter}
+                  labelFilter={labelFilter}
+                  onLabelFilterChange={setLabelFilter}
+                  labelsAvailable={labelsAvailable}
+                  effectiveAnalysisFilter={effectiveAnalysisFilter}
+                  onAnalysisFilterChange={setAnalysisFilter}
+                  analysisFilterOptions={analysisFilterOptions}
+                  responsibleFilter={effectiveResponsibleFilter}
+                  onResponsibleFilterChange={setResponsibleFilter}
+                  responsibleFilterLocked={ownerScope !== "all"}
+                  phaseFilter={phaseFilter}
+                  onPhaseFilterChange={setPhaseFilter}
+                  favoritesOnly={favoritesOnly}
+                  onFavoritesOnlyChange={setFavoritesOnly}
+                  pinnedOnly={pinnedOnly}
+                  onPinnedOnlyChange={setPinnedOnly}
+                />
+
+                <AccountsKanbanCard
+                  shouldDimKanban={shouldDimKanban}
+                  loading={loading}
+                  errorMessage={errorMessage}
+                  filteredRecords={filteredRecords}
+                  hasActiveFilters={hasActiveFilters}
+                  filteredColsClass={filteredColsClass}
+                  visibleStatuses={visibleStatuses}
+                  recordsByStatus={recordsByStatus}
+                  favoritePhones={favoritePhones}
+                  pinnedPhones={pinnedPhones}
+                  onToggleFavorite={toggleFavorite}
+                  onTogglePinned={togglePinned}
+                  onSelectRecord={setSelectedRecord}
+                />
+              </div>
+            </div>
           </div>
-        </article>
-
-        <AccountsFiltersCard
-          query={query}
-          onQueryChange={setQuery}
-          statusFilter={statusFilter}
-          onStatusFilterChange={setStatusFilter}
-          labelFilter={labelFilter}
-          onLabelFilterChange={setLabelFilter}
-          labelsAvailable={labelsAvailable}
-          effectiveAnalysisFilter={effectiveAnalysisFilter}
-          onAnalysisFilterChange={setAnalysisFilter}
-          analysisFilterOptions={analysisFilterOptions}
-          responsibleFilter={effectiveResponsibleFilter}
-          onResponsibleFilterChange={setResponsibleFilter}
-          responsibleFilterLocked={ownerScope !== "all"}
-          phaseFilter={phaseFilter}
-          onPhaseFilterChange={setPhaseFilter}
-          favoritesOnly={favoritesOnly}
-          onFavoritesOnlyChange={setFavoritesOnly}
-          pinnedOnly={pinnedOnly}
-          onPinnedOnlyChange={setPinnedOnly}
-        />
-
-        <AccountsKanbanCard
-          shouldDimKanban={shouldDimKanban}
-          loading={loading}
-          errorMessage={errorMessage}
-          filteredRecords={filteredRecords}
-          hasActiveFilters={hasActiveFilters}
-          filteredColsClass={filteredColsClass}
-          visibleStatuses={visibleStatuses}
-          recordsByStatus={recordsByStatus}
-          favoritePhones={favoritePhones}
-          pinnedPhones={pinnedPhones}
-          onToggleFavorite={toggleFavorite}
-          onTogglePinned={togglePinned}
-          onSelectRecord={setSelectedRecord}
-        />
+        </HileSectionShell>
       </div>
 
       {selectedRecord ? <AccountDetailModal record={selectedRecord} onClose={() => setSelectedRecord(null)} /> : null}
     </section>
   );
 }
-
 

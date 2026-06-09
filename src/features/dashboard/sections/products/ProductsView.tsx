@@ -3,7 +3,9 @@ import type { InsightItem, Severity } from "../../../../types";
 import type { ProductDemandItem } from "../../shared/types";
 import { toTitleCaseName } from "../../hooks/controller/common";
 import { canonicalizeProductLabel, normalizeProductForMatch } from "@/lib/products/canonical";
+import { severityColors, severityLabel } from "../../shared/constants";
 import type { OwnerScope } from "../../shared/types";
+import { HileEmptyPanel, HileSectionShell, HileSurfaceCard } from "../../shared/ui/HilePrimitives";
 
 interface ProductsViewProps {
   items: ProductDemandItem[];
@@ -21,20 +23,8 @@ type ProductTone = "tone-1" | "tone-2" | "tone-3" | "tone-default";
 const CONTEXT_PAGE_SIZE = 5;
 const PRODUCTS_PAGE_SIZE = 6;
 
-function severityLabel(value: Severity): string {
-  if (value === "critical") return "Critico";
-  if (value === "high") return "Alto";
-  if (value === "medium") return "Medio";
-  if (value === "low") return "Baixo";
-  return "Informativo";
-}
-
 function severityMarkerColor(value: Severity): string {
-  if (value === "critical") return "var(--critical)";
-  if (value === "high") return "var(--high)";
-  if (value === "medium") return "var(--medium)";
-  if (value === "low") return "var(--low)";
-  return "var(--info)";
+  return severityColors[value];
 }
 
 function toneByIndex(index: number): ProductTone {
@@ -79,6 +69,13 @@ function aggregateDayProducts(items: ProductDemandItem[]): ProductDemandItem[] {
     .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, "pt-BR"));
 }
 
+function ownerScopeLabel(scope: OwnerScope): string {
+  if (scope === "ia") return "IA";
+  if (scope === "suellen") return "Comercial Suellen";
+  if (scope === "samuel") return "Comercial Samuel";
+  return "Todos";
+}
+
 export function ProductsView({
   items,
   selectedDate,
@@ -112,10 +109,7 @@ export function ProductsView({
     });
   }, [productItems, productsQuery, productsSortMode]);
 
-  const totalProductsPages = useMemo(() => {
-    return Math.max(1, Math.ceil(filteredProducts.length / PRODUCTS_PAGE_SIZE));
-  }, [filteredProducts.length]);
-
+  const totalProductsPages = useMemo(() => Math.max(1, Math.ceil(filteredProducts.length / PRODUCTS_PAGE_SIZE)), [filteredProducts.length]);
   const safeProductsPage = Math.min(productsPage, totalProductsPages);
   const visibleProducts = useMemo(() => {
     const start = (safeProductsPage - 1) * PRODUCTS_PAGE_SIZE;
@@ -131,9 +125,9 @@ export function ProductsView({
   }, [contextInsights, informationalInsights]);
 
   const contextContactOptions = useMemo(() => {
-    return Array.from(
-      new Set(baseContextInsights.map((item) => toTitleCaseName(item.contact_name)).filter(Boolean)),
-    ).sort((a, b) => a.localeCompare(b, "pt-BR"));
+    return Array.from(new Set(baseContextInsights.map((item) => toTitleCaseName(item.contact_name)).filter(Boolean))).sort((a, b) =>
+      a.localeCompare(b, "pt-BR"),
+    );
   }, [baseContextInsights]);
 
   const filteredContextInsights = useMemo(() => {
@@ -148,18 +142,14 @@ export function ProductsView({
     });
   }, [baseContextInsights, contextContactFilter, contextFilter, contextQuery]);
 
-  const totalContextPages = useMemo(() => {
-    return Math.max(1, Math.ceil(filteredContextInsights.length / CONTEXT_PAGE_SIZE));
-  }, [filteredContextInsights.length]);
-
+  const totalContextPages = useMemo(() => Math.max(1, Math.ceil(filteredContextInsights.length / CONTEXT_PAGE_SIZE)), [filteredContextInsights.length]);
+  const displayContextPage = Math.min(contextPage, totalContextPages);
   const visibleContextInsights = useMemo(() => {
-    const currentPage = Math.min(contextPage, totalContextPages);
-    const start = (currentPage - 1) * CONTEXT_PAGE_SIZE;
+    const start = (displayContextPage - 1) * CONTEXT_PAGE_SIZE;
     return filteredContextInsights.slice(start, start + CONTEXT_PAGE_SIZE);
-  }, [contextPage, filteredContextInsights, totalContextPages]);
+  }, [displayContextPage, filteredContextInsights]);
 
   const hasInformational = filteredContextInsights.length > 0;
-  const displayContextPage = Math.min(contextPage, totalContextPages);
   const rootClass = showHeader ? "settings-shell reveal" : "analysis-content-shell reveal";
 
   function keepScroll(update: () => void) {
@@ -180,24 +170,14 @@ export function ProductsView({
     });
   }
 
-  return (
-    <section className={rootClass}>
-      {showHeader ? (
-        <header className="settings-header" id="analysis-overview">
-          <h2>Analise Geral do Dia</h2>
-          <p>
-            Esta analise geral reflete exatamente os dados do dia selecionado: {selectedDate}. Responsável:{" "}
-            {ownerScope === "all" ? "Todos" : ownerScope === "ia" ? "IA" : ownerScope === "suellen" ? "Comercial Suellen" : "Comercial Samuel"}.
-          </p>
-        </header>
-      ) : null}
-
-      <div className={`metrics-block ${hasProducts ? "" : "data-dim"}`} id="analysis-produtos">
-        <div className="metrics-block-header">
-          <span>Produtos Procurados</span>
-          <span>{filteredProducts.length} produto(s)</span>
-        </div>
-        <div className="metrics-block-body products-context-body">
+  const content = (
+    <div className="hile-section-stack">
+      <HileSurfaceCard
+        title="Produtos Procurados"
+        description={`${filteredProducts.length} produto(s) encontrados no escopo atual`}
+        tone={hasProducts ? "default" : "soft"}
+      >
+        <div className="products-context-body">
           <div className="report-filters-shell products-context-filters">
             <div className="report-filters-grid">
               <div className="report-filter-field">
@@ -236,7 +216,7 @@ export function ProductsView({
           </div>
 
           {!hasProducts ? (
-            <p className="empty-state">Ainda não há produtos mapeados para este período.</p>
+            <HileEmptyPanel title="Sem produtos mapeados" description="Ainda não ha produtos identificados para este período." />
           ) : (
             <>
               {topProducts.length > 0 ? (
@@ -260,7 +240,7 @@ export function ProductsView({
               ) : null}
 
               {filteredProducts.length === 0 ? (
-                <p className="empty-state">Nenhum produto encontrado com os filtros atuais.</p>
+                <HileEmptyPanel title="Nenhum produto encontrado" description="Os filtros atuais não retornaram produtos para exibir." />
               ) : (
                 <div className="report-list-animated products-context-list">
                   {visibleProducts.map((item, index) => {
@@ -288,133 +268,132 @@ export function ProductsView({
               <span>
                 {filteredProducts.length} registros • Página {safeProductsPage} de {totalProductsPages}
               </span>
-              <button
-                type="button"
-                onClick={() => keepScroll(() => setProductsPage(Math.max(1, safeProductsPage - 1)))}
-                disabled={safeProductsPage <= 1}
-              >
+              <button type="button" onClick={() => keepScroll(() => setProductsPage(Math.max(1, safeProductsPage - 1)))} disabled={safeProductsPage <= 1}>
                 {"<"}
               </button>
-              <button
-                type="button"
-                onClick={() => keepScroll(() => setProductsPage(Math.min(totalProductsPages, safeProductsPage + 1)))}
-                disabled={safeProductsPage >= totalProductsPages}
-              >
+              <button type="button" onClick={() => keepScroll(() => setProductsPage(Math.min(totalProductsPages, safeProductsPage + 1)))} disabled={safeProductsPage >= totalProductsPages}>
                 {">"}
               </button>
             </div>
           ) : null}
         </div>
-      </div>
+      </HileSurfaceCard>
 
-      <div className={`metrics-block ${hasInformational ? "" : "data-dim"}`} id="analysis-informativo">
-        <div className="metrics-block-header">
-          <span>Contexto Informativo</span>
-          <span>{filteredContextInsights.length} registro(s)</span>
-        </div>
-        <div className="metrics-block-body">
-          <div className="report-filters-shell" style={{ marginBottom: "12px" }}>
-            <div className="report-filters-grid">
-              <div className="report-filter-field">
-                <label htmlFor="day-context-filter">Gaps/Severidade</label>
-                <select id="day-context-filter" value={contextFilter} onChange={(event) => applyContextFilter(event.target.value as ContextSeverityFilter)}>
-                  <option value="all">Todas</option>
-                  <option value="critical">Critico</option>
-                  <option value="high">Alto</option>
-                  <option value="medium">Medio</option>
-                  <option value="low">Baixo</option>
-                  <option value="info">Informativo</option>
-                </select>
-              </div>
+      <HileSurfaceCard
+        title="Contexto Informativo"
+        description={`${filteredContextInsights.length} registro(s) encontrados para leitura contextual`}
+        tone={hasInformational ? "default" : "soft"}
+      >
+        <div className="report-filters-shell" style={{ marginBottom: "12px" }}>
+          <div className="report-filters-grid">
+            <div className="report-filter-field">
+              <label htmlFor="day-context-filter">Gaps/Severidade</label>
+              <select id="day-context-filter" value={contextFilter} onChange={(event) => applyContextFilter(event.target.value as ContextSeverityFilter)}>
+                <option value="all">Todas</option>
+                <option value="critical">Crítico</option>
+                <option value="high">Alto</option>
+                <option value="medium">Medio</option>
+                <option value="low">Baixo</option>
+                <option value="info">Informativo</option>
+              </select>
+            </div>
 
-              <div className="report-filter-field">
-                <label htmlFor="day-context-contact">Contato</label>
-                <select
-                  id="day-context-contact"
-                  value={contextContactFilter}
-                  onChange={(event) =>
-                    keepScroll(() => {
-                      setContextContactFilter(event.target.value);
-                      setContextPage(1);
-                    })
-                  }
-                >
-                  <option value="all">Todos</option>
-                  {contextContactOptions.map((contact) => (
-                    <option key={contact} value={contact}>
-                      {contact}
-                    </option>
-                  ))}
-                </select>
-              </div>
+            <div className="report-filter-field">
+              <label htmlFor="day-context-contact">Contato</label>
+              <select
+                id="day-context-contact"
+                value={contextContactFilter}
+                onChange={(event) =>
+                  keepScroll(() => {
+                    setContextContactFilter(event.target.value);
+                    setContextPage(1);
+                  })
+                }
+              >
+                <option value="all">Todos</option>
+                {contextContactOptions.map((contact) => (
+                  <option key={contact} value={contact}>
+                    {contact}
+                  </option>
+                ))}
+              </select>
+            </div>
 
-              <div className="report-filter-field">
-                <label htmlFor="day-context-date">Data</label>
-                <select id="day-context-date" value={selectedDate || "-"} disabled>
-                  <option value={selectedDate || "-"}>{selectedDate || "-"}</option>
-                </select>
-              </div>
+            <div className="report-filter-field">
+              <label htmlFor="day-context-date">Data</label>
+              <select id="day-context-date" value={selectedDate || "-"} disabled>
+                <option value={selectedDate || "-"}>{selectedDate || "-"}</option>
+              </select>
+            </div>
 
-              <div className="report-filter-field">
-                <label htmlFor="day-context-search">Pesquisar</label>
-                <input
-                  id="day-context-search"
-                  type="text"
-                  placeholder="Contato ou resumo"
-                  value={contextQuery}
-                  onChange={(event) =>
-                    keepScroll(() => {
-                      setContextQuery(event.target.value);
-                      setContextPage(1);
-                    })
-                  }
-                />
-              </div>
+            <div className="report-filter-field">
+              <label htmlFor="day-context-search">Pesquisar</label>
+              <input
+                id="day-context-search"
+                type="text"
+                placeholder="Contato ou resumo"
+                value={contextQuery}
+                onChange={(event) =>
+                  keepScroll(() => {
+                    setContextQuery(event.target.value);
+                    setContextPage(1);
+                  })
+                }
+              />
             </div>
           </div>
-
-          {!hasInformational ? (
-            <p className="empty-state">Nenhum registro disponível para o filtro selecionado.</p>
-          ) : (
-            <div className="report-list-animated">
-              {visibleContextInsights.map((item) => (
-                <article className="report-card" key={item.id}>
-                  <span className="report-card-dot" style={{ background: severityMarkerColor(item.severity) }} />
-                  <div className="report-card-content">
-                    <h4>{toTitleCaseName(item.contact_name)}</h4>
-                    <p>{item.summary}</p>
-                    <p>
-                      <strong>Severidade:</strong> {severityLabel(item.severity)}
-                    </p>
-                  </div>
-                </article>
-              ))}
-            </div>
-          )}
-
-          {filteredContextInsights.length > CONTEXT_PAGE_SIZE ? (
-            <div className="pagination-row">
-              <span>
-                {filteredContextInsights.length} registros • Página {displayContextPage} de {totalContextPages}
-              </span>
-              <button
-                type="button"
-                onClick={() => keepScroll(() => setContextPage(Math.max(1, displayContextPage - 1)))}
-                disabled={displayContextPage <= 1}
-              >
-                {"<"}
-              </button>
-              <button
-                type="button"
-                onClick={() => keepScroll(() => setContextPage(Math.min(totalContextPages, displayContextPage + 1)))}
-                disabled={displayContextPage >= totalContextPages}
-              >
-                {">"}
-              </button>
-            </div>
-          ) : null}
         </div>
-      </div>
+
+        {!hasInformational ? (
+          <HileEmptyPanel title="Sem registros contextuais" description="Nenhum insight informativo foi encontrado para os filtros atuais." />
+        ) : (
+          <div className="report-list-animated">
+            {visibleContextInsights.map((item) => (
+              <article className="report-card" key={item.id}>
+                <span className="report-card-dot" style={{ background: severityMarkerColor(item.severity) }} />
+                <div className="report-card-content">
+                  <h4>{toTitleCaseName(item.contact_name)}</h4>
+                  <p>{item.summary}</p>
+                  <p>
+                    <strong>Severidade:</strong> {severityLabel[item.severity]}
+                  </p>
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
+
+        {filteredContextInsights.length > CONTEXT_PAGE_SIZE ? (
+          <div className="pagination-row">
+            <span>
+              {filteredContextInsights.length} registros • Página {displayContextPage} de {totalContextPages}
+            </span>
+            <button type="button" onClick={() => keepScroll(() => setContextPage(Math.max(1, displayContextPage - 1)))} disabled={displayContextPage <= 1}>
+              {"<"}
+            </button>
+            <button type="button" onClick={() => keepScroll(() => setContextPage(Math.min(totalContextPages, displayContextPage + 1)))} disabled={displayContextPage >= totalContextPages}>
+              {">"}
+            </button>
+          </div>
+        ) : null}
+      </HileSurfaceCard>
+    </div>
+  );
+
+  return (
+    <section className={rootClass}>
+      {showHeader ? (
+        <HileSectionShell
+          eyebrow="01"
+          title="Análise Geral do Dia"
+          description={`Esta análise reflete os dados de ${selectedDate} para ${ownerScopeLabel(ownerScope)}.`}
+        >
+          {content}
+        </HileSectionShell>
+      ) : (
+        content
+      )}
     </section>
   );
 }
+

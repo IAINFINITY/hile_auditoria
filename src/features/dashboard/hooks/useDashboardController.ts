@@ -243,17 +243,17 @@ export function useDashboardController(options?: { enabled?: boolean; syncNavOnS
       setInsights([]);
       setReport(null);
       setFailures([]);
-      setRawOutput("Carregando relatÃ³rio salvo da data selecionada...");
+      setRawOutput("Carregando relatório salvo da data selecionada...");
       setInsightsReady(false);
       setShowTrend(false);
       setIsLoadingDateReport(true);
-      setStatus(`Carregando relatÃ³rio salvo de ${targetDate}...`);
+      setStatus(`Carregando relatório salvo de ${targetDate}...`);
     }
 
     try {
       const payload = await apiGet<ReportByDateResponse>(`/api/report-day/by-date?date=${encodeURIComponent(targetDate)}`);
       if (!payload?.run) {
-        throw new Error("Nenhum relatÃ³rio salvo encontrado para a data selecionada.");
+        throw new Error("Nenhum relatório salvo encontrado para a data selecionada.");
       }
 
       const snapshot = mapRunToDashboardSnapshot(payload.run);
@@ -261,7 +261,7 @@ export function useDashboardController(options?: { enabled?: boolean; syncNavOnS
       setInsights(snapshot.insights);
       setReport(snapshot.report);
       setFailures([]);
-      setRawOutput(snapshot.rawOutput || "RelatÃ³rio salvo sem conteÃºdo markdown.");
+      setRawOutput(snapshot.rawOutput || "Relatório salvo sem conteúdo markdown.");
       setInsightsReady(true);
       setShowTrend(true);
       setLastRunAt(payload.run.started_at || new Date().toISOString());
@@ -276,10 +276,10 @@ export function useDashboardController(options?: { enabled?: boolean; syncNavOnS
         setInsights([]);
         setReport(null);
         setFailures([]);
-        setRawOutput("Sem relatÃ³rio salvo para essa data. VocÃª pode gerar um novo overview.");
+        setRawOutput("Sem relatório salvo para essa data. Você pode gerar um novo overview.");
         setInsightsReady(false);
         setShowTrend(false);
-        setStatus(`NÃ£o encontramos relatÃ³rio salvo para ${targetDate}.`);
+        setStatus(`Não encontramos relatório salvo para ${targetDate}.`);
         setAvailableReportDates((current) =>
           current.includes(targetDate) ? current.filter((item) => item !== targetDate) : current,
         );

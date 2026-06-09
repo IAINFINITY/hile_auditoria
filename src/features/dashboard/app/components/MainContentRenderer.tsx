@@ -12,6 +12,15 @@ import { ProductsDualView } from "@/features/dashboard/sections/products/Product
 import { ProductsView } from "@/features/dashboard/sections/products/ProductsView";
 import { SettingsView } from "@/features/dashboard/sections/settings/SettingsView";
 import { SuperadminAccountsView } from "@/features/dashboard/sections/superadmin/SuperadminAccountsView";
+import {
+  HileCardGrid,
+  HileEmptyPanel,
+  HileKpiCard,
+  HilePill,
+  HilePillRow,
+  HileSectionShell,
+  HileSurfaceCard,
+} from "@/features/dashboard/shared/ui/HilePrimitives";
 import type { DashboardController } from "../dashboardTypes";
 import type { AppView } from "../types";
 import type { OwnerScope } from "@/features/dashboard/shared/types";
@@ -167,94 +176,94 @@ export function MainContentRenderer({
       <div className="settings-animated analysis-animated" key="analysis-view">
         <div className="section reveal">
           <div className="section-inner">
-            <div className="section-header">
-              <span className="section-num">01</span>
-              <div className="section-title">
-                <h2>Análise</h2>
-                <p>
-                  {analysisScope === "day"
-                    ? `Visão do dia selecionado (${controller.date}).`
-                    : "Visão geral consolidada de todas as execuções salvas."}
-                </p>
+            <HileSectionShell
+              eyebrow="01"
+              title="Análise"
+              description={
+                analysisScope === "day"
+                  ? `Visão do dia selecionado (${controller.date}).`
+                  : "Visão geral consolidada de todas as execuções salvas."
+              }
+            >
+              <div className="hile-section-stack">
+                <HileSurfaceCard
+                  title="Escopo da análise"
+                  description="Defina se a leitura será diária ou consolidada e ajuste o responsável exibido no painel."
+                  tone="accent"
+                >
+                  <div className="btn-group">
+                    <button type="button" className={`gap-chip ${analysisScope === "day" ? "active" : ""}`} onClick={() => onSetAnalysisScope("day")}>
+                      Análise do dia
+                    </button>
+                    <button
+                      type="button"
+                      className={`gap-chip ${analysisScope === "overall" ? "active" : ""}`}
+                      onClick={() => onSetAnalysisScope("overall")}
+                    >
+                      Análise total
+                    </button>
+                  </div>
+                  <div className="btn-group" style={{ marginTop: "10px" }}>
+                    <button type="button" className={`gap-chip ${ownerScope === "all" ? "active" : ""}`} onClick={() => onSetOwnerScope("all")}>
+                      Todos
+                    </button>
+                    <button type="button" className={`gap-chip ${ownerScope === "ia" ? "active" : ""}`} onClick={() => onSetOwnerScope("ia")}>
+                      IA
+                    </button>
+                    <button type="button" className={`gap-chip ${ownerScope === "suellen" ? "active" : ""}`} onClick={() => onSetOwnerScope("suellen")}>
+                      Suellen
+                    </button>
+                    <button type="button" className={`gap-chip ${ownerScope === "samuel" ? "active" : ""}`} onClick={() => onSetOwnerScope("samuel")}>
+                      Samuel
+                    </button>
+                  </div>
+                </HileSurfaceCard>
+
+                <HileSurfaceCard
+                  title="Como interpretar esta análise"
+                  description="Leitura orientada para o escopo ativo, sem misturar o dia com o consolidado."
+                  tone="soft"
+                >
+                  {analysisScope === "day" ? (
+                    <div className="hile-section-stack">
+                      <HilePillRow>
+                        <HilePill active>Análise do Dia</HilePill>
+                        <HilePill tone="ghost">Data: {controller.date}</HilePill>
+                        <HilePill tone="ghost">Owner: {ownerScopeLabel(ownerScope)}</HilePill>
+                      </HilePillRow>
+                      <p>
+                        <strong>Análise do Dia:</strong> sempre considera somente os dados da data selecionada no período.
+                      </p>
+                      <p>
+                        <strong>Movimentação:</strong> mostra volume horário e distribuição de severidade para o mesmo dia.
+                      </p>
+                      <p>
+                        <strong>Produtos e Contexto:</strong> lista produtos detectados e insights informativos desse dia, sem misturar com outras datas.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="hile-section-stack">
+                      <HilePillRow>
+                        <HilePill active>Análise Total</HilePill>
+                        <HilePill tone="ghost">Consolidado salvo</HilePill>
+                        <HilePill tone="ghost">Owner: {ownerScopeLabel(ownerScope)}</HilePill>
+                      </HilePillRow>
+                      <p>
+                        <strong>Análise Total:</strong> consolida os dados de todas as execuções salvas no período exibido.
+                      </p>
+                      <p>
+                        <strong>Movimentação:</strong> mostra volume horário e distribuição de severidade no consolidado geral.
+                      </p>
+                      <p>
+                        <strong>Produtos e Contexto:</strong> reúne produtos detectados e insights informativos de múltiplas datas, sem limitar a um único dia.
+                      </p>
+                    </div>
+                  )}
+                </HileSurfaceCard>
               </div>
-            </div>
+            </HileSectionShell>
           </div>
         </div>
-
-        <section className="analysis-content-shell reveal">
-          <article className="settings-card">
-            <div className="settings-card-head">Escopo da análise</div>
-            <div className="settings-card-body">
-              <div className="btn-group">
-                <button type="button" className={`gap-chip ${analysisScope === "day" ? "active" : ""}`} onClick={() => onSetAnalysisScope("day")}>
-                  Análise do dia
-                </button>
-                <button
-                  type="button"
-                  className={`gap-chip ${analysisScope === "overall" ? "active" : ""}`}
-                  onClick={() => onSetAnalysisScope("overall")}
-                >
-                  Análise total
-                </button>
-              </div>
-              <div className="btn-group" style={{ marginTop: "10px" }}>
-                <button type="button" className={`gap-chip ${ownerScope === "all" ? "active" : ""}`} onClick={() => onSetOwnerScope("all")}>
-                  Todos
-                </button>
-                <button type="button" className={`gap-chip ${ownerScope === "ia" ? "active" : ""}`} onClick={() => onSetOwnerScope("ia")}>
-                  IA
-                </button>
-                <button
-                  type="button"
-                  className={`gap-chip ${ownerScope === "suellen" ? "active" : ""}`}
-                  onClick={() => onSetOwnerScope("suellen")}
-                >
-                  Suellen
-                </button>
-                <button
-                  type="button"
-                  className={`gap-chip ${ownerScope === "samuel" ? "active" : ""}`}
-                  onClick={() => onSetOwnerScope("samuel")}
-                >
-                  Samuel
-                </button>
-              </div>
-            </div>
-          </article>
-        </section>
-
-        <section className="analysis-content-shell reveal">
-          <article className="settings-card">
-            <div className="settings-card-head">Como interpretar esta análise</div>
-            <div className="settings-card-body">
-              {analysisScope === "day" ? (
-                <>
-                  <p>
-                    <strong>Análise do Dia:</strong> sempre considera somente os dados da data selecionada no período.
-                  </p>
-                  <p>
-                    <strong>Movimentação:</strong> mostra volume horário e distribuição de severidade para o mesmo dia.
-                  </p>
-                  <p>
-                    <strong>Produtos e Contexto:</strong> lista produtos detectados e insights informativos desse dia, sem misturar com outras datas.
-                  </p>
-                </>
-              ) : (
-                <>
-                  <p>
-                    <strong>Análise Total:</strong> consolida os dados de todas as execuções salvas no período exibido.
-                  </p>
-                  <p>
-                    <strong>Movimentação:</strong> mostra volume horário e distribuição de severidade no consolidado geral.
-                  </p>
-                  <p>
-                    <strong>Produtos e Contexto:</strong> reúne produtos detectados e insights informativos de múltiplas datas, sem limitar a um único dia.
-                  </p>
-                </>
-              )}
-            </div>
-          </article>
-        </section>
 
         {analysisScope === "overall" ? (
           <AnalysisOverallView
@@ -267,72 +276,68 @@ export function MainContentRenderer({
           <>
             <div className="section reveal" id="analysis-overview">
               <div className="section-inner">
-                <div className="section-header">
-                  <span className="section-num">02</span>
-                  <div className="section-title">
-                    <h2>Análise Geral do Dia</h2>
-                    <p>
-                      Esta análise geral reflete exatamente os dados do dia selecionado: {controller.date}{" "}
-                      ({ownerScopeLabel(ownerScope)}).
-                    </p>
+                <HileSectionShell
+                  eyebrow="02"
+                  title="Análise Geral do Dia"
+                  description={`Esta leitura considera somente os dados de ${controller.date} para ${ownerScopeLabel(ownerScope)}.`}
+                  muted={!dayHasScopedData}
+                >
+                  <div className="hile-section-stack">
+                    <HileCardGrid cols={4}>
+                      <HileKpiCard
+                        label="Relatórios"
+                        value={controller.selectedDateHasSavedReport ? 1 : 0}
+                        hint={`Data selecionada: ${controller.date}`}
+                        tone={controller.selectedDateHasSavedReport ? "accent" : "default"}
+                        accent="accent"
+                      />
+                      <HileKpiCard
+                        label="Conversas"
+                        value={dayConversations}
+                        hint="Total consolidado no período"
+                        tone={dayConversations > 0 ? "accent" : "default"}
+                        accent="accent"
+                      />
+                      <HileKpiCard
+                        label="Mensagens"
+                        value={dayMessages}
+                        hint="IA + usuário no consolidado"
+                        accent="accent"
+                      />
+                      <HileKpiCard
+                        label="Críticos"
+                        value={dayCritical}
+                        hint={`${dayTotalInsights} insights â€¢ taxa crítica ${(dayCriticalRate * 100).toFixed(1)}%`}
+                        tone={dayCritical > 0 ? "critical" : "default"}
+                        accent={dayCritical > 0 ? "critical" : "default"}
+                      />
+                    </HileCardGrid>
+
+                    <HileSurfaceCard title="Indicadores complementares" description="Resumo operacional do dia no escopo selecionado." tone="soft">
+                      <HileCardGrid cols={4}>
+                        <HileKpiCard label="Média msg/conversa" value={dayAvgMessagesPerConversation.toFixed(1)} hint="Volume médio por atendimento" />
+                        <HileKpiCard label="Finalizadas" value={dayFinalized} hint="Conversas encerradas no dia" accent="success" />
+                        <HileKpiCard label="Continuadas" value={dayContinued} hint="Conversas que seguiram abertas" />
+                        <HileKpiCard
+                          label="Taxa de finalização"
+                          value={dayHasFinalizationBase ? `${(dayFinalizedRate * 100).toFixed(1)}%` : "-"}
+                          hint="Finalizadas / (finalizadas + continuadas)"
+                          tone={dayHasFinalizationBase ? "success" : "default"}
+                          accent={dayHasFinalizationBase ? "success" : "default"}
+                        />
+                      </HileCardGrid>
+                    </HileSurfaceCard>
+
+                    {!dayHasScopedData ? (
+                      <HileEmptyPanel
+                        title="Sem dados no escopo selecionado"
+                        description="Quando houver relatório salvo para esta data e owner, o resumo diário será preenchido automaticamente aqui."
+                      />
+                    ) : null}
                   </div>
-                </div>
+                </HileSectionShell>
               </div>
             </div>
-
-            <section className={`analysis-content-shell reveal ${dayHasScopedData ? "" : "data-dim"}`}>
-              <article className="settings-card">
-                <div className="settings-card-head">Resumo total</div>
-                <div className="settings-card-body analysis-overall-summary">
-                  <div className="analysis-overall-summary-main">
-                    <article className="analysis-overall-stat">
-                      <span className="analysis-overall-stat-label">Relatórios</span>
-                      <strong className="analysis-overall-stat-value">{controller.selectedDateHasSavedReport ? 1 : 0}</strong>
-                      <small className="analysis-overall-stat-sub">Data selecionada: {controller.date}</small>
-                    </article>
-
-                    <article className="analysis-overall-stat">
-                      <span className="analysis-overall-stat-label">Conversas</span>
-                      <strong className="analysis-overall-stat-value">{dayConversations}</strong>
-                      <small className="analysis-overall-stat-sub">Total consolidado no período</small>
-                    </article>
-
-                    <article className="analysis-overall-stat">
-                      <span className="analysis-overall-stat-label">Mensagens</span>
-                      <strong className="analysis-overall-stat-value">{dayMessages}</strong>
-                      <small className="analysis-overall-stat-sub">IA + usuário no consolidado</small>
-                    </article>
-
-                    <article className={`analysis-overall-stat ${dayCritical > 0 ? "is-alert" : ""}`}>
-                      <span className="analysis-overall-stat-label">Críticos</span>
-                      <strong className="analysis-overall-stat-value">{dayCritical}</strong>
-                      <small className="analysis-overall-stat-sub">
-                        {dayTotalInsights} insights • taxa crítica {(dayCriticalRate * 100).toFixed(1)}%
-                      </small>
-                    </article>
-                  </div>
-
-                  <div className="analysis-overall-summary-mini">
-                    <div className="analysis-overall-mini-item">
-                      <span>Média msg/conversa</span>
-                      <strong>{dayAvgMessagesPerConversation.toFixed(1)}</strong>
-                    </div>
-                    <div className="analysis-overall-mini-item">
-                      <span>Finalizadas</span>
-                      <strong>{dayFinalized}</strong>
-                    </div>
-                    <div className="analysis-overall-mini-item">
-                      <span>Continuadas</span>
-                      <strong>{dayContinued}</strong>
-                    </div>
-                    <div className="analysis-overall-mini-item">
-                      <span>Taxa de finalização</span>
-                      <strong>{dayHasFinalizationBase ? `${(dayFinalizedRate * 100).toFixed(1)}%` : "-"}</strong>
-                    </div>
-                  </div>
-                </div>
-              </article>
-            </section>
 
             <MovementSection
               trendSeries={controller.trendSeries}
@@ -345,25 +350,21 @@ export function MainContentRenderer({
 
             <div className="section reveal" id="analysis-conteudo">
               <div className="section-inner">
-                <div className="section-header">
-                  <span className="section-num">04</span>
-                  <div className="section-title">
-                    <h2>Produtos e Contexto</h2>
-                    <p>Produtos procurados e insights informativos do dia selecionado</p>
-                  </div>
-                </div>
+                <HileSectionShell
+                  eyebrow="04"
+                  title="Produtos e Contexto"
+                  description="Produtos procurados e insights informativos do dia selecionado."
+                >
+                  <ProductsView
+                    items={controller.productDemand}
+                    selectedDate={controller.date}
+                    informationalInsights={controller.informationalInsights}
+                    contextInsights={controller.allInsights}
+                    ownerScope={ownerScope}
+                    showHeader={false}
+                  />
+                </HileSectionShell>
               </div>
-            </div>
-
-            <div>
-              <ProductsView
-                items={controller.productDemand}
-                selectedDate={controller.date}
-                informationalInsights={controller.informationalInsights}
-                contextInsights={controller.allInsights}
-                ownerScope={ownerScope}
-                showHeader={false}
-              />
             </div>
           </>
         )}
@@ -488,3 +489,5 @@ export function MainContentRenderer({
     </div>
   );
 }
+
+

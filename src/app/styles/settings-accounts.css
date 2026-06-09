@@ -105,6 +105,13 @@
   border-radius:10px;
 }
 
+.settings-field input,
+.settings-field select,
+.settings-field textarea{
+  width:100%;
+  min-width:0;
+}
+
 .settings-select{
   height:40px;
   border:1px solid var(--line);
@@ -879,6 +886,57 @@
   font-size:var(--fs-small);
   text-align:center;
   padding:26px 10px;
+}
+
+@media (max-width: 1180px){
+  .accounts-admin-grid{
+    grid-template-columns:1fr 1fr;
+  }
+
+  .superadmin-table{
+    min-width:840px;
+  }
+}
+
+@media (max-width: 900px){
+  .accounts-admin-grid{
+    grid-template-columns:1fr;
+  }
+
+  .accounts-admin-form-footer{
+    align-items:stretch;
+  }
+
+  .accounts-admin-password-meta,
+  .accounts-admin-form-footer .settings-save-row{
+    width:100%;
+    justify-content:flex-start;
+  }
+
+  .superadmin-filters{
+    grid-template-columns:1fr;
+  }
+}
+
+@media (max-width: 640px){
+  .analysis-content-shell{
+    padding-bottom:28px;
+  }
+
+  .accounts-kanban-col-head{
+    padding:10px;
+    font-size:var(--fs-tiny);
+  }
+
+  .account-card{
+    padding:12px;
+  }
+
+  .superadmin-table th,
+  .superadmin-table td{
+    padding:10px 12px;
+    font-size:var(--fs-tiny);
+  }
 }
 
 .account-card{

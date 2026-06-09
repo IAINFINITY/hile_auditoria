@@ -1,5 +1,6 @@
-﻿import { FiMapPin, FiStar } from "react-icons/fi";
+import { FiMapPin, FiStar } from "react-icons/fi";
 import type { ClientRecordItem } from "../../../../../types";
+import { HileEmptyPanel, HileSurfaceCard } from "../../../shared/ui/HilePrimitives";
 import { labelClass } from "../../report/utils";
 import {
   clientPhaseClass,
@@ -43,13 +44,17 @@ export function AccountsKanbanCard({
   onSelectRecord,
 }: AccountsKanbanCardProps) {
   return (
-    <article className={`settings-card ${shouldDimKanban ? "data-dim" : ""}`} id="clients-kanban">
-      <div className="settings-card-head">Kanban - {filteredRecords.length} cliente(s)</div>
-      <div className="settings-card-body accounts-list-wrap">
-        {loading ? <p className="empty-state">Carregando clientes do banco...</p> : null}
-        {!loading && errorMessage ? <p className="empty-state">{errorMessage}</p> : null}
+    <HileSurfaceCard
+      title={`Kanban - ${filteredRecords.length} cliente(s)`}
+      description="Distribuicao operacional dos clientes com base no escopo e filtros ativos."
+      tone={shouldDimKanban ? "soft" : "default"}
+      className={shouldDimKanban ? "data-dim" : undefined}
+    >
+      <div className="accounts-list-wrap" id="clients-kanban">
+        {loading ? <HileEmptyPanel title="Carregando clientes" description="Estamos buscando os registros salvos no banco para montar o kanban." /> : null}
+        {!loading && errorMessage ? <HileEmptyPanel title="Falha ao carregar clientes" description={errorMessage} /> : null}
         {!loading && !errorMessage && filteredRecords.length === 0 ? (
-          <p className="empty-state">Nenhum cliente encontrado com os filtros atuais.</p>
+          <HileEmptyPanel title="Nenhum cliente encontrado" description="Ajuste os filtros para localizar registros neste escopo." />
         ) : null}
 
         {!loading && !errorMessage && filteredRecords.length > 0 ? (
@@ -150,6 +155,7 @@ export function AccountsKanbanCard({
           </div>
         ) : null}
       </div>
-    </article>
+    </HileSurfaceCard>
   );
 }
+

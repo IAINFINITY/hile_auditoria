@@ -3,6 +3,8 @@ import type { DissatisfactionOverallResponse } from "../../../../types";
 import { apiGet } from "@/lib/api";
 import { toTitleCaseName } from "../../hooks/controller/common";
 import { buildConversationUrl, normalizeChatwootAppBase } from "../../shared/helpers";
+import { normalizeSeverity, severityColors, severityLabel } from "../../shared/constants";
+import { HileCardGrid, HileEmptyPanel, HileKpiCard, HileSectionShell, HileSurfaceCard } from "../../shared/ui/HilePrimitives";
 import type { OperationalAlertItem } from "../../shared/types";
 
 interface DissatisfactionOverallViewProps {
@@ -25,23 +27,13 @@ function formatDateTime(value: string | null | undefined): string {
 }
 
 function typeLabel(type: AlertTypeFilter): string {
-  if (type === "insatisfacao_hile") return "Insatisfação com a Hilê";
-  if (type === "insatisfacao_atendimento") return "Insatisfação com atendimento";
+  if (type === "insatisfacao_hile") return "Insatisfacao com a Hile";
+  if (type === "insatisfacao_atendimento") return "Insatisfacao com atendimento";
   return "Todos";
 }
 
-function severityLabel(severity: string | null | undefined): string {
-  if (severity === "critical") return "Crítico";
-  if (severity === "high") return "Alto";
-  if (severity === "medium") return "Médio";
-  return "Informativo";
-}
-
 function severityColor(severity: string | null | undefined): string {
-  if (severity === "critical") return "var(--critical)";
-  if (severity === "high") return "var(--high)";
-  if (severity === "medium") return "var(--medium)";
-  return "var(--info)";
+  return severityColors[normalizeSeverity(severity, "info")];
 }
 
 function typeColor(type: AlertTypeFilter): string {
@@ -76,7 +68,7 @@ export function DissatisfactionOverallView({
       })
       .catch((err: unknown) => {
         if (cancelled) return;
-        setError(err instanceof Error ? err.message : "Falha ao carregar insatisfação geral.");
+        setError(err instanceof Error ? err.message : "Falha ao carregar insatisfacao geral.");
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -113,124 +105,113 @@ export function DissatisfactionOverallView({
   return (
     <section className="accounts-shell dissatisfaction-shell">
       <div className="section-inner reveal" id="dissatisfaction-overview">
-        <div className="section-header">
-          <span className="section-num">{headerNumber}</span>
-          <div className="section-title">
-            <h2>Registro de Insatisfação (Geral)</h2>
-            <p>
-              Consolidado de todas as execuções salvas
-              {payload?.date_range?.from && payload?.date_range?.to
-                ? ` (${payload.date_range.from} até ${payload.date_range.to})`
-                : "."}
-            </p>
+        <HileSectionShell
+          eyebrow={headerNumber}
+          title="Registro de Insatisfacao (Geral)"
+          description={
+            payload?.date_range?.from && payload?.date_range?.to
+              ? `Consolidado de todas as execuções salvas entre ${payload.date_range.from} e ${payload.date_range.to}.`
+              : "Consolidado de todas as execuções salvas."
+          }
+        >
+          <div className="hile-section-stack">
+            <HileCardGrid cols={4}>
+              <HileKpiCard label="Ocorrências" value={summary.total} hint="Sinais salvos no consolidado" tone={summary.total > 0 ? "accent" : "default"} accent="accent" />
+              <HileKpiCard label="Clientes impactados" value={summary.unique_contacts} hint="Contatos unicos afetados" />
+              <HileKpiCard label="Críticos" value={summary.critical} hint="Casos de maior severidade" tone={summary.critical > 0 ? "critical" : "default"} accent={summary.critical > 0 ? "critical" : "default"} />
+              <HileKpiCard label="Execucoes" value={payload?.total_runs || 0} hint="Rodadas consideradas no consolidado" />
+            </HileCardGrid>
+
+            <HileSurfaceCard title="Filtros" description="Refine a leitura do consolidado por tipo e severidade." tone="accent">
+              <div className="accounts-filters">
+                <div className="accounts-filter-row">
+                  <label>
+                    Tipo
+                    <select value={typeFilter} onChange={(event) => { setTypeFilter(event.target.value as AlertTypeFilter); setPage(1); }}>
+                      <option value="all">{typeLabel("all")}</option>
+                      <option value="insatisfacao_hile">{typeLabel("insatisfacao_hile")}</option>
+                      <option value="insatisfacao_atendimento">{typeLabel("insatisfacao_atendimento")}</option>
+                    </select>
+                  </label>
+                  <label>
+                    Severidade
+                    <select value={severityFilter} onChange={(event) => { setSeverityFilter(event.target.value as AlertSeverityFilter); setPage(1); }}>
+                      <option value="all">Todas</option>
+                      <option value="critical">{severityLabel.critical}</option>
+                      <option value="high">Alto</option>
+                      <option value="medium">{severityLabel.medium}</option>
+                    </select>
+                  </label>
+                </div>
+              </div>
+            </HileSurfaceCard>
+
+            <HileSurfaceCard title="Ocorrências" description={`${filteredAlerts.length} registro(s) encontrados no consolidado filtrado`} tone={paged.length > 0 ? "default" : "soft"}>
+              {loading ? (
+                <HileEmptyPanel title="Carregando insatisfacao geral" description="Estamos preparando o consolidado salvo mais recente." />
+              ) : error ? (
+                <HileEmptyPanel title="Falha ao carregar insatisfacao geral" description={error} />
+              ) : paged.length === 0 ? (
+                <HileEmptyPanel title="Sem ocorrencias para os filtros aplicados" description="Quando houver novos casos neste recorte, eles aparecerão aqui." />
+              ) : (
+                <div className="report-list-animated">
+                  {paged.map((item) => {
+                    const alertType: AlertTypeFilter = item.category === "insatisfacao_hile" ? "insatisfacao_hile" : "insatisfacao_atendimento";
+                    const conversationId = Number(item.conversationId || 0);
+                    const chatwootLink =
+                      normalizedChatwootBase && chatwootAccountId > 0 && chatwootInboxId > 0 && conversationId > 0
+                        ? buildConversationUrl(normalizedChatwootBase, chatwootAccountId, chatwootInboxId, conversationId)
+                        : null;
+                    return (
+                      <article className="report-card" key={item.id}>
+                        <span className="report-card-dot" style={{ background: severityColor(item.severity) }} />
+                        <div className="report-card-content">
+                          <h4>{typeLabel(alertType)}</h4>
+                          <p>
+                            <strong>{toTitleCaseName(item.contactName || "")}</strong> • conversa #{item.conversationId || "-"}
+                          </p>
+                          <p className="dissatisfaction-meta-row">
+                            <span className="dissatisfaction-type-chip" style={{ borderColor: typeColor(alertType), color: typeColor(alertType) }}>
+                              {typeLabel(alertType)}
+                            </span>
+                            <span className="dissatisfaction-meta-severity" style={{ color: severityColor(item.severity) }}>
+                              {severityLabel[normalizeSeverity(item.severity, "info")]}
+                            </span>
+                          </p>
+                          <p><strong>Momento:</strong> {formatDateTime(item.occurredAt)}</p>
+                          <p><strong>Evidencia:</strong> {item.excerpt}</p>
+                          <button type="button" className="link-btn link-btn-spaced" onClick={() => onOpenReportByContact(item.contactName)}>
+                            Ver relatório desta pessoa
+                          </button>
+                          {chatwootLink ? (
+                            <a className="link-btn link-btn-spaced" href={chatwootLink} target="_blank" rel="noreferrer">
+                              Ver no Chatwoot ?
+                            </a>
+                          ) : null}
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
+              )}
+
+              {filteredAlerts.length > perPage ? (
+                <div className="pagination-row">
+                  <span>
+                    {filteredAlerts.length} registros • Página {safePage} de {totalPages}
+                  </span>
+                  <button type="button" onClick={() => setPage(Math.max(1, safePage - 1))} disabled={safePage <= 1}>
+                    {"<"}
+                  </button>
+                  <button type="button" onClick={() => setPage(Math.min(totalPages, safePage + 1))} disabled={safePage >= totalPages}>
+                    {">"}
+                  </button>
+                </div>
+              ) : null}
+            </HileSurfaceCard>
           </div>
-        </div>
+        </HileSectionShell>
       </div>
-
-      <article className={`settings-card ${summary.total === 0 ? "data-dim" : ""}`}>
-        <div className="settings-card-head">Panorama geral</div>
-        <div className="settings-card-body dissatisfaction-kpis">
-          <p><strong>Ocorrências:</strong> {summary.total}</p>
-          <p><strong>Clientes impactados:</strong> {summary.unique_contacts}</p>
-          <p><strong>Críticos:</strong> {summary.critical}</p>
-          <p><strong>Altos:</strong> {summary.high}</p>
-          <p><strong>Médios:</strong> {summary.medium}</p>
-          <p><strong>Execuções:</strong> {payload?.total_runs || 0}</p>
-        </div>
-      </article>
-
-      <article className="settings-card" id="dissatisfaction-filters">
-        <div className="settings-card-head">Filtros</div>
-        <div className="settings-card-body accounts-filters">
-          <div className="accounts-filter-row">
-            <label>
-              Tipo
-              <select value={typeFilter} onChange={(event) => { setTypeFilter(event.target.value as AlertTypeFilter); setPage(1); }}>
-                <option value="all">{typeLabel("all")}</option>
-                <option value="insatisfacao_hile">{typeLabel("insatisfacao_hile")}</option>
-                <option value="insatisfacao_atendimento">{typeLabel("insatisfacao_atendimento")}</option>
-              </select>
-            </label>
-            <label>
-              Severidade
-              <select value={severityFilter} onChange={(event) => { setSeverityFilter(event.target.value as AlertSeverityFilter); setPage(1); }}>
-                <option value="all">Todas</option>
-                <option value="critical">Crítico</option>
-                <option value="high">Alto</option>
-                <option value="medium">Médio</option>
-              </select>
-            </label>
-          </div>
-        </div>
-      </article>
-
-      <article className={`settings-card ${paged.length === 0 ? "data-dim" : ""}`} id="dissatisfaction-list">
-        <div className="settings-card-head">Ocorrências</div>
-        <div className="settings-card-body">
-          {loading ? <p className="empty-state">Carregando insatisfação geral...</p> : null}
-          {!loading && error ? <p className="empty-state">{error}</p> : null}
-          {!loading && !error && paged.length === 0 ? (
-            <p className="empty-state">Sem ocorrências de insatisfação para os filtros aplicados.</p>
-          ) : null}
-
-          {!loading && !error && paged.length > 0 ? (
-            <div className="report-list-animated">
-              {paged.map((item) => {
-                const alertType: AlertTypeFilter =
-                  item.category === "insatisfacao_hile" ? "insatisfacao_hile" : "insatisfacao_atendimento";
-                const conversationId = Number(item.conversationId || 0);
-                const chatwootLink =
-                  normalizedChatwootBase && chatwootAccountId > 0 && chatwootInboxId > 0 && conversationId > 0
-                    ? buildConversationUrl(normalizedChatwootBase, chatwootAccountId, chatwootInboxId, conversationId)
-                    : null;
-                return (
-                  <article className="report-card" key={item.id}>
-                    <span className="report-card-dot" style={{ background: severityColor(item.severity) }} />
-                    <div className="report-card-content">
-                      <h4>{typeLabel(alertType)}</h4>
-                      <p>
-                        <strong>{toTitleCaseName(item.contactName || "")}</strong> ⬢ conversa #{item.conversationId || "-"}
-                      </p>
-                      <p className="dissatisfaction-meta-row">
-                        <span className="dissatisfaction-type-chip" style={{ borderColor: typeColor(alertType), color: typeColor(alertType) }}>
-                          {typeLabel(alertType)}
-                        </span>
-                        <span className="dissatisfaction-meta-severity" style={{ color: severityColor(item.severity) }}>
-                          {severityLabel(item.severity)}
-                        </span>
-                      </p>
-                      <p><strong>Momento:</strong> {formatDateTime(item.occurredAt)}</p>
-                      <p><strong>Evidência:</strong> {item.excerpt}</p>
-                      <button type="button" className="link-btn link-btn-spaced" onClick={() => onOpenReportByContact(item.contactName)}>
-                        Ver relatório desta pessoa
-                      </button>
-                      {chatwootLink ? (
-                        <a className="link-btn link-btn-spaced" href={chatwootLink} target="_blank" rel="noreferrer">
-                          Ver no Chatwoot →
-                        </a>
-                      ) : null}
-                    </div>
-                  </article>
-                );
-              })}
-            </div>
-          ) : null}
-
-          {filteredAlerts.length > perPage ? (
-            <div className="pagination-row">
-              <span>
-                {filteredAlerts.length} registros ⬢ Página {safePage} de {totalPages}
-              </span>
-              <button type="button" onClick={() => setPage(Math.max(1, safePage - 1))} disabled={safePage <= 1}>
-                {"<"}
-              </button>
-              <button type="button" onClick={() => setPage(Math.min(totalPages, safePage + 1))} disabled={safePage >= totalPages}>
-                {">"}
-              </button>
-            </div>
-          ) : null}
-        </div>
-      </article>
     </section>
   );
 }

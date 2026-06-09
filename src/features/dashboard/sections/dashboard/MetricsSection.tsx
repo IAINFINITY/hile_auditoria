@@ -1,6 +1,13 @@
-﻿import { Fragment, useMemo } from "react";
+import { Fragment, useMemo } from "react";
 import type { OverviewPayload, Severity } from "../../../../types";
 import type { PeriodPreset } from "../../shared/types";
+import {
+  HileCardGrid,
+  HileInlineInsight,
+  HileKpiCard,
+  HileSectionShell,
+  HileSurfaceCard,
+} from "../../shared/ui/HilePrimitives";
 
 interface MetricsSectionProps {
   date: string;
@@ -40,13 +47,13 @@ function getRelativePreset(date: string): PeriodPreset | null {
   const toYmd = (d: Date) =>
     `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   const today = toYmd(now);
-  const y = new Date(now);
-  y.setDate(now.getDate() - 1);
-  const yy = new Date(now);
-  yy.setDate(now.getDate() - 2);
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  const beforeYesterday = new Date(now);
+  beforeYesterday.setDate(now.getDate() - 2);
   if (date === today) return "today";
-  if (date === toYmd(y)) return "yesterday";
-  if (date === toYmd(yy)) return "before_yesterday";
+  if (date === toYmd(yesterday)) return "yesterday";
+  if (date === toYmd(beforeYesterday)) return "before_yesterday";
   return null;
 }
 
@@ -56,15 +63,16 @@ function formatPeriodLabel(preset: PeriodPreset, date?: string): string {
     const toYmd = (d: Date) =>
       `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
     const today = toYmd(now);
-    const y = new Date(now);
-    y.setDate(now.getDate() - 1);
-    const yy = new Date(now);
-    yy.setDate(now.getDate() - 2);
+    const yesterday = new Date(now);
+    yesterday.setDate(now.getDate() - 1);
+    const beforeYesterday = new Date(now);
+    beforeYesterday.setDate(now.getDate() - 2);
     if (date === today) return "Hoje";
-    if (date === toYmd(y)) return "Ontem";
-    if (date === toYmd(yy)) return "Anteontem";
+    if (date === toYmd(yesterday)) return "Ontem";
+    if (date === toYmd(beforeYesterday)) return "Anteontem";
     return "Dia personalizado";
   }
+
   const map: Record<PeriodPreset, string> = {
     today: "Hoje",
     yesterday: "Ontem",
@@ -110,245 +118,206 @@ export function MetricsSection({
   const hasOverviewData = Boolean(summary);
 
   const kpis = useMemo(() => {
-    const conversasTotais = summary?.conversations_total_analyzed_day ?? 0;
-    const gapsCriticos = severitySnapshot.critical || 0;
-    const gapsAltos = severitySnapshot.high || 0;
-    const gapsMedios = severitySnapshot.medium || 0;
-    const gapsBaixos = severitySnapshot.low || 0;
-    const criticalAndHigh = gapsCriticos + gapsAltos;
-    const semGaps = Math.max(0, conversasTotais - (gapsCriticos + gapsAltos + gapsMedios + gapsBaixos));
+    const totalConversations = summary?.conversations_total_analyzed_day ?? 0;
+    const critical = severitySnapshot.critical || 0;
+    const high = severitySnapshot.high || 0;
+    const medium = severitySnapshot.medium || 0;
+    const low = severitySnapshot.low || 0;
+    const criticalAndHigh = critical + high;
+    const withoutGaps = Math.max(0, totalConversations - (critical + high + medium + low));
+
     return {
-      conversasTotais,
-      mensagensHoje: summary?.total_messages_day ?? 0,
-      gapsCriticos,
-      gapsAltos,
-      gapsMedios,
-      gapsBaixos,
-      gapsCriticosAltos: criticalAndHigh,
-      semGaps,
-      finalizadas: summary?.finalized_count ?? 0,
-      numerosRepetidos: summary?.repeated_identifier_count ?? 0,
-      abertas: summary?.continued_count ?? 0,
-      gatilhos: summary?.trigger_ready_count ?? 0,
+      totalConversations,
+      totalMessages: summary?.total_messages_day ?? 0,
+      critical,
+      high,
+      medium,
+      low,
+      criticalAndHigh,
+      withoutGaps,
+      finalized: summary?.finalized_count ?? 0,
+      repeatedContacts: summary?.repeated_identifier_count ?? 0,
+      open: summary?.continued_count ?? 0,
+      triggers: summary?.trigger_ready_count ?? 0,
     };
   }, [severitySnapshot.critical, severitySnapshot.high, severitySnapshot.medium, severitySnapshot.low, summary]);
 
   const panorama = useMemo(() => {
-    const totalConv = Math.max(1, summary?.conversations_total_analyzed_day ?? 0);
-    const totalMsgs = summary?.total_messages_day ?? 0;
-    const mediaMensagens = totalMsgs / totalConv;
-    const taxaFinalizacao = (kpis.finalizadas / totalConv) * 100;
-    const taxaCriticidade = (kpis.gapsCriticosAltos / totalConv) * 100;
+    const safeConversations = Math.max(1, summary?.conversations_total_analyzed_day ?? 0);
+    const totalMessages = summary?.total_messages_day ?? 0;
+    const avgMessages = totalMessages / safeConversations;
+    const finalizationRate = (kpis.finalized / safeConversations) * 100;
+    const criticalityRate = (kpis.criticalAndHigh / safeConversations) * 100;
 
     return {
-      mediaMensagens: Number.isFinite(mediaMensagens) ? mediaMensagens.toFixed(1) : "0.0",
-      taxaFinalizacao: `${Math.max(0, Math.min(100, Math.round(taxaFinalizacao)))}%`,
-      taxaCriticidade: `${Math.max(0, Math.min(100, Math.round(taxaCriticidade)))}%`,
-      aguardandoIa: `${kpis.gatilhos}`,
+      avgMessages: Number.isFinite(avgMessages) ? avgMessages.toFixed(1) : "0.0",
+      finalizationRate: `${Math.max(0, Math.min(100, Math.round(finalizationRate)))}%`,
+      criticalityRate: `${Math.max(0, Math.min(100, Math.round(criticalityRate)))}%`,
+      waitingOnIa: `${kpis.triggers}`,
     };
-  }, [kpis.finalizadas, kpis.gapsCriticosAltos, kpis.gatilhos, summary?.conversations_total_analyzed_day, summary?.total_messages_day]);
+  }, [kpis.criticalAndHigh, kpis.finalized, kpis.triggers, summary?.conversations_total_analyzed_day, summary?.total_messages_day]);
 
   const relativePreset = useMemo(() => getRelativePreset(date), [date]);
   const isAggregateMode =
     periodPreset === "week" || periodPreset === "month" || periodPreset === "year" || periodPreset === "total";
   const isCustomDay = !isAggregateMode && relativePreset === null;
+
   const statusText = currentStatus.trim();
   const normalizedStatus = statusText.toLowerCase();
-  const executionNoticeStyle =
+  const statusTone =
     normalizedStatus.includes("falhou") || normalizedStatus.includes("erro")
-      ? {
-          borderColor: "var(--critical)",
-          background: "rgba(244, 67, 54, 0.06)",
-          color: "var(--critical)",
-        }
+      ? "critical"
       : normalizedStatus.includes("conclu")
-        ? {
-            borderColor: "var(--low)",
-            background: "rgba(46, 125, 50, 0.06)",
-            color: "var(--low)",
-          }
-        : {
-            borderColor: "var(--line)",
-            background: "rgba(17, 99, 202, 0.04)",
-            color: "var(--navy)",
-          };
+        ? "warning"
+        : "default";
 
   return (
     <div className="section reveal" id="inicio">
       <div className="section-inner">
-        <div className="section-header">
-          <span className="section-num">01</span>
-          <div className="section-title">
-            <h2>{isAggregateMode ? "Métricas do Período" : "Métricas do Dia"}</h2>
-            <p>Período: {formatPeriodLabel(periodPreset, date)} — {formatDateBr(date)}</p>
-          </div>
-        </div>
-
-        <div className="metrics-block">
-          <div className="metrics-block-header">
-            <span>Controles do período</span>
-          </div>
-          <div className="metrics-block-body">
-            <div className="orq-row orq-row-period">
-              <label>Período</label>
-              <div className="filter-box" style={{ flex: 1 }}>
-                <div className="filter-group" style={{ flex: 1 }}>
-                  {PRESETS.map((preset, index) => (
-                    <Fragment key={preset.key}>
-                      {index === 3 ? <div className="filter-sep" /> : null}
-                      <button
-                        type="button"
-                        className={`filter-pill ${
-                          periodPreset === preset.key &&
-                          (preset.key === "week" ||
-                            preset.key === "month" ||
-                            preset.key === "year" ||
-                            preset.key === "total" ||
-                            relativePreset === preset.key)
-                            ? "active"
-                            : ""
-                        }`}
-                        onClick={() => applyPeriodPreset(preset.key)}
-                      >
-                        {preset.label}
-                      </button>
-                    </Fragment>
-                  ))}
-                  {isCustomDay ? (
-                    <>
-                      <div className="filter-sep" />
-                      <button type="button" className="filter-pill active" disabled aria-current="true">
-                        Dia personalizado
-                      </button>
-                    </>
-                  ) : null}
-                </div>
-              </div>
-            </div>
-
-            <div className="orq-row orq-row-exec">
-              <label>Execução</label>
-              <div className="orq-exec-stack">
-                <div className="filter-box orq-exec-main">
-                  <input
-                    id="ref-date"
-                    type="date"
-                    value={date}
-                    min={minDate}
-                    max={maxDate}
-                    onChange={(event) => setDate(event.target.value)}
-                  />
-                  <span className={`status-badge ${selectedDateHasSavedReport ? "ok" : "orq-warning"}`}>
-                    {selectedDateHasSavedReport ? "Com relatório" : "Sem relatório"}
-                  </span>
-                </div>
-                <div className="filter-box orq-exec-actions">
-                  <div className="filter-group orq-exec-mode-group">
-                    <button className="btn btn-primary orq-run-btn" onClick={onRequestOverview} disabled={isBusy}>
-                      {isRunningOverview ? "Processando..." : "Executar Overview"}
-                    </button>
-                    <span className="orq-inline-note">{selectedDateInfo}</span>
-                  </div>
-                </div>
-
-                {isRunningOverview ? (
-                  <div className="filter-box orq-progress-box">
-                    <div className="orq-progress-head">
-                      <strong>{runCurrentContact ? `Analisando: ${runCurrentContact}` : "Processando overview"}</strong>
-                      <span>{runProgress}%</span>
-                    </div>
-                    <div className="orq-progress-track" role="progressbar" aria-valuenow={runProgress} aria-valuemin={0} aria-valuemax={100}>
-                      <div className="orq-progress-fill" style={{ width: `${runProgress}%` }} />
-                    </div>
-                    <div className="orq-progress-meta">
-                      <span>{runTimeline.length ? runTimeline[runTimeline.length - 1] : "Executando..."}</span>
-                      <button type="button" className="link-btn" onClick={onOpenLogs}>
-                        Acompanhar detalhes em Logs
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <>
-                    {statusText ? (
-                      <div className="orq-hint-box" style={executionNoticeStyle}>
-                        <strong>Última execução:</strong> {statusText}
-                      </div>
+        <HileSectionShell
+          eyebrow="01"
+          title={isAggregateMode ? "Métricas do Período" : "Métricas do Dia"}
+          description={`Período: ${formatPeriodLabel(periodPreset, date)} — ${formatDateBr(date)}`}
+        >
+          <div className="hile-section-stack">
+            <HileSurfaceCard
+              title="Controles do período"
+              description="Selecione o recorte, confira o status do relatório salvo e execute um novo overview quando quiser atualizar o consolidado."
+              tone="accent"
+            >
+              <div className="orq-row orq-row-period">
+                <label>Período</label>
+                <div className="filter-box" style={{ flex: 1 }}>
+                  <div className="filter-group" style={{ flex: 1 }}>
+                    {PRESETS.map((preset, index) => (
+                      <Fragment key={preset.key}>
+                        {index === 3 ? <div className="filter-sep" /> : null}
+                        <button
+                          type="button"
+                          className={`filter-pill ${
+                            periodPreset === preset.key &&
+                            (preset.key === "week" ||
+                              preset.key === "month" ||
+                              preset.key === "year" ||
+                              preset.key === "total" ||
+                              relativePreset === preset.key)
+                              ? "active"
+                              : ""
+                          }`}
+                          onClick={() => applyPeriodPreset(preset.key)}
+                        >
+                          {preset.label}
+                        </button>
+                      </Fragment>
+                    ))}
+                    {isCustomDay ? (
+                      <>
+                        <div className="filter-sep" />
+                        <button type="button" className="filter-pill active" disabled aria-current="true">
+                          Dia personalizado
+                        </button>
+                      </>
                     ) : null}
-                    <div className="orq-hint-box">
-                      Se quiser acompanhar o processo detalhado da execução, abra a seção{" "}
-                      <button type="button" className="link-btn" onClick={onOpenLogs}>
-                        Logs
+                  </div>
+                </div>
+              </div>
+
+              <div className="orq-row orq-row-exec">
+                <label>Execução</label>
+                <div className="orq-exec-stack">
+                  <div className="filter-box orq-exec-main">
+                    <input
+                      id="ref-date"
+                      type="date"
+                      value={date}
+                      min={minDate}
+                      max={maxDate}
+                      onChange={(event) => setDate(event.target.value)}
+                    />
+                    <span className={`status-badge ${selectedDateHasSavedReport ? "ok" : "orq-warning"}`}>
+                      {selectedDateHasSavedReport ? "Com relatório" : "Sem relatório"}
+                    </span>
+                  </div>
+
+                  <div className="filter-box orq-exec-actions">
+                    <div className="filter-group orq-exec-mode-group">
+                      <button className="btn btn-primary orq-run-btn" onClick={onRequestOverview} disabled={isBusy}>
+                        {isRunningOverview ? "Processando..." : "Executar Overview"}
                       </button>
-                      .
+                      <span className="orq-inline-note">{selectedDateInfo}</span>
                     </div>
-                  </>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
+                  </div>
 
-        <div className={`metrics-block ${hasOverviewData ? "" : "data-dim"}`}>
-          <div className="metrics-block-header">
-            <span>Indicadores do período</span>
-          </div>
-          <div className="metrics-block-body" style={{ padding: 0 }}>
-            <div className="kpi-grid">
-              <div className="kpi-card"><div className="kpi-label">Conversas totais</div><div className="kpi-value">{kpis.conversasTotais}</div><div className="kpi-sub">analisadas no período</div></div>
-              <div className="kpi-card"><div className="kpi-label">Gaps Críticos</div><div className="kpi-value gap-val">{kpis.gapsCriticos}</div><div className="kpi-sub">severidade crítica</div></div>
-              <div className="kpi-card"><div className="kpi-label">Gaps Altos</div><div className="kpi-value alert-val">{kpis.gapsAltos}</div><div className="kpi-sub">severidade alta</div></div>
-              <div className="kpi-card"><div className="kpi-label">Gaps Médios</div><div className="kpi-value">{kpis.gapsMedios}</div><div className="kpi-sub">severidade média</div></div>
-              <div className="kpi-card"><div className="kpi-label">Gaps Baixos</div><div className="kpi-value pos-val">{kpis.gapsBaixos}</div><div className="kpi-sub">severidade baixa</div></div>
-              <div className="kpi-card"><div className="kpi-label">Sem gaps</div><div className="kpi-value info-val">{kpis.semGaps}</div><div className="kpi-sub">sem risco operacional</div></div>
-              <div className="kpi-card"><div className="kpi-label">Finalizadas</div><div className="kpi-value pos-val">{kpis.finalizadas}</div><div className="kpi-sub">com etiqueta</div></div>
-              <div className="kpi-card"><div className="kpi-label">Gatilhos</div><div className="kpi-value">{kpis.gatilhos}</div><div className="kpi-sub">+1h sem resposta</div></div>
-            </div>
-          </div>
-        </div>
+                  {isRunningOverview ? (
+                    <div className="filter-box orq-progress-box">
+                      <div className="orq-progress-head">
+                        <strong>{runCurrentContact ? `Analisando: ${runCurrentContact}` : "Processando overview"}</strong>
+                        <span>{runProgress}%</span>
+                      </div>
+                      <div className="orq-progress-track" role="progressbar" aria-valuenow={runProgress} aria-valuemin={0} aria-valuemax={100}>
+                        <div className="orq-progress-fill" style={{ width: `${runProgress}%` }} />
+                      </div>
+                      <div className="orq-progress-meta">
+                        <span>{runTimeline.length ? runTimeline[runTimeline.length - 1] : "Executando..."}</span>
+                        <button type="button" className="link-btn" onClick={onOpenLogs}>
+                          Acompanhar detalhes em Logs
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="hile-section-stack">
+                      {statusText ? (
+                        <HileInlineInsight title="Última execução" tone={statusTone}>
+                          {statusText}
+                        </HileInlineInsight>
+                      ) : null}
+                      <HileInlineInsight title="Acompanhamento" tone="default">
+                        Se quiser acompanhar o processo detalhado da execução, abra a seção{" "}
+                        <button type="button" className="link-btn" onClick={onOpenLogs}>
+                          Logs
+                        </button>
+                        .
+                      </HileInlineInsight>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </HileSurfaceCard>
 
-        <div className={`metrics-block ${hasOverviewData ? "" : "data-dim"}`}>
-          <div className="metrics-block-header">
-            <span>Panorama do dia</span>
-          </div>
-          <div className="metrics-block-body">
-            <div className="panorama-grid">
-              <div className="pano-card">
-                <div className="pano-label">Média de mensagens por conversa</div>
-                <div className="pano-value">{panorama.mediaMensagens}</div>
-              </div>
-              <div className="pano-card">
-                <div className="pano-label">Taxa de finalização</div>
-                <div className="pano-value pano-pos">{panorama.taxaFinalizacao}</div>
-              </div>
-              <div className="pano-card">
-                <div className="pano-label">Taxa de gaps críticos + altos</div>
-                <div className="pano-value gap-val">{panorama.taxaCriticidade}</div>
-              </div>
-              <div className="pano-card">
-                <div className="pano-label">Conversas aguardando IA (+1h)</div>
-                <div className="pano-value">{panorama.aguardandoIa}</div>
-              </div>
-              <div className="pano-card">
-                <div className="pano-label">Mensagens IA + usuário</div>
-                <div className="pano-value">{kpis.mensagensHoje}</div>
-              </div>
-              <div className="pano-card">
-                <div className="pano-label">Tempo médio de resposta do cliente</div>
-                <div className="pano-value">{clientAvgResponseMinutes}</div>
-              </div>
-              <div className="pano-card">
-                <div className="pano-label">Hora de pico de resposta do cliente</div>
-                <div className="pano-value">{clientPeakHourLabel}</div>
-              </div>
+            <div className={!hasOverviewData ? "data-dim" : ""}>
+              <HileCardGrid cols={4}>
+                <HileKpiCard label="Conversas totais" value={kpis.totalConversations} hint="analisadas no período" />
+                <HileKpiCard label="Gaps críticos" value={kpis.critical} hint="severidade crítica" tone="critical" accent="critical" />
+                <HileKpiCard label="Gaps altos" value={kpis.high} hint="severidade alta" tone="critical" accent="high" />
+                <HileKpiCard label="Gaps médios" value={kpis.medium} hint="severidade média" />
+                <HileKpiCard label="Gaps baixos" value={kpis.low} hint="severidade baixa" tone="success" accent="success" />
+                <HileKpiCard label="Sem gaps" value={kpis.withoutGaps} hint="sem risco operacional" tone="accent" accent="accent" />
+                <HileKpiCard label="Finalizadas" value={kpis.finalized} hint="com etiqueta" tone="success" accent="success" />
+                <HileKpiCard label="Gatilhos" value={kpis.triggers} hint="+1h sem resposta" />
+              </HileCardGrid>
+            </div>
+
+            <div className={!hasOverviewData ? "data-dim" : ""}>
+              <HileSurfaceCard
+                title="Panorama do dia"
+                description="Leitura rápida de finalização, criticidade e comportamento do atendimento no recorte selecionado."
+                tone="soft"
+              >
+                <HileCardGrid cols={4}>
+                  <HileKpiCard label="Média de mensagens por conversa" value={panorama.avgMessages} />
+                  <HileKpiCard label="Taxa de finalização" value={panorama.finalizationRate} accent="success" />
+                  <HileKpiCard label="Taxa de gaps críticos + altos" value={panorama.criticalityRate} accent="critical" />
+                  <HileKpiCard label="Conversas aguardando IA (+1h)" value={panorama.waitingOnIa} />
+                  <HileKpiCard label="Mensagens IA + usuário" value={kpis.totalMessages} />
+                  <HileKpiCard label="Tempo médio de resposta do cliente" value={clientAvgResponseMinutes} />
+                  <HileKpiCard label="Hora de pico de resposta do cliente" value={clientPeakHourLabel} />
+                  <HileKpiCard label="Identificadores repetidos" value={kpis.repeatedContacts} hint="CNPJ, e-mail ou telefone reutilizado" />
+                </HileCardGrid>
+              </HileSurfaceCard>
             </div>
           </div>
-        </div>
+        </HileSectionShell>
       </div>
     </div>
   );
 }
-
-
-
-
-

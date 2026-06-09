@@ -4,6 +4,8 @@ import { Gauge } from "../../charts/Gauge";
 import { useEnterViewport } from "../../hooks/useEnterViewport";
 import type { InsightFilter, RiskRow } from "../../shared/types";
 import { toTitleCaseName } from "../../hooks/controller/common";
+import { severityColors } from "../../shared/constants";
+import { HileEmptyPanel, HileSectionShell, HileSurfaceCard } from "../../shared/ui/HilePrimitives";
 
 interface InsightsSectionProps {
   insightsReady: boolean;
@@ -92,97 +94,74 @@ export function InsightsSection({
   return (
     <div className="section reveal" id="insights">
       <div className="section-inner">
-        <div className="section-header">
-          <span className="section-num">03</span>
-          <div className="section-title">
-            <h2>Insights de Melhoria</h2>
-            <p>Médio e baixo organizados por prioridade</p>
-          </div>
-        </div>
+        <HileSectionShell
+          eyebrow="03"
+          title="Insights de Melhoria"
+          description="Insights médios e baixos organizados por prioridade para orientar os próximos ajustes."
+        >
+          <div className="insights-dashboard">
+            <div className="insights-top">
+              <HileSurfaceCard
+                title="Saúde do dia"
+                description="Meta: zero casos críticos e leitura rápida do nível geral de estabilidade."
+                tone="accent"
+                className={hasInsightsData ? "" : "data-dim"}
+              >
+                <Gauge key={`gauge-${overviewRunCount}`} current={gaugeData.current} total={gaugeData.total} hasData={hasInsightsData} />
+              </HileSurfaceCard>
 
-        <div className="insights-dashboard">
-          <div className="insights-top">
-            <div className={`metrics-block ${hasInsightsData ? "" : "data-dim"}`}>
-              <div className="metrics-block-header">
-                <span>Saúde do dia</span>
-                <span>Meta: zero casos críticos</span>
-              </div>
-              <div className="metrics-block-body">
-                <Gauge
-                  key={`gauge-${overviewRunCount}`}
-                  current={gaugeData.current}
-                  total={gaugeData.total}
-                  hasData={hasInsightsData}
-                />
-              </div>
-            </div>
-
-            <div className={`metrics-block ${hasInsightsData ? "" : "data-dim"}`}>
-              <div className="metrics-block-header">
-                <span>Distribuição de risco</span>
-              </div>
-              <div className="metrics-block-body">
+              <HileSurfaceCard
+                title="Distribuição de risco"
+                description="Quebra percentual das severidades detectadas no período."
+                className={hasInsightsData ? "" : "data-dim"}
+              >
                 <div ref={riskTableRef} className={`viewport-table ${riskTableEntered ? "is-entered" : ""}`}>
-                <table className="risk-table">
-                  <thead>
-                    <tr>
-                      <th>Severidade</th>
-                      <th>Qtd</th>
-                      <th>%</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {riskRows.total === 0 ? (
+                  <table className="risk-table">
+                    <thead>
                       <tr>
-                        <td colSpan={3} style={{ textAlign: "center", padding: "1rem" }}>
-                          Sem dados para o período.
-                        </td>
+                        <th>Severidade</th>
+                        <th>Qtd</th>
+                        <th>%</th>
                       </tr>
-                    ) : (
-                      riskRows.rows.map((row) => (
-                        <tr key={row.key}>
-                          <td>
-                            <span
-                              className="sev-dot"
-                              style={{
-                                background:
-                                  row.key === "critical"
-                                    ? "var(--critical)"
-                                    : row.key === "high"
-                                      ? "var(--high)"
-                                      : row.key === "medium"
-                                        ? "var(--medium)"
-                                        : row.key === "low"
-                                          ? "var(--low)"
-                                          : "var(--info)",
-                              }}
-                            />
-                            {row.label}
+                    </thead>
+                    <tbody>
+                      {riskRows.total === 0 ? (
+                        <tr>
+                          <td colSpan={3} style={{ textAlign: "center", padding: "1rem" }}>
+                            Sem dados para o período.
                           </td>
-                          <td>{row.count}</td>
-                          <td>{row.pct}%</td>
                         </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
+                      ) : (
+                        riskRows.rows.map((row) => (
+                          <tr key={row.key}>
+                            <td>
+                              <span
+                                className="sev-dot"
+                                style={{
+                                  background:
+                                    severityColors[row.key],
+                                }}
+                              />
+                              {row.label}
+                            </td>
+                            <td>{row.count}</td>
+                            <td>{row.pct}%</td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
                 </div>
-              </div>
+              </HileSurfaceCard>
             </div>
-          </div>
 
-          <div className={`metrics-block ${insightsReady ? "" : "data-dim"}`}>
-            <div className="metrics-block-header">
-              <span>Filtros de insights</span>
-              <span>{filteredInsights.length} registros</span>
-            </div>
-            <div className="metrics-block-body">
+            <HileSurfaceCard
+              title="Filtros de insights"
+              description={`${filteredInsights.length} registro(s) no recorte atual.`}
+              className={insightsReady ? "" : "data-dim"}
+            >
               <div className="btn-group">
-                <button
-                  type="button"
-                  className={`gap-chip ${insightFilter === "all" ? "active" : ""}`}
-                  onClick={() => handleFilterChange("all")}
-                >
+                <button type="button" className={`gap-chip ${insightFilter === "all" ? "active" : ""}`} onClick={() => handleFilterChange("all")}>
                   Todos
                 </button>
                 <button
@@ -192,30 +171,23 @@ export function InsightsSection({
                 >
                   Médio
                 </button>
-                <button
-                  type="button"
-                  className={`gap-chip ${insightFilter === "low" ? "active" : ""}`}
-                  onClick={() => handleFilterChange("low")}
-                >
+                <button type="button" className={`gap-chip ${insightFilter === "low" ? "active" : ""}`} onClick={() => handleFilterChange("low")}>
                   Baixo
                 </button>
               </div>
-            </div>
-          </div>
+            </HileSurfaceCard>
 
-          <div id="insightGroups">
-            {improvements.length === 0 ? (
-              <p className="empty-state insight-empty">Sem insights de melhoria no filtro atual.</p>
-            ) : (
-              groups.map((group) => {
-                if (!group.items.length) return null;
-                return (
-                  <div className={`metrics-block insight-group ${insightsReady ? "" : "data-dim"}`} key={group.key}>
-                    <div className="metrics-block-header" style={{ background: group.color, color: "#fff" }}>
-                      <span>{group.title}</span>
-                      <span style={{ fontSize: "var(--fs-tiny)", opacity: 0.85 }}>{group.desc}</span>
-                    </div>
-                    <div className="metrics-block-body">
+            <div id="insightGroups">
+              {improvements.length === 0 ? (
+                <HileEmptyPanel
+                  title="Sem insights de melhoria no filtro atual."
+                  description="Quando surgirem oportunidades médias ou baixas, elas aparecerão organizadas aqui."
+                />
+              ) : (
+                groups.map((group) => {
+                  if (!group.items.length) return null;
+                  return (
+                    <HileSurfaceCard key={group.key} title={group.title} description={group.desc} className={insightsReady ? "" : "data-dim"}>
                       <div className="insights-grid insights-grid-animated" key={`${group.key}-${insightFilter}-${displayPage}-${animationSeed}`}>
                         {group.items.map((item) => (
                           <div className="insight-item" key={item.id}>
@@ -248,37 +220,32 @@ export function InsightsSection({
                           </div>
                         ))}
                       </div>
-                    </div>
-                  </div>
-                );
-              })
-            )}
-          </div>
-
-          {filteredInsights.length > visibleInsights.length ? (
-            <div className="pagination-row">
-              <span>
-                {filteredInsights.length} registros • Página {displayPage} de {totalInsightPages}
-              </span>
-              <button
-                type="button"
-                onClick={() => handlePageChange(Math.max(1, displayPage - 1))}
-                disabled={displayPage <= 1}
-              >
-                {"<"}
-              </button>
-              <button
-                type="button"
-                onClick={() => handlePageChange(Math.min(totalInsightPages, displayPage + 1))}
-                disabled={displayPage >= totalInsightPages}
-              >
-                {">"}
-              </button>
+                    </HileSurfaceCard>
+                  );
+                })
+              )}
             </div>
-          ) : null}
-        </div>
+
+            {filteredInsights.length > visibleInsights.length ? (
+              <div className="pagination-row">
+                <span>
+                  {filteredInsights.length} registros • Página {displayPage} de {totalInsightPages}
+                </span>
+                <button type="button" onClick={() => handlePageChange(Math.max(1, displayPage - 1))} disabled={displayPage <= 1}>
+                  {"<"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handlePageChange(Math.min(totalInsightPages, displayPage + 1))}
+                  disabled={displayPage >= totalInsightPages}
+                >
+                  {">"}
+                </button>
+              </div>
+            ) : null}
+          </div>
+        </HileSectionShell>
       </div>
     </div>
   );
 }
-

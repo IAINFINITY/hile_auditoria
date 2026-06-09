@@ -1,4 +1,5 @@
-import type { Severity } from "../../../../types";
+﻿import type { Severity } from "../../../../types";
+import { normalizeSeverity, severityColors, severityLabel } from "../../shared/constants";
 
 export type SeverityFilter = "all" | Exclude<Severity, "info">;
 
@@ -27,23 +28,16 @@ export interface ContactContextItem {
 
 export const REPORT_SEVERITY_OPTIONS: Array<{ value: SeverityFilter; label: string }> = [
   { value: "all", label: "Todas" },
-  { value: "critical", label: "Crítico" },
-  { value: "high", label: "Alto" },
-  { value: "medium", label: "Médio" },
-  { value: "low", label: "Baixo" },
+  { value: "critical", label: severityLabel.critical },
+  { value: "high", label: severityLabel.high },
+  { value: "medium", label: severityLabel.medium },
+  { value: "low", label: severityLabel.low },
 ];
 
-export const KNOWN_LABELS = [
-  "lead_agendado",
-  "pausar_ia",
-];
+export const KNOWN_LABELS = ["lead_agendado", "pausar_ia"];
 
 export function toneColor(severity: Severity): string {
-  if (severity === "critical") return "var(--critical)";
-  if (severity === "high") return "var(--high)";
-  if (severity === "medium") return "var(--medium)";
-  if (severity === "low") return "var(--low)";
-  return "var(--info)";
+  return severityColors[severity];
 }
 
 export function labelClass(tag: string): string {
@@ -102,20 +96,6 @@ export function includesAnyLabel(source: string[], selected: string[]): boolean 
   return selected.some((label) => sourceSet.has(label.toLowerCase()));
 }
 
-function normalizeText(value: unknown): string {
-  return String(value || "")
-    .trim()
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "");
-}
-
 export function toSeverity(value: unknown, fallback: Severity): Severity {
-  const text = normalizeText(value);
-  if (text.includes("crit")) return "critical";
-  if (text.includes("alt")) return "high";
-  if (text.includes("med")) return "medium";
-  if (text.includes("baix")) return "low";
-  if (text.includes("info")) return "info";
-  return fallback;
+  return normalizeSeverity(value, fallback);
 }

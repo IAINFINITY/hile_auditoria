@@ -11,7 +11,14 @@ const eslintConfig = defineConfig([
       "@typescript-eslint/no-explicit-any": "off",
     },
   },
-  globalIgnores([".next/**", "out/**", "build/**", "next-env.d.ts"]),
+  globalIgnores([
+    ".next/**",
+    "out/**",
+    "build/**",
+    "next-env.d.ts",
+    "clinic-auditoria-atendimento-main/**",
+    "documentation/**",
+  ]),
 ]);
 
 export default eslintConfig;

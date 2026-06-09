@@ -15,12 +15,9 @@ export function formatNotifyTime(isoText: string | null | undefined): string | n
   return date.toLocaleString("pt-BR", { timeZone: "America/Fortaleza" });
 }
 
-export function resolveCurrentBreadcrumb(
-  activeView: ShellView,
-  navClass: (section: string) => string,
-): string {
+export function resolveCurrentBreadcrumb(activeView: ShellView, navClass: (section: string) => string): string {
   const sectionLabels: Record<string, string> = {
-    inicio: "Métricas do Dia",
+    inicio: "Metricas do Dia",
     gaps: "Gaps Identificados",
     insights: "Insights de Melhoria",
   };
@@ -30,10 +27,9 @@ export function resolveCurrentBreadcrumb(
   if (activeView === "clients") return "Clientes";
   if (activeView === "analysis") return "Análise Geral do Dia";
   if (activeView === "attendants") return "Desempenho de Atendentes";
-  if (activeView === "dissatisfaction") return "Insatisfação";
+  if (activeView === "dissatisfaction") return "Insatisfacao";
   if (activeView === "products") return "Produtos (Geral)";
   if (activeView === "logs") return "Logs Operacionais";
   if (activeView === "superadmin") return "Superadmin";
   return "Configurações";
 }
-

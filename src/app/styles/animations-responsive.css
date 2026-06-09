@@ -202,4 +202,24 @@
   .kpi-card{padding:26px 18px}
 }
 
+@media (prefers-reduced-motion: reduce){
+  html{
+    scroll-behavior:auto;
+  }
+
+  *,
+  *::before,
+  *::after{
+    animation-duration:.01ms !important;
+    animation-iteration-count:1 !important;
+    transition-duration:.01ms !important;
+  }
+
+  .viewport-table .risk-table tbody tr,
+  .viewport-table .products-overall-row{
+    opacity:1;
+    transform:none;
+  }
+}
+
 

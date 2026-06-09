@@ -315,7 +315,7 @@ export function DashboardApp() {
             // noop
           }
           if (!cancelled) {
-            setLoginError("SessÃ£o encerrada por inatividade. Entre novamente para continuar.");
+            setLoginError("Sessão encerrada por inatividade. Entre novamente para continuar.");
             setStage("login");
           }
           return;
