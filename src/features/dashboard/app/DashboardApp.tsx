@@ -236,7 +236,7 @@ export function DashboardApp() {
     return "Admin";
   }
 
-  async function fetchAuthStatus(): Promise<AuthStatusPayload | null> {
+  const fetchAuthStatus = useCallback(async (): Promise<AuthStatusPayload | null> => {
     try {
       const response = await fetch("/api/auth/status", { method: "GET", cache: "no-store" });
       if (!response.ok) return null;
@@ -244,7 +244,21 @@ export function DashboardApp() {
     } catch {
       return null;
     }
-  }
+  }, []);
+
+  const fetchAuthStatusWithRetry = useCallback(
+    async (attempts = 6, delayMs = 250): Promise<AuthStatusPayload | null> => {
+      for (let attempt = 0; attempt < attempts; attempt += 1) {
+        const status = await fetchAuthStatus();
+        if (status?.authenticated && status?.authorized && status.user) return status;
+        if (attempt < attempts - 1) {
+          await new Promise((resolve) => window.setTimeout(resolve, delayMs));
+        }
+      }
+      return null;
+    },
+    [fetchAuthStatus],
+  );
 
   useEffect(() => {
     try {
@@ -296,7 +310,7 @@ export function DashboardApp() {
           return;
         }
 
-        const status = await fetchAuthStatus();
+        const status = await fetchAuthStatusWithRetry();
         if (!status?.authenticated || !status?.authorized || !status.user) {
           await supabaseBrowser.auth.signOut();
           if (!cancelled) {
@@ -339,7 +353,7 @@ export function DashboardApp() {
       if (splashTimer) window.clearTimeout(splashTimer);
       window.clearTimeout(timer);
     };
-  }, [clearStaleAuthStorage, sessionIdleTimeoutMs]);
+  }, [clearStaleAuthStorage, fetchAuthStatusWithRetry, sessionIdleTimeoutMs]);
 
   useEffect(() => {
     try {
@@ -649,7 +663,7 @@ export function DashboardApp() {
         return;
       }
 
-      const status = await fetchAuthStatus();
+      const status = await fetchAuthStatusWithRetry();
       if (!status?.authenticated || !status?.authorized || !status.user) {
         await supabaseBrowser.auth.signOut();
         setLoginError("Não foi possível validar sua sessão. Tente entrar novamente.");

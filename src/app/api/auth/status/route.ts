@@ -1,16 +1,13 @@
 import { NextResponse } from "next/server";
 import { getAuthorizedUserContext, registerAuthAuditEvent } from "@/lib/auth/server";
-import { createRouteHandlerSupabaseClient } from "@/lib/supabase/server";
+import { createRouteHandlerSupabaseClient, readRequestAuthUser } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 
 export async function GET() {
   try {
     const supabase = await createRouteHandlerSupabaseClient();
-    const {
-      data: { user },
-      error,
-    } = await supabase.auth.getUser();
+    const { user, error } = await readRequestAuthUser(supabase);
 
     if (error || !user) {
       return NextResponse.json({ authenticated: false, authorized: false, user: null }, { status: 401 });

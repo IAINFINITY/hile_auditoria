@@ -1,10 +1,11 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getAuthorizedUserContext } from "@/lib/auth/server";
-import { createProxySupabaseClient } from "@/lib/supabase/server";
+import { createProxySupabaseClient, readRequestAuthUser } from "@/lib/supabase/server";
 
 const PUBLIC_API_PATHS = new Set<string>([
   "/api/health",
   "/api/auth/health",
+  "/api/auth/status",
   "/api/report-day/auto-sync",
 ]);
 
@@ -26,31 +27,34 @@ export async function proxy(request: NextRequest) {
     return response;
   }
 
-  const responseRef = { current: response };
-  const supabase = createProxySupabaseClient(request, responseRef);
+  try {
+    const responseRef = { current: response };
+    const supabase = createProxySupabaseClient(request, responseRef);
+    const { user, error } = await readRequestAuthUser(supabase);
+    response = responseRef.current;
 
-  const {
-    data: { user },
-    error,
-  } = await supabase.auth.getUser();
-  response = responseRef.current;
+    if (error || !user) {
+      return NextResponse.json(
+        { error: "unauthorized", message: "Faca login para acessar esta rota." },
+        { status: 401 },
+      );
+    }
 
-  if (error || !user) {
+    const access = await getAuthorizedUserContext(supabase, { id: user.id, email: user.email || null });
+    if (!access.authorized) {
+      return NextResponse.json(
+        { error: "forbidden", message: "Este usuario nao possui permissao para o painel." },
+        { status: 403 },
+      );
+    }
+
+    return response;
+  } catch {
     return NextResponse.json(
-      { error: "unauthorized", message: "Faca login para acessar esta rota." },
-      { status: 401 },
+      { error: "auth_proxy_unavailable", message: "Falha temporaria ao validar sua sessao." },
+      { status: 503 },
     );
   }
-
-  const access = await getAuthorizedUserContext(supabase, { id: user.id, email: user.email || null });
-  if (!access.authorized) {
-    return NextResponse.json(
-      { error: "forbidden", message: "Este usuario nao possui permissao para o painel." },
-      { status: 403 },
-    );
-  }
-
-  return response;
 }
 
 export const config = {
