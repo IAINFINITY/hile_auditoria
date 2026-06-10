@@ -37,13 +37,4 @@ client/
 # GSD runtime lock file
 .planning/STATE.md.lock
 
-# AI prompts and others (contain sensitive business logic)
-mainprompt.txt
-deltaprompt.txt
-contextoprompt.txt
-attendants_performance.txt
-alteracoes.txt
-rag_hile_txt.txt
-relatoriodia.txt
-preview.html
-auth.txt
+documentation/

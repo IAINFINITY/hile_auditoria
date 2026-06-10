@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { apiGet } from "@/lib/api";
 import { useEnterViewport } from "../../hooks/useEnterViewport";
 import { HileCardGrid, HileEmptyPanel, HileKpiCard, HilePill, HilePillRow, HileSectionShell, HileSurfaceCard } from "../../shared/ui/HilePrimitives";
@@ -155,7 +155,7 @@ export function AttendantsView({
             </HileSurfaceCard>
 
             <HileCardGrid cols={4}>
-              <HileKpiCard label="Análises" value={activeSummary.totalAnalyses} hint="Atribuicoes no escopo atual" tone={activeSummary.totalAnalyses > 0 ? "accent" : "default"} accent="accent" />
+              <HileKpiCard label="Análises" value={activeSummary.totalAnalyses} hint="Atribuições no escopo atual" tone={activeSummary.totalAnalyses > 0 ? "accent" : "default"} accent="accent" />
               <HileKpiCard label="Mensagens" value={activeSummary.totalMessages} hint="Mensagens de agente" />
               <HileKpiCard label="Gaps" value={activeSummary.totalGaps} hint="Ocorrências identificadas" tone={activeSummary.totalGaps > 0 ? "critical" : "default"} accent={activeSummary.totalGaps > 0 ? "high" : "default"} />
               <HileKpiCard label="Críticos" value={activeSummary.totalCriticalGaps} hint="Gaps de maior severidade" tone={activeSummary.totalCriticalGaps > 0 ? "critical" : "default"} accent={activeSummary.totalCriticalGaps > 0 ? "critical" : "default"} />

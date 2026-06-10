@@ -73,7 +73,7 @@ function isGenericHeadline(value: string): boolean {
     normalized.includes("foi identificado um gap") ||
     normalized.includes("gap registrado") ||
     normalized.includes("problema aberto") ||
-    normalized.includes("atencao operacional") ||
+    normalized.includes("atenção operacional") ||
     normalized.includes("insight registrado")
   );
 }
@@ -154,9 +154,9 @@ export function GapsSection({
   return (
     <div className="section reveal" id="gaps">
       <div className="section-inner">
-        <HileSectionShell eyebrow="02" title="Gaps Identificados" description="Lista de gaps críticos e altos com foco no que precisa de acao imediata.">
+        <HileSectionShell eyebrow="02" title="Gaps Identificados" description="Lista de gaps críticos e altos com foco no que precisa de ação imediata.">
           <div className={`hile-section-stack ${insightsReady ? "" : "data-dim"}`}>
-            <HileSurfaceCard title="Crítico e alto" description={`${filtered.length} ocorrencia(s) no filtro atual.`} tone="critical">
+            <HileSurfaceCard title="Crítico e alto" description={`${filtered.length} ocorrência(s) no filtro atual.`} tone="critical">
               <div className="btn-group" style={{ marginBottom: 14 }}>
                 <button type="button" className={`gap-chip ${filter === "todos" ? "active" : ""}`} onClick={() => handleFilterChange("todos")}>
                   Todos
@@ -253,11 +253,11 @@ export function GapsSection({
             </HileSurfaceCard>
 
             {insightsReady ? (
-              <HileSurfaceCard title="Pontos de atencao operacional" description="Sinais de consultor e desengajamento que merecem acompanhamento no período." tone="soft">
+              <HileSurfaceCard title="Pontos de atenção operacional" description="Sinais de consultor e desengajamento que merecem acompanhamento no período." tone="soft">
                 {operationalAlerts.length === 0 ? (
                   <HileEmptyPanel
-                    title="Sem alertas de consultor ou insatisfacao no período."
-                    description="Quando surgirem sinais de atencao operacional, eles aparecerão aqui."
+                    title="Sem alertas de consultor ou insatisfação no período."
+                    description="Quando surgirem sinais de atenção operacional, eles aparecerão aqui."
                   />
                 ) : (
                   <div className="report-list-animated">

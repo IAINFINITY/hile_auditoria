@@ -117,7 +117,7 @@ export function AccountsFiltersCard({
               <option value="all">Todas</option>
               <option value="inicial">Inicial</option>
               <option value="intermediário">Intermediário</option>
-              <option value="avancado">Avancado</option>
+              <option value="avancado">Avançado</option>
             </select>
           </label>
         </div>

@@ -27,8 +27,8 @@ function formatDateTime(value: string | null | undefined): string {
 }
 
 function typeLabel(type: AlertTypeFilter): string {
-  if (type === "insatisfacao_hile") return "Insatisfacao com a Hile";
-  if (type === "insatisfacao_atendimento") return "Insatisfacao com atendimento";
+  if (type === "insatisfacao_hile") return "Insatisfação com a Hile";
+  if (type === "insatisfacao_atendimento") return "Insatisfação com atendimento";
   return "Todos";
 }
 
@@ -68,7 +68,7 @@ export function DissatisfactionOverallView({
       })
       .catch((err: unknown) => {
         if (cancelled) return;
-        setError(err instanceof Error ? err.message : "Falha ao carregar insatisfacao geral.");
+        setError(err instanceof Error ? err.message : "Falha ao carregar insatisfação geral.");
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -107,7 +107,7 @@ export function DissatisfactionOverallView({
       <div className="section-inner reveal" id="dissatisfaction-overview">
         <HileSectionShell
           eyebrow={headerNumber}
-          title="Registro de Insatisfacao (Geral)"
+          title="Registro de Insatisfação (Geral)"
           description={
             payload?.date_range?.from && payload?.date_range?.to
               ? `Consolidado de todas as execuções salvas entre ${payload.date_range.from} e ${payload.date_range.to}.`
@@ -117,9 +117,9 @@ export function DissatisfactionOverallView({
           <div className="hile-section-stack">
             <HileCardGrid cols={4}>
               <HileKpiCard label="Ocorrências" value={summary.total} hint="Sinais salvos no consolidado" tone={summary.total > 0 ? "accent" : "default"} accent="accent" />
-              <HileKpiCard label="Clientes impactados" value={summary.unique_contacts} hint="Contatos unicos afetados" />
+              <HileKpiCard label="Clientes impactados" value={summary.unique_contacts} hint="Contatos únicos afetados" />
               <HileKpiCard label="Críticos" value={summary.critical} hint="Casos de maior severidade" tone={summary.critical > 0 ? "critical" : "default"} accent={summary.critical > 0 ? "critical" : "default"} />
-              <HileKpiCard label="Execucoes" value={payload?.total_runs || 0} hint="Rodadas consideradas no consolidado" />
+              <HileKpiCard label="Execuções" value={payload?.total_runs || 0} hint="Rodadas consideradas no consolidado" />
             </HileCardGrid>
 
             <HileSurfaceCard title="Filtros" description="Refine a leitura do consolidado por tipo e severidade." tone="accent">
@@ -148,11 +148,11 @@ export function DissatisfactionOverallView({
 
             <HileSurfaceCard title="Ocorrências" description={`${filteredAlerts.length} registro(s) encontrados no consolidado filtrado`} tone={paged.length > 0 ? "default" : "soft"}>
               {loading ? (
-                <HileEmptyPanel title="Carregando insatisfacao geral" description="Estamos preparando o consolidado salvo mais recente." />
+                <HileEmptyPanel title="Carregando insatisfação geral" description="Estamos preparando o consolidado salvo mais recente." />
               ) : error ? (
-                <HileEmptyPanel title="Falha ao carregar insatisfacao geral" description={error} />
+                <HileEmptyPanel title="Falha ao carregar insatisfação geral" description={error} />
               ) : paged.length === 0 ? (
-                <HileEmptyPanel title="Sem ocorrencias para os filtros aplicados" description="Quando houver novos casos neste recorte, eles aparecerão aqui." />
+                <HileEmptyPanel title="Sem ocorrências para os filtros aplicados" description="Quando houver novos casos neste recorte, eles aparecerão aqui." />
               ) : (
                 <div className="report-list-animated">
                   {paged.map((item) => {
@@ -179,13 +179,13 @@ export function DissatisfactionOverallView({
                             </span>
                           </p>
                           <p><strong>Momento:</strong> {formatDateTime(item.occurredAt)}</p>
-                          <p><strong>Evidencia:</strong> {item.excerpt}</p>
+                          <p><strong>Evidência:</strong> {item.excerpt}</p>
                           <button type="button" className="link-btn link-btn-spaced" onClick={() => onOpenReportByContact(item.contactName)}>
                             Ver relatório desta pessoa
                           </button>
                           {chatwootLink ? (
                             <a className="link-btn link-btn-spaced" href={chatwootLink} target="_blank" rel="noreferrer">
-                              Ver no Chatwoot ?
+                              Ver no Chatwoot
                             </a>
                           ) : null}
                         </div>
@@ -215,4 +215,3 @@ export function DissatisfactionOverallView({
     </section>
   );
 }
-

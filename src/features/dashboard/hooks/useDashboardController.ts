@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { apiGet, apiPost, ApiRequestError } from "../../../lib/api";
 import type {
   AvailableDatesResponse,
@@ -280,16 +280,16 @@ export function useDashboardController(options?: { enabled?: boolean; syncNavOnS
           setInsights([]);
           setReport(null);
           setFailures([]);
-          setRawOutput("Sem relatorio salvo para essa data. Voce pode gerar um novo overview.");
+          setRawOutput("Sem relatório salvo para essa data. Você pode gerar um novo overview.");
           setInsightsReady(false);
           setShowTrend(false);
-          setStatus(`Nao encontramos relatorio salvo para ${targetDate}.`);
+          setStatus(`Não encontramos relatório salvo para ${targetDate}.`);
           setAvailableReportDates((current) =>
             current.includes(targetDate) ? current.filter((item) => item !== targetDate) : current,
           );
         } else {
           lastLoadedDateRef.current = null;
-          setStatus(`Nao foi possivel carregar ${targetDate} agora: ${message}`);
+          setStatus(`Não foi possível carregar ${targetDate} agora: ${message}`);
         }
       }
       return null;
@@ -877,7 +877,7 @@ export function useDashboardController(options?: { enabled?: boolean; syncNavOnS
         setLastRunAt(previousDashboardState.lastRunAt);
         setSelectedReportContact(previousDashboardState.selectedReportContact);
         setReportSeverityFilter(previousDashboardState.reportSeverityFilter);
-        setStatus(`Nova execucao falhou em ${elapsed}s. Mantivemos os dados anteriores: ${reportFailedMessage}`);
+        setStatus(`Nova execução falhou em ${elapsed}s. Mantivemos os dados anteriores: ${reportFailedMessage}`);
       } else {
         setOverview(finalOverviewData);
         setInsights(finalInsights);

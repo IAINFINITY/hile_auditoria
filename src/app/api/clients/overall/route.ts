@@ -1,4 +1,4 @@
-import { RunStatus } from "@prisma/client";
+﻿import { RunStatus } from "@prisma/client";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
 import type { ClientRecordItem, Severity } from "@/types";
@@ -582,7 +582,7 @@ export async function GET(request: Request) {
       items,
     });
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : "Nao foi possivel carregar os clientes gerais.";
+    const message = error instanceof Error ? error.message : "Não foi possível carregar os clientes gerais.";
     return NextResponse.json({ error: "clients_overall_fetch_failed", message }, { status: 400 });
   }
 }

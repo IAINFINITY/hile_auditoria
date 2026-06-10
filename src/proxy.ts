@@ -35,7 +35,7 @@ export async function proxy(request: NextRequest) {
 
     if (error || !user) {
       return NextResponse.json(
-        { error: "unauthorized", message: "Faca login para acessar esta rota." },
+        { error: "unauthorized", message: "Faça login para acessar esta rota." },
         { status: 401 },
       );
     }
@@ -43,7 +43,7 @@ export async function proxy(request: NextRequest) {
     const access = await getAuthorizedUserContext(supabase, { id: user.id, email: user.email || null });
     if (!access.authorized) {
       return NextResponse.json(
-        { error: "forbidden", message: "Este usuario nao possui permissao para o painel." },
+        { error: "forbidden", message: "Este usuário não possui permissão para o painel." },
         { status: 403 },
       );
     }

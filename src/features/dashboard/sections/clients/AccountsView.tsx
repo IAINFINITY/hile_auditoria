@@ -401,7 +401,7 @@ export function AccountsView({
             </HileSurfaceCard>
 
             <HileCardGrid cols={4}>
-              <HileKpiCard label="Clientes" value={filteredRecords.length} hint="Registros apos filtros" tone={filteredRecords.length > 0 ? "accent" : "default"} accent="accent" />
+              <HileKpiCard label="Clientes" value={filteredRecords.length} hint="Registros após filtros" tone={filteredRecords.length > 0 ? "accent" : "default"} accent="accent" />
               <HileKpiCard label="Entrada" value={statusSummary.entrada} hint="Fluxo normal da IA" />
               <HileKpiCard label="Remarketing" value={statusSummary.remarketing} hint="Aguardando retorno comercial" />
               <HileKpiCard label="Atenção" value={statusSummary.atencao} hint="Casos com sinal operacional" tone={statusSummary.atencao > 0 ? "critical" : "default"} accent={statusSummary.atencao > 0 ? "high" : "default"} />
@@ -410,23 +410,23 @@ export function AccountsView({
             <div className="scope-switch-animated" key={`clients-scope-${scope}-${scopeAnimationSeed}`}>
               <div className="hile-section-stack">
                 <HileSurfaceCard
-                  title="Como funciona a classificacao"
-                  description="Regras operacionais que organizam os cartoes no funil de clientes."
+                  title="Como funciona a classificação"
+                  description="Regras operacionais que organizam os cartões no funil de clientes."
                 >
                   <p>
-                    <strong>Entrada:</strong> conversa no fluxo normal da IA, sem necessidade de acao imediata.
+                    <strong>Entrada:</strong> conversa no fluxo normal da IA, sem necessidade de ação imediata.
                   </p>
                   <p>
-                    <strong>Remarketing:</strong> lead com indicio de consultor/reuniao e entre 6h e 24h aguardando retorno da equipe.
+                    <strong>Remarketing:</strong> lead com indício de consultor/reunião e entre 6h e 24h aguardando retorno da equipe.
                   </p>
                   <p>
                     <strong>Atenção:</strong> conversa ainda no fluxo da IA com sinais operacionais que merecem acompanhamento.
                   </p>
                   <p>
-                    <strong>Fora da IA:</strong> conversa com etiqueta de saida do fluxo da IA, como <code>lead_agendado</code> ou <code>pausar_ia</code>.
+                    <strong>Fora da IA:</strong> conversa com etiqueta de saída do fluxo da IA, como <code>lead_agendado</code> ou <code>pausar_ia</code>.
                   </p>
                   <p>
-                    <strong>Fase do cliente:</strong> inicial (ideia sem estrutura), intermediário (ja tem CNPJ/presenca de marca) e avancado (ja opera marca e busca otimizacao de terceirizacao com a Hile).
+                    <strong>Fase do cliente:</strong> inicial (ideia sem estrutura), intermediário (ja tem CNPJ/presença de marca) e avançado (ja opera marca e busca otimização de terceirização com a Hile).
                   </p>
                 </HileSurfaceCard>
 

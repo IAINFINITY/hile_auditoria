@@ -57,8 +57,8 @@ export async function getAuthorizedApiUser() {
 
   if (error) {
     const message = isTransientAuthNetworkError(error)
-      ? "Nao foi possivel validar sua sessao com o Supabase agora. Tente novamente em instantes."
-      : "Faca login para acessar esta rota.";
+      ? "Não foi possível validar sua sessão com o Supabase agora. Tente novamente em instantes."
+      : "Faça login para acessar esta rota.";
     return {
       response: NextResponse.json(
         { error: "auth_validation_failed", message },
@@ -71,7 +71,7 @@ export async function getAuthorizedApiUser() {
   if (!user || !user.email) {
     return {
       response: NextResponse.json(
-        { error: "unauthorized", message: "Faca login para acessar esta rota." },
+        { error: "unauthorized", message: "Faça login para acessar esta rota." },
         { status: 401 },
       ),
       user: null as AuthorizedApiUser | null,
@@ -90,7 +90,7 @@ export async function getAuthorizedApiUser() {
     });
     return {
       response: NextResponse.json(
-        { error: "forbidden", message: "Este usuario nao possui permissao para o painel." },
+        { error: "forbidden", message: "Este usuário não possui permissão para o painel." },
         { status: 403 },
       ),
       user: null as AuthorizedApiUser | null,
@@ -119,7 +119,7 @@ export async function requireRole(requiredRole: AppAuthRole) {
   if (!hasRequiredRole(auth.user?.role, requiredRole)) {
     return {
       response: NextResponse.json(
-        { error: "forbidden", message: "Permissao insuficiente para esta operacao." },
+        { error: "forbidden", message: "Permissão insuficiente para esta operação." },
         { status: 403 },
       ),
       user: auth.user,

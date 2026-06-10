@@ -139,7 +139,7 @@ export function ShellSidebar({
             onOpenDashboard();
           },
           subItems: [
-            { key: "inicio", label: "Metricas", icon: FiBarChart2, isActive: navClass("inicio") === "active", onClick: () => onNavigate("inicio") },
+            { key: "inicio", label: "Métricas", icon: FiBarChart2, isActive: navClass("inicio") === "active", onClick: () => onNavigate("inicio") },
             { key: "gaps", label: "Gaps", icon: FiAlertTriangle, isActive: navClass("gaps") === "active", onClick: () => onNavigate("gaps") },
             { key: "insights", label: "Insights", icon: FiZap, isActive: navClass("insights") === "active", onClick: () => onNavigate("insights") },
           ],
@@ -174,7 +174,7 @@ export function ShellSidebar({
         },
         {
           key: "dissatisfaction",
-          label: "Insatisfacao",
+          label: "Insatisfação",
           icon: FiFrown,
           onOpen: () => {
             openSection("dissatisfaction");
@@ -189,7 +189,7 @@ export function ShellSidebar({
       ],
     },
     {
-      label: "Operacao",
+      label: "Operação",
       sections: [
         {
           key: "clients",
@@ -235,7 +235,7 @@ export function ShellSidebar({
       ],
     },
     {
-      label: "Administracao",
+      label: "Administração",
       sections: [
         ...(isSuperadmin
           ? [
@@ -319,11 +319,10 @@ export function ShellSidebar({
         ))}
       </nav>
 
-      <div className="side-account">
+      <div className="side-account" title={`${currentUser.name} • ${currentUser.email}`}>
         <span className="side-account-avatar">{userInitial}</span>
         <div className="side-account-text">
           <strong>{currentUser.name}</strong>
-          <span>{currentUser.email}</span>
           <small>{currentUser.role}</small>
         </div>
         <button type="button" className="side-account-logout" onClick={onLogout}>

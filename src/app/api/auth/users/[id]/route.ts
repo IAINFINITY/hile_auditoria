@@ -56,7 +56,7 @@ export async function PATCH(
       return NextResponse.json(
         {
           error: "protected_superadmin",
-          message: "Nao e permitido remover ou desativar o superadmin por esta rota.",
+          message: "Não é permitido remover ou desativar o superadmin por esta rota.",
         },
         { status: 400 },
       );
@@ -74,7 +74,7 @@ export async function PATCH(
     return NextResponse.json(
       {
         error: "role_not_allowed",
-        message: "Promocao para superadmin deve ser feita por procedimento manual controlado.",
+        message: "Promoção para superadmin deve ser feita por procedimento manual controlado.",
       },
       { status: 400 },
     );
@@ -87,7 +87,7 @@ export async function PATCH(
 
   if (Object.keys(data).length === 0) {
     return NextResponse.json(
-      { error: "empty_patch", message: "Nenhuma alteracao valida foi enviada." },
+      { error: "empty_patch", message: "Nenhuma alteração válida foi enviada." },
       { status: 400 },
     );
   }

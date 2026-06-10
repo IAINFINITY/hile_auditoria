@@ -334,12 +334,12 @@ export function AnalysisOverallView({ refreshHint, sectionStart = 1, ownerScope 
             <div className="hile-section-stack">
               <HileCardGrid cols={4}>
                 <HileKpiCard
-                  label="Relatorios"
+                  label="Relatórios"
                   value={payload?.total_runs || 0}
                   hint={
                     payload?.date_range?.from && payload?.date_range?.to
-                      ? `${payload.date_range.from} ate ${payload.date_range.to}`
-                      : "Periodo consolidado"
+                      ? `${payload.date_range.from} até ${payload.date_range.to}`
+                      : "Período consolidado"
                   }
                   tone={(payload?.total_runs || 0) > 0 ? "accent" : "default"}
                   accent="accent"

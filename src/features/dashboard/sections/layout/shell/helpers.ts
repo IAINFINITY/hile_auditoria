@@ -17,7 +17,7 @@ export function formatNotifyTime(isoText: string | null | undefined): string | n
 
 export function resolveCurrentBreadcrumb(activeView: ShellView, navClass: (section: string) => string): string {
   const sectionLabels: Record<string, string> = {
-    inicio: "Metricas do Dia",
+    inicio: "Métricas do Dia",
     gaps: "Gaps Identificados",
     insights: "Insights de Melhoria",
   };
@@ -27,7 +27,7 @@ export function resolveCurrentBreadcrumb(activeView: ShellView, navClass: (secti
   if (activeView === "clients") return "Clientes";
   if (activeView === "analysis") return "Análise Geral do Dia";
   if (activeView === "attendants") return "Desempenho de Atendentes";
-  if (activeView === "dissatisfaction") return "Insatisfacao";
+  if (activeView === "dissatisfaction") return "Insatisfação";
   if (activeView === "products") return "Produtos (Geral)";
   if (activeView === "logs") return "Logs Operacionais";
   if (activeView === "superadmin") return "Superadmin";

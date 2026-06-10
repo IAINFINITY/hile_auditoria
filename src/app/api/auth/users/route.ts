@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
 import { prisma } from "@/lib/db/prisma";
 import { registerAuthAuditEvent } from "@/lib/auth/server";
@@ -88,7 +88,7 @@ export async function GET(request: Request) {
       },
     });
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : "Falha ao listar usuarios.";
+    const message = error instanceof Error ? error.message : "Falha ao listar usuários.";
     return NextResponse.json({ error: "auth_users_list_failed", message }, { status: 400 });
   }
 }
@@ -99,7 +99,7 @@ export async function POST(request: Request) {
 
   if (shouldEnforceOriginCheck() && !isSameOriginRequest(request)) {
     return NextResponse.json(
-      { error: "invalid_origin", message: "Origem invalida para esta operacao." },
+      { error: "invalid_origin", message: "Origem inválida para esta operação." },
       { status: 403 },
     );
   }
@@ -129,7 +129,7 @@ export async function POST(request: Request) {
 
   if (!email || !password) {
     return NextResponse.json(
-      { error: "invalid_payload", message: "Email e senha sao obrigatorios." },
+      { error: "invalid_payload", message: "Email e senha são obrigatórios." },
       { status: 400 },
     );
   }
@@ -145,7 +145,7 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         error: "role_not_allowed",
-        message: "Somente usuarios admin podem ser criados por esta rota.",
+        message: "Somente usuários admin podem ser criados por esta rota.",
       },
       { status: 400 },
     );
@@ -162,7 +162,7 @@ export async function POST(request: Request) {
   });
   if (existing?.active) {
     return NextResponse.json(
-      { error: "already_exists", message: "Este usuario ja esta cadastrado e ativo." },
+      { error: "already_exists", message: "Este usuário já está cadastrado e ativo." },
       { status: 409 },
     );
   }
@@ -195,7 +195,7 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         error: "supabase_create_user_failed",
-        message: created.error?.message || "Nao foi possivel criar o usuario no Supabase.",
+        message: created.error?.message || "Não foi possível criar o usuário no Supabase.",
       },
       { status: 400 },
     );

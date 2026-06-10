@@ -26,8 +26,8 @@ function formatDateTime(value: string | null | undefined): string {
 }
 
 function typeLabel(type: AlertTypeFilter): string {
-  if (type === "insatisfacao_hile") return "Insatisfacao com a Hile";
-  if (type === "insatisfacao_atendimento") return "Insatisfacao com atendimento";
+  if (type === "insatisfacao_hile") return "Insatisfação com a Hile";
+  if (type === "insatisfacao_atendimento") return "Insatisfação com atendimento";
   return "Todos";
 }
 
@@ -93,13 +93,13 @@ export function DissatisfactionView({
       <div className="section-inner reveal" id="dissatisfaction-overview">
         <HileSectionShell
           eyebrow={headerNumber}
-          title="Registro de Insatisfacao"
+          title="Registro de Insatisfação"
           description={`Visão auditável dos sinais de insatisfação detectados no dia ${selectedDate}.`}
         >
           <div className="hile-section-stack">
             <HileCardGrid cols={4}>
               <HileKpiCard label="Ocorrências" value={summary.total} hint="Sinais detectados no dia" tone={summary.total > 0 ? "accent" : "default"} accent="accent" />
-              <HileKpiCard label="Clientes impactados" value={summary.uniqueContacts} hint="Contatos unicos afetados" />
+              <HileKpiCard label="Clientes impactados" value={summary.uniqueContacts} hint="Contatos únicos afetados" />
               <HileKpiCard label="Críticos" value={summary.critical} hint="Casos de maior severidade" tone={summary.critical > 0 ? "critical" : "default"} accent={summary.critical > 0 ? "critical" : "default"} />
               <HileKpiCard label="Altos" value={summary.high} hint="Ocorrências em nível alto" tone={summary.high > 0 ? "critical" : "default"} accent={summary.high > 0 ? "high" : "default"} />
             </HileCardGrid>
@@ -130,7 +130,7 @@ export function DissatisfactionView({
 
             <HileSurfaceCard title="Ocorrências" description={`${filteredAlerts.length} registro(s) encontrados para os filtros atuais`} tone={paged.length > 0 ? "default" : "soft"}>
               {paged.length === 0 ? (
-                <HileEmptyPanel title="Sem ocorrencias para os filtros aplicados" description="Quando houver novos sinais de insatisfacao neste recorte, eles aparecerão aqui." />
+                <HileEmptyPanel title="Sem ocorrências para os filtros aplicados" description="Quando houver novos sinais de insatisfação neste recorte, eles aparecerão aqui." />
               ) : (
                 <div className="report-list-animated">
                   {paged.map((item) => {
@@ -157,13 +157,13 @@ export function DissatisfactionView({
                             </span>
                           </p>
                           <p><strong>Momento:</strong> {formatDateTime(item.occurredAt)}</p>
-                          <p><strong>Evidencia:</strong> {item.excerpt}</p>
+                          <p><strong>Evidência:</strong> {item.excerpt}</p>
                           <button type="button" className="link-btn link-btn-spaced" onClick={() => onOpenReportByContact(item.contactName)}>
                             Ver relatório desta pessoa
                           </button>
                           {chatwootLink ? (
                             <a className="link-btn link-btn-spaced" href={chatwootLink} target="_blank" rel="noreferrer">
-                              Ver no Chatwoot ?
+                              Ver no Chatwoot
                             </a>
                           ) : null}
                         </div>
@@ -193,4 +193,3 @@ export function DissatisfactionView({
     </section>
   );
 }
-

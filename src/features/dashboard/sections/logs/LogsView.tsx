@@ -1,4 +1,4 @@
-﻿import { useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { FiCheckCircle, FiClock, FiXCircle } from "react-icons/fi";
 import type { ReportHistoryItem, SystemCheckResponse } from "../../../../types";
 import { HileCardGrid, HileEmptyPanel, HileInlineInsight, HileKpiCard, HileSectionShell, HileSurfaceCard } from "../../shared/ui/HilePrimitives";
@@ -201,7 +201,7 @@ export function LogsView({
                         <FiClock style={{ width: 14, height: 14, color: "var(--azul)", flexShrink: 0 }} />
                         <strong style={{ fontSize: "var(--fs-small)", color: "var(--navy)" }}>{dateLabel || "Sem data"}</strong>
                         <span style={{ fontSize: "var(--fs-tiny)", color: "var(--muted)" }}>
-                          ({runs.length} execução{runs.length !== 1 ? "ões" : ""})
+                          ({runs.length} execução{runs.length !== 1 ? "s" : ""})
                         </span>
                       </div>
 
