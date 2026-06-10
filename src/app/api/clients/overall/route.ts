@@ -13,6 +13,36 @@ export const runtime = "nodejs";
 
 type OwnerScope = "all" | "ia" | "suellen" | "samuel";
 type ResponsibleBucket = "ia" | "suellen" | "samuel";
+type PipelineBlock = "entrada" | "remarketing" | "atencao" | "resolvido";
+
+type ResponsibleBreakdown = {
+  ia: number;
+  suellen: number;
+  samuel: number;
+};
+
+type ConversationResponsibleSnapshot = {
+  counts: ResponsibleBreakdown;
+  last: { bucket: ResponsibleBucket; at: number } | null;
+};
+
+type MergedClientState = {
+  phonePk: string;
+  contactName: string;
+  companyName: string;
+  cnpj: string;
+  labels: Set<string>;
+  conversationIds: Set<number>;
+  firstSeenAt: Date | null;
+  lastSeenAt: Date | null;
+  firstIssueAt: Date | null;
+  lastIssueAt: Date | null;
+  resolvedAt: Date | null;
+  latestUpdatedAt: Date | null;
+  latestStatus: string;
+  highestSeverity: Severity;
+  storedBreakdown: ResponsibleBreakdown;
+};
 
 function normalizeOwnerScope(value: string | null): OwnerScope {
   const normalized = String(value || "").trim().toLowerCase();
@@ -55,15 +85,126 @@ function normalizeStatus(value: unknown): string {
   return "aberto";
 }
 
+function normalizeLabelKey(value: unknown): string {
+  return String(value || "")
+    .toLowerCase()
+    .trim()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
 function hasExitLabel(labels: string[]): boolean {
-  const normalized = (labels || []).map((item) =>
-    String(item || "")
-      .toLowerCase()
-      .trim()
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, ""),
-  );
+  const normalized = (labels || []).map((item) => normalizeLabelKey(item));
   return normalized.includes("lead_agendado") || normalized.includes("pausar_ia");
+}
+
+function hasRemarketingLabel(labels: string[]): boolean {
+  return (labels || []).map((item) => normalizeLabelKey(item)).includes("ia_remarketing");
+}
+
+function severityRank(value: Severity): number {
+  if (value === "critical") return 4;
+  if (value === "high") return 3;
+  if (value === "medium") return 2;
+  if (value === "low") return 1;
+  return 0;
+}
+
+function createEmptyBreakdown(): ResponsibleBreakdown {
+  return { ia: 0, suellen: 0, samuel: 0 };
+}
+
+function sumBreakdown(values: ResponsibleBreakdown): number {
+  return Number(values.ia || 0) + Number(values.suellen || 0) + Number(values.samuel || 0);
+}
+
+function addBreakdown(target: ResponsibleBreakdown, source: ResponsibleBreakdown) {
+  target.ia += Number(source.ia || 0);
+  target.suellen += Number(source.suellen || 0);
+  target.samuel += Number(source.samuel || 0);
+}
+
+function pickResponsibleBucketFromBreakdown(
+  breakdown: ResponsibleBreakdown,
+  latestBucket: ResponsibleBucket | null,
+): ResponsibleBucket {
+  const ranked = (Object.entries(breakdown) as Array<[ResponsibleBucket, number]>).sort((a, b) => b[1] - a[1]);
+  if (ranked[0]?.[1] > 0) return ranked[0][0];
+  return latestBucket || "ia";
+}
+
+function selectPreferredText(current: string, incoming: string): string {
+  const next = String(incoming || "").trim();
+  if (!next) return current;
+  if (!current) return next;
+  return next.length > current.length ? next : current;
+}
+
+function pickEarlier(current: Date | null, incoming: Date | null): Date | null {
+  if (!incoming) return current;
+  if (!current) return incoming;
+  return incoming.getTime() < current.getTime() ? incoming : current;
+}
+
+function pickLater(current: Date | null, incoming: Date | null): Date | null {
+  if (!incoming) return current;
+  if (!current) return incoming;
+  return incoming.getTime() > current.getTime() ? incoming : current;
+}
+
+function derivePipelineState(params: {
+  labels: string[];
+  currentStatus: string;
+  currentSeverity: Severity;
+}): {
+  status: "aberto" | "atencao" | "resolvido";
+  pipelineBlock: PipelineBlock;
+  remarketing: ClientRecordItem["remarketing"];
+} {
+  const normalizedStatus = normalizeStatus(params.currentStatus);
+  const resolved = normalizedStatus === "resolvido" || hasExitLabel(params.labels);
+  const attention =
+    normalizedStatus === "atencao" || params.currentSeverity === "critical" || params.currentSeverity === "high";
+  const remarketing = hasRemarketingLabel(params.labels);
+
+  if (resolved) {
+    return { status: "resolvido", pipelineBlock: "resolvido", remarketing: null };
+  }
+  if (attention) {
+    return { status: "atencao", pipelineBlock: "atencao", remarketing: null };
+  }
+  if (remarketing) {
+    return {
+      status: "aberto",
+      pipelineBlock: "remarketing",
+      remarketing: {
+        eligible: true,
+        pendingHours: null,
+        reason: "Etiqueta ia_remarketing identificada no consolidado geral.",
+        ruleMatched: "label_ia_remarketing",
+      },
+    };
+  }
+  return { status: "aberto", pipelineBlock: "entrada", remarketing: null };
+}
+
+function deriveClientPhase(companyName: string, cnpj: string): { phase: "inicial" | "intermediario"; reason: string } {
+  if (String(cnpj || "").trim()) {
+    return {
+      phase: "intermediario",
+      reason: "CNPJ identificado no consolidado geral.",
+    };
+  }
+  if (String(companyName || "").trim()) {
+    return {
+      phase: "intermediario",
+      reason: "Nome de empresa identificado no consolidado geral.",
+    };
+  }
+  return {
+    phase: "inicial",
+    reason: "Sem sinais estruturais suficientes no consolidado geral.",
+  };
 }
 
 export async function GET(request: Request) {
@@ -87,14 +228,7 @@ export async function GET(request: Request) {
       select: {
         id: true,
         tenantId: true,
-        channelId: true,
         startedAt: true,
-        channel: {
-          select: {
-            chatwootAccountId: true,
-            chatwootInboxId: true,
-          },
-        },
       },
     });
 
@@ -111,13 +245,13 @@ export async function GET(request: Request) {
     const states = await prisma.clientState.findMany({
       where: {
         tenantId: latestRun.tenantId,
-        channelId: latestRun.channelId,
         ...(lastSeenWhere.gte || lastSeenWhere.lte ? { lastSeenAt: lastSeenWhere } : {}),
       },
       orderBy: { updatedAt: "desc" },
       take,
       select: {
         phonePk: true,
+        channelId: true,
         contactName: true,
         companyName: true,
         cnpj: true,
@@ -134,66 +268,162 @@ export async function GET(request: Request) {
         responsibleLabel: true,
         responsibleMessageCount: true,
         responsibleMessageBreakdown: true,
+        updatedAt: true,
+        channel: {
+          select: {
+            chatwootInboxId: true,
+          },
+        },
       },
     });
 
+    const mergedStates = new Map<string, MergedClientState>();
+    for (const state of states) {
+      const phonePk = String(state.phonePk || "").trim();
+      if (!phonePk) continue;
+      const current =
+        mergedStates.get(phonePk) ||
+        ({
+          phonePk,
+          contactName: "",
+          companyName: "",
+          cnpj: "",
+          labels: new Set<string>(),
+          conversationIds: new Set<number>(),
+          firstSeenAt: null,
+          lastSeenAt: null,
+          firstIssueAt: null,
+          lastIssueAt: null,
+          resolvedAt: null,
+          latestUpdatedAt: null,
+          latestStatus: "aberto",
+          highestSeverity: "info",
+          storedBreakdown: createEmptyBreakdown(),
+        } satisfies MergedClientState);
+
+      current.contactName = selectPreferredText(current.contactName, String(state.contactName || "").trim());
+      current.companyName = selectPreferredText(current.companyName, String(state.companyName || "").trim());
+      current.cnpj = selectPreferredText(current.cnpj, String(state.cnpj || "").trim());
+      current.firstSeenAt = pickEarlier(current.firstSeenAt, state.firstSeenAt);
+      current.lastSeenAt = pickLater(current.lastSeenAt, state.lastSeenAt);
+      current.firstIssueAt = pickEarlier(current.firstIssueAt, state.firstIssueAt);
+      current.lastIssueAt = pickLater(current.lastIssueAt, state.lastIssueAt);
+      current.resolvedAt = pickLater(current.resolvedAt, state.resolvedAt);
+
+      if (!current.latestUpdatedAt || state.updatedAt.getTime() > current.latestUpdatedAt.getTime()) {
+        current.latestUpdatedAt = state.updatedAt;
+        current.latestStatus = String(state.currentStatus || "aberto");
+      }
+
+      const severity = normalizeSeverity(state.currentSeverity);
+      if (severityRank(severity) > severityRank(current.highestSeverity)) {
+        current.highestSeverity = severity;
+      }
+
+      for (const label of Array.isArray(state.currentLabels) ? state.currentLabels : []) {
+        const text = String(label || "").trim();
+        if (text) current.labels.add(text);
+      }
+
+      for (const rawConversationId of Array.isArray(state.openConversationIds) ? state.openConversationIds : []) {
+        const conversationId = Number(rawConversationId || 0);
+        if (conversationId > 0) current.conversationIds.add(conversationId);
+      }
+
+      const inboxId = Number(state.channel?.chatwootInboxId || 0) || null;
+      const storedBreakdownRaw =
+        state.responsibleMessageBreakdown && typeof state.responsibleMessageBreakdown === "object"
+          ? (state.responsibleMessageBreakdown as Record<string, unknown>)
+          : null;
+      if (storedBreakdownRaw) {
+        addBreakdown(current.storedBreakdown, sanitizeBreakdownByInbox(storedBreakdownRaw, inboxId));
+      } else {
+        const storedBucket = enforceOwnerBucketByInbox(state.responsibleBucket || "ia", inboxId) as ResponsibleBucket;
+        const storedCount = Number(state.responsibleMessageCount || 0);
+        if (storedCount > 0) {
+          current.storedBreakdown[storedBucket] += storedCount;
+        }
+      }
+
+      mergedStates.set(phonePk, current);
+    }
+
     const trackedConversationIds = Array.from(
       new Set(
-        states.flatMap((item) =>
-          Array.isArray(item.openConversationIds)
-            ? item.openConversationIds.map((id) => Number(id || 0)).filter((id) => id > 0)
-            : [],
-        ),
+        Array.from(mergedStates.values()).flatMap((item) => Array.from(item.conversationIds.values())),
       ),
     );
 
-    const conversationResponsibleMap = new Map<
-      number,
-      {
-        counts: { ia: number; suellen: number; samuel: number };
-        last: { bucket: ResponsibleBucket; at: number } | null;
-      }
-    >();
+    const conversationResponsibleMap = new Map<number, ConversationResponsibleSnapshot>();
+    const conversationMetaMap = new Map<number, { accountId: number | null; inboxId: number | null }>();
 
     if (trackedConversationIds.length > 0) {
-      const rows = await prisma.message.findMany({
-        where: {
-          tenantId: latestRun.tenantId,
-          conversation: {
+      const [messageRows, conversationRows] = await Promise.all([
+        prisma.message.findMany({
+          where: {
+            tenantId: latestRun.tenantId,
+            conversation: {
+              chatwootConversationId: {
+                in: trackedConversationIds,
+              },
+            },
+            role: {
+              contains: "AGENT",
+              mode: "insensitive",
+            },
+          },
+          select: {
+            senderName: true,
+            createdAt: true,
+            conversation: {
+              select: {
+                chatwootConversationId: true,
+                channel: {
+                  select: {
+                    chatwootInboxId: true,
+                  },
+                },
+              },
+            },
+          },
+          orderBy: [{ createdAt: "asc" }],
+        }),
+        prisma.conversation.findMany({
+          where: {
+            tenantId: latestRun.tenantId,
             chatwootConversationId: {
               in: trackedConversationIds,
             },
           },
-          role: {
-            contains: "AGENT",
-            mode: "insensitive",
-          },
-        },
-      select: {
-        senderName: true,
-        createdAt: true,
-        conversation: {
           select: {
             chatwootConversationId: true,
             channel: {
               select: {
+                chatwootAccountId: true,
                 chatwootInboxId: true,
               },
             },
           },
-        },
-      },
-        orderBy: [{ createdAt: "asc" }],
-      });
+        }),
+      ]);
 
-      for (const row of rows) {
+      for (const row of conversationRows) {
+        const conversationId = Number(row.chatwootConversationId || 0);
+        if (!conversationId) continue;
+        conversationMetaMap.set(conversationId, {
+          accountId: Number(row.channel?.chatwootAccountId || 0) || null,
+          inboxId: Number(row.channel?.chatwootInboxId || 0) || null,
+        });
+      }
+
+      for (const row of messageRows) {
         const conversationId = Number(row.conversation?.chatwootConversationId || 0);
         if (!conversationId) continue;
         const inboxId = Number(row.conversation?.channel?.chatwootInboxId || 0) || null;
         const bucket = resolveResponsibleBucket(row.senderName, inboxId);
         if (!bucket) continue;
         const current = conversationResponsibleMap.get(conversationId) || {
-          counts: { ia: 0, suellen: 0, samuel: 0 },
+          counts: createEmptyBreakdown(),
           last: null,
         };
         current.counts[bucket] += 1;
@@ -203,22 +433,23 @@ export async function GET(request: Request) {
     }
 
     const buildResponsibleTracking = (conversationIds: number[]) => {
-      const counts = { ia: 0, suellen: 0, samuel: 0 };
-      let latest: { bucket: ResponsibleBucket; at: number } | null = null;
+      const counts = createEmptyBreakdown();
+      let latestBucket: ResponsibleBucket | null = null;
+      let latestAt = 0;
 
-      for (const rawId of conversationIds || []) {
-        const id = Number(rawId || 0);
-        if (!id) continue;
-        const entry = conversationResponsibleMap.get(id);
-        if (!entry) continue;
-        counts.ia += Number(entry.counts.ia || 0);
-        counts.suellen += Number(entry.counts.suellen || 0);
-        counts.samuel += Number(entry.counts.samuel || 0);
-        if (entry.last && (!latest || entry.last.at > latest.at)) latest = { ...entry.last };
+      for (const rawConversationId of conversationIds) {
+        const conversationId = Number(rawConversationId || 0);
+        if (!conversationId) continue;
+        const snapshot = conversationResponsibleMap.get(conversationId);
+        if (!snapshot) continue;
+        addBreakdown(counts, snapshot.counts);
+        if (snapshot.last && snapshot.last.at > latestAt) {
+          latestAt = snapshot.last.at;
+          latestBucket = snapshot.last.bucket;
+        }
       }
 
-      const ranked = (Object.entries(counts) as Array<[ResponsibleBucket, number]>).sort((a, b) => b[1] - a[1]);
-      const bucket: ResponsibleBucket = latest?.bucket || (ranked[0]?.[1] > 0 ? ranked[0][0] : "ia");
+      const bucket = pickResponsibleBucketFromBreakdown(counts, latestBucket);
       return {
         bucket,
         label: responsibleLabel(bucket),
@@ -227,13 +458,12 @@ export async function GET(request: Request) {
       };
     };
 
-    const phoneKeys = states.map((item) => item.phonePk).filter(Boolean);
+    const phoneKeys = Array.from(mergedStates.keys());
     const timelineRows =
       phoneKeys.length > 0
         ? await prisma.conversationTimelineEvent.findMany({
             where: {
               tenantId: latestRun.tenantId,
-              channelId: latestRun.channelId,
               phonePk: { in: phoneKeys },
             },
             orderBy: [{ createdAt: "asc" }],
@@ -266,85 +496,80 @@ export async function GET(request: Request) {
       });
     }
 
-    const items: ClientRecordItem[] = states
+    const items: ClientRecordItem[] = Array.from(mergedStates.values())
       .map((state) => {
-      const labels = Array.isArray(state.currentLabels) ? state.currentLabels : [];
-      const conversationIds = Array.isArray(state.openConversationIds)
-        ? state.openConversationIds.map((id) => Number(id || 0)).filter((id) => id > 0)
-        : [];
-      const storedBreakdownRaw =
-        state.responsibleMessageBreakdown && typeof state.responsibleMessageBreakdown === "object"
-          ? (state.responsibleMessageBreakdown as Record<string, unknown>)
-          : null;
-      const storedBreakdown = storedBreakdownRaw
-        ? sanitizeBreakdownByInbox(storedBreakdownRaw, latestRun.channel?.chatwootInboxId || null)
-        : null;
-      const hasStoredBreakdown =
-        Boolean(storedBreakdown) &&
-        ((storedBreakdown?.ia || 0) > 0 || (storedBreakdown?.suellen || 0) > 0 || (storedBreakdown?.samuel || 0) > 0);
-      const storedBucketRaw = String(state.responsibleBucket || "ia").trim().toLowerCase();
-      const storedBucket = enforceOwnerBucketByInbox(
-        storedBucketRaw === "suellen" || storedBucketRaw === "samuel" ? storedBucketRaw : "ia",
-        latestRun.channel?.chatwootInboxId || null,
-      ) as ResponsibleBucket;
-      const responsibleTracking = hasStoredBreakdown
-        ? {
-            bucket: storedBucket,
-            label: String(state.responsibleLabel || "").trim() || responsibleLabel(storedBucket),
-            messageCount: Number(state.responsibleMessageCount || 0) || 0,
-            breakdown: storedBreakdown as { ia: number; suellen: number; samuel: number },
-          }
-        : buildResponsibleTracking(conversationIds);
+        const labels = Array.from(state.labels.values());
+        const conversationIds = Array.from(state.conversationIds.values()).sort((a, b) => a - b);
+        const storedTracking =
+          sumBreakdown(state.storedBreakdown) > 0
+            ? {
+                bucket: pickResponsibleBucketFromBreakdown(state.storedBreakdown, null),
+                label: "",
+                messageCount: 0,
+                breakdown: state.storedBreakdown,
+              }
+            : null;
+        const responsibleTracking = storedTracking
+          ? {
+              bucket: storedTracking.bucket,
+              label: responsibleLabel(storedTracking.bucket),
+              messageCount: storedTracking.breakdown[storedTracking.bucket] || 0,
+              breakdown: storedTracking.breakdown,
+            }
+          : buildResponsibleTracking(conversationIds);
 
-      const chatLinks = conversationIds
-        .map((conversationId) => {
-          const accountId = Number(latestRun.channel?.chatwootAccountId || 0);
-          const inboxId = Number(latestRun.channel?.chatwootInboxId || 0);
-          if (accountId <= 0 || inboxId <= 0 || conversationId <= 0) return null;
-          return `https://chat.iainfinity.com.br/app/accounts/${accountId}/inbox/${inboxId}/conversations/${conversationId}`;
-        })
-        .filter((item): item is string => Boolean(item));
+        const chatLinks = conversationIds
+          .map((conversationId) => {
+            const meta = conversationMetaMap.get(conversationId);
+            const accountId = Number(meta?.accountId || 0);
+            const inboxId = Number(meta?.inboxId || 0);
+            if (accountId <= 0 || inboxId <= 0 || conversationId <= 0) return null;
+            return `https://chat.iainfinity.com.br/app/accounts/${accountId}/inbox/${inboxId}/conversations/${conversationId}`;
+          })
+          .filter((item): item is string => Boolean(item));
 
-      return {
-        phonePk: state.phonePk,
-        contactName: toTitleCaseName(state.contactName || "Contato"),
-        companyName: String(state.companyName || ""),
-        cnpj: String(state.cnpj || ""),
-        gaps: [],
-        attentions: [],
-        labels,
-        products: [],
-        conversationIds,
-        chatLinks,
-        openedAt: state.firstSeenAt?.toISOString() || null,
-        closedAt: state.resolvedAt?.toISOString() || null,
-        status: hasExitLabel(labels) ? "resolvido" : normalizeStatus(state.currentStatus),
-        severity: normalizeSeverity(state.currentSeverity),
-        responsibleBucket: responsibleTracking.bucket,
-        responsibleLabel: responsibleTracking.label,
-        responsibleMessageCount: responsibleTracking.messageCount,
-        responsibleMessageBreakdown: responsibleTracking.breakdown,
-        clientPhase: "inicial" as const,
-        clientPhaseReason: "Classificação geral baseada no estado atual consolidado.",
-        finalizationActor: null,
-        pipelineBlock: hasExitLabel(labels)
-          ? "resolvido"
-          : normalizeSeverity(state.currentSeverity) === "critical" ||
-              normalizeSeverity(state.currentSeverity) === "high"
-            ? "atencao"
-            : "entrada",
-        remarketing: null,
-        lifecycle: {
-          firstSeenAt: state.firstSeenAt.toISOString(),
-          lastSeenAt: state.lastSeenAt.toISOString(),
-          firstIssueAt: state.firstIssueAt ? state.firstIssueAt.toISOString() : null,
-          lastIssueAt: state.lastIssueAt ? state.lastIssueAt.toISOString() : null,
-          resolvedAt: state.resolvedAt ? state.resolvedAt.toISOString() : null,
-          currentStatus: normalizeStatus(state.currentStatus),
-          currentSeverity: normalizeSeverity(state.currentSeverity),
-        },
-        timeline: timelineByPhone.get(state.phonePk) || [],
-      };
+        const phase = deriveClientPhase(state.companyName, state.cnpj);
+        const pipelineState = derivePipelineState({
+          labels,
+          currentStatus: state.latestStatus,
+          currentSeverity: state.highestSeverity,
+        });
+
+        return {
+          phonePk: state.phonePk,
+          contactName: toTitleCaseName(state.contactName || "Contato"),
+          companyName: state.companyName,
+          cnpj: state.cnpj,
+          gaps: [],
+          attentions: [],
+          labels,
+          products: [],
+          conversationIds,
+          chatLinks,
+          openedAt: state.firstSeenAt?.toISOString() || null,
+          closedAt: state.resolvedAt?.toISOString() || null,
+          status: pipelineState.status,
+          severity: state.highestSeverity,
+          responsibleBucket: responsibleTracking.bucket,
+          responsibleLabel: responsibleTracking.label,
+          responsibleMessageCount: responsibleTracking.messageCount,
+          responsibleMessageBreakdown: responsibleTracking.breakdown,
+          clientPhase: phase.phase,
+          clientPhaseReason: phase.reason,
+          finalizationActor: null,
+          pipelineBlock: pipelineState.pipelineBlock,
+          remarketing: pipelineState.remarketing,
+          lifecycle: {
+            firstSeenAt: state.firstSeenAt?.toISOString() || "",
+            lastSeenAt: state.lastSeenAt?.toISOString() || "",
+            firstIssueAt: state.firstIssueAt ? state.firstIssueAt.toISOString() : null,
+            lastIssueAt: state.lastIssueAt ? state.lastIssueAt.toISOString() : null,
+            resolvedAt: state.resolvedAt ? state.resolvedAt.toISOString() : null,
+            currentStatus: normalizeStatus(state.latestStatus),
+            currentSeverity: state.highestSeverity,
+          },
+          timeline: timelineByPhone.get(state.phonePk) || [],
+        } satisfies ClientRecordItem;
       })
       .filter((item) => ownerScope === "all" || String(item.responsibleBucket || "ia") === ownerScope);
 
@@ -357,7 +582,7 @@ export async function GET(request: Request) {
       items,
     });
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : "Não foi possível carregar os clientes gerais.";
+    const message = error instanceof Error ? error.message : "Nao foi possivel carregar os clientes gerais.";
     return NextResponse.json({ error: "clients_overall_fetch_failed", message }, { status: 400 });
   }
 }

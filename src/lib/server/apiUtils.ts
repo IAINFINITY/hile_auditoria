@@ -7,7 +7,11 @@ import {
 } from "@/lib/auth/server";
 import { assertRequiredConfig, getConfig } from "@/lib/server/audit/config";
 import { assertYmd, todayYmd } from "@/lib/server/audit/dateUtils";
-import { createRouteHandlerSupabaseClient } from "@/lib/supabase/server";
+import {
+  createRouteHandlerSupabaseClient,
+  isTransientAuthNetworkError,
+  readRequestAuthUser,
+} from "@/lib/supabase/server";
 
 let cachedConfig: ReturnType<typeof getConfig> | null = null;
 
@@ -49,12 +53,22 @@ export interface AuthorizedApiUser {
 
 export async function getAuthorizedApiUser() {
   const supabase = await createRouteHandlerSupabaseClient();
-  const {
-    data: { user },
-    error,
-  } = await supabase.auth.getUser();
+  const { user, error } = await readRequestAuthUser(supabase);
 
-  if (error || !user || !user.email) {
+  if (error) {
+    const message = isTransientAuthNetworkError(error)
+      ? "Nao foi possivel validar sua sessao com o Supabase agora. Tente novamente em instantes."
+      : "Faca login para acessar esta rota.";
+    return {
+      response: NextResponse.json(
+        { error: "auth_validation_failed", message },
+        { status: isTransientAuthNetworkError(error) ? 503 : 401 },
+      ),
+      user: null as AuthorizedApiUser | null,
+    };
+  }
+
+  if (!user || !user.email) {
     return {
       response: NextResponse.json(
         { error: "unauthorized", message: "Faca login para acessar esta rota." },

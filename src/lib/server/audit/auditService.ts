@@ -48,14 +48,6 @@ function normalizeText(value) {
   return String(value || "").trim().toLowerCase();
 }
 
-function normalizeNameToken(value) {
-  return String(value || "")
-    .toLowerCase()
-    .trim()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "");
-}
-
 function responsibleLabel(bucket) {
   if (bucket === "samuel") return "Comercial Samuel";
   if (bucket === "suellen") return "Comercial Suellen";
@@ -199,7 +191,7 @@ const MIN_VALID_LATENCY_GAP_SECONDS = 120;
 function findMessageByTimestamp(messages: any[], unixSeconds: number) {
   const exact = messages.find((item) => Number(item?.created_at || 0) === unixSeconds);
   if (exact) return exact;
-  // TolerÃ¢ncia pequena para diferencas de serializacao de segundos
+  // Tolerância pequena para diferenças de serialização de segundos
   return messages.find((item) => Math.abs(Number(item?.created_at || 0) - unixSeconds) <= 2) || null;
 }
 
@@ -226,8 +218,8 @@ function isValidLatencyGapReference(gap: any, messages: any[]): boolean {
   if (first.role !== "USER" || second.role !== "AGENT") return false;
   if (Number(second.created_at) <= Number(first.created_at)) return false;
 
-  // Regra operacional: lentidÃ£o sÃ³ existe no primeiro par USER -> AGENT.
-  // Follow-up da IA apÃ³s silÃªncio do usuÃ¡rio nÃ£o entra como latÃ’Âªncia de resposta.
+  // Regra operacional: lentidão só existe no primeiro par USER -> AGENT.
+  // Follow-up da IA após silêncio do usuário não entra como latência de resposta.
   const firstAgentReplyAfterUser = safeMessages.find(
     (item) => item.role === "AGENT" && Number(item.created_at) > Number(first.created_at),
   );
@@ -308,7 +300,7 @@ function sanitizeAnalysisAnswer(answer: string, messages: any[]): string {
         continue;
       }
       removedLatencyNotes.push(
-        "Alerta de tempo de resposta removido automaticamente por falta de evidÃªncia consistente no log.",
+        "Alerta de tempo de resposta removido automaticamente por falta de evidência consistente no log.",
       );
       continue;
     }
@@ -317,7 +309,7 @@ function sanitizeAnalysisAnswer(answer: string, messages: any[]): string {
       continue;
     }
     removedAbandonmentNotes.push(
-      "Alerta de abandono removido automaticamente por falta de evidÃªncia consistente no log.",
+      "Alerta de abandono removido automaticamente por falta de evidência consistente no log.",
     );
   }
   parsed.gaps_operacionais = cleanedGaps;
@@ -333,7 +325,7 @@ function pickAccount(accounts, configuredAccountId, groupName) {
   if (configuredAccountId) {
     const byId = accounts.find((item) => Number(item?.id) === Number(configuredAccountId));
     if (!byId) {
-      throw new Error(`CHATWOOT_ACCOUNT_ID=${configuredAccountId} nÃ£o foi encontrado no profile.`);
+      throw new Error(`CHATWOOT_ACCOUNT_ID=${configuredAccountId} não foi encontrado no profile.`);
     }
     return byId;
   }
@@ -345,21 +337,21 @@ function pickAccount(accounts, configuredAccountId, groupName) {
   if (partial) return partial;
 
   const available = accounts.map((item) => item?.name).filter(Boolean).join(", ");
-  throw new Error(`Grupo '${groupName}' nÃ£o encontrado. Contas visÃ­veis: ${available || "(nenhuma)"}`);
+  throw new Error(`Grupo '${groupName}' não encontrado. Contas visíveis: ${available || "(nenhuma)"}`);
 }
 
 function pickInbox(inboxes, inboxName, inboxId, inboxProvider) {
   if (inboxId) {
     const byId = inboxes.find((item) => Number(item?.id) === Number(inboxId));
     if (!byId) {
-      throw new Error(`CHATWOOT_INBOX_ID=${inboxId} nÃ£o foi encontrado na conta selecionada.`);
+      throw new Error(`CHATWOOT_INBOX_ID=${inboxId} não foi encontrado na conta selecionada.`);
     }
     return byId;
   }
 
   const byName = inboxes.filter((item) => normalizeText(item?.name) === normalizeText(inboxName));
   if (byName.length === 0) {
-    throw new Error(`Inbox '${inboxName}' nÃ£o encontrada na conta selecionada.`);
+    throw new Error(`Inbox '${inboxName}' não encontrada na conta selecionada.`);
   }
 
   const preferredProvider = normalizeText(inboxProvider);
@@ -464,8 +456,8 @@ async function listAllConversations({
         stalePageStreak += 1;
       }
 
-      // HeurÃ­stica de otimizaÃ§Ã£o: ao receber 2 pÃ¡ginas seguidas sem nenhuma conversa recente,
-      // interrompemos a varredura para nÃ£o percorrer histÃ³rico desnecessÃ¡rio.
+      // Heurística de otimização: ao receber 2 páginas seguidas sem nenhuma conversa recente,
+      // interrompemos a varredura para não percorrer histórico desnecessário.
       if (stalePageStreak >= 2) break;
     }
   }
@@ -762,7 +754,7 @@ export async function runDailyAnalysis({
   mode?: "reuse" | "force";
 }) {
   if (!config.dify.apiKey) {
-    throw new Error("DIFY_API_KEY nÃ£o configurada. Configure para rodar /api/analyze-day.");
+    throw new Error("DIFY_API_KEY não configurada. Configure para rodar /api/analyze-day.");
   }
 
   const dailySnapshot = snapshot || (await buildDailyConversationLogs({ config, date }));
@@ -822,7 +814,7 @@ export async function runDailyAnalysis({
     });
     const relevance =
       mode === "force"
-        ? { relevant: true, score: 999, reasons: ["modo reprocessar forÃ§ado"], hasCriticalRule: true }
+        ? { relevant: true, score: 999, reasons: ["modo reprocessar forçado"], hasCriticalRule: true }
         : evaluateDeltaRelevance({
             newMessages,
             previous: previousDelta
@@ -973,7 +965,7 @@ export async function runDailyAnalysis({
       const difyAnswer = extractDifyAnswer(difyRaw);
       if (!difyRaw || !difyAnswer) {
         const missingError = new Error(
-          "NÃ£o encontramos anÃ¡lise disponÃ­vel para este contato nesta execuÃ§Ã£o.",
+          "Não encontramos análise disponível para este contato nesta execução.",
         );
         (missingError as Error & { code?: string }).code = "analysis_not_found_in_reuse_mode";
         throw missingError;
@@ -1017,7 +1009,7 @@ export async function runDailyAnalysis({
           delta_relevant: isRelevantDelta,
           delta_hash: deltaHash,
           forced_full: shouldForceFull,
-          forced_full_reason: mode === "force" ? "modo force" : staleFull ? "rebase periÃ’Â³dico" : statusIncoherence ? "incoerÃ’Âªncia de status/labels" : null,
+          forced_full_reason: mode === "force" ? "modo force" : staleFull ? "rebase periódico" : statusIncoherence ? "incoerência de status/labels" : null,
           analysis_mode: analysisMode,
         },
         contact_key: log.contact_key,
@@ -1038,11 +1030,11 @@ export async function runDailyAnalysis({
       console.log(
         `[analyze-day] contato ${log.contact_key} ${
           latestDbAnalysis
-            ? "reaproveitado do Ã’Âºltimo estado (delta sem impacto)"
+            ? "reaproveitado do último estado (delta sem impacto)"
             : cachedAnalysis
               ? "reaproveitado do cache"
               : recoveredFromHistory
-                ? "recuperado do histÃ’Â³rico Dify"
+                ? "recuperado do histórico Dify"
                 : "analisado"
         } (${analyses.length + failures.length}/${totalToProcess}).`,
       );
@@ -1103,7 +1095,7 @@ export async function runDailyAnalysis({
       });
     } catch (error) {
       console.warn(
-        `[analyze-day] falha ao persistir delta states (execuÃ§Ã£o segue): ${
+        `[analyze-day] falha ao persistir delta states (execução segue): ${
           error instanceof Error ? error.message : "erro desconhecido"
         }`,
       );
@@ -1111,7 +1103,7 @@ export async function runDailyAnalysis({
   }
   if (incrementalUpdates.length > 0 && !canPersistIncrementalStates) {
     console.warn(
-      `[analyze-day] persistÃªncia incremental ignorada: execuÃ§Ã£o parcial (${analyses.length}/${totalToProcess} sucesso).`,
+      `[analyze-day] persistência incremental ignorada: execução parcial (${analyses.length}/${totalToProcess} sucesso).`,
     );
   }
 
@@ -1298,32 +1290,32 @@ export async function buildDailyReport({
   const chatwootAppBase = toChatwootAppBase(config.chatwoot.baseUrl);
 
   const lines = [];
-  lines.push(`# RelatÃ³rio DiÃ’Â¡rio - Auditoria de Atendimento`);
+  lines.push(`# Relatório Diário - Auditoria de Atendimento`);
   lines.push("");
   lines.push(`- Data: ${reportDate}`);
   lines.push(`- Conta: ${analysis.account?.name || "-"} (id ${analysis.account?.id || "-"})`);
   lines.push(`- Canal: ${analysis.inbox?.name || "-"} (id ${analysis.inbox?.id || "-"})`);
   lines.push(`- Conversas que entraram no dia: ${analysis.conversations_entered_today}`);
-  lines.push(`- Contatos Ã’Âºnicos: ${analysis.unique_contacts_today}`);
-  lines.push(`- AnÃ¡lises executadas: ${total}`);
-  lines.push(`- Casos com risco crÃ­tico: ${criticalCount}`);
+  lines.push(`- Contatos únicos: ${analysis.unique_contacts_today}`);
+  lines.push(`- Análises executadas: ${total}`);
+  lines.push(`- Casos com risco crítico: ${criticalCount}`);
   lines.push(`- Total de pontos de melhoria citados: ${improvementsCount}`);
   lines.push(`- Total de gaps operacionais citados: ${gapsCount}`);
   lines.push("");
-  lines.push(`## Desempenho por ResponsÃ’Â¡vel`);
+  lines.push(`## Desempenho por Responsável`);
   lines.push("");
   for (const owner of ["ia", "suellen", "samuel"]) {
     const stats = responsiblePerformance[owner];
     lines.push(`### ${stats.owner_label}`);
-    lines.push(`- AnÃ¡lises: ${stats.analyses_count}`);
-    lines.push(`- Contatos Ã’Âºnicos: ${stats.contacts_count}`);
-    lines.push(`- Conversas Ã’Âºnicas: ${stats.conversations_count}`);
+    lines.push(`- Análises: ${stats.analyses_count}`);
+    lines.push(`- Contatos únicos: ${stats.contacts_count}`);
+    lines.push(`- Conversas únicas: ${stats.conversations_count}`);
     lines.push(`- Mensagens de agente rastreadas: ${stats.message_count_agent}`);
     lines.push(`- Gaps totais: ${stats.gaps_count}`);
-    lines.push(`- Gaps crÃ­ticos: ${stats.critical_gaps_count}`);
+    lines.push(`- Gaps críticos: ${stats.critical_gaps_count}`);
     lines.push(`- Pontos de melhoria: ${stats.improvements_count}`);
     lines.push(
-      `- Tempo mÃ’Â©dio de resposta: ${
+      `- Tempo médio de resposta: ${
         stats.avg_response_sec !== null ? `${Number(stats.avg_response_sec).toFixed(2)}s` : "N/A"
       }`,
     );
