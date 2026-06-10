@@ -360,7 +360,7 @@ export function AnalysisOverallView({ refreshHint, sectionStart = 1, ownerScope 
                 <HileKpiCard
                   label="Críticos"
                   value={critical}
-                  hint={`${totalInsights} insights â€¢ taxa crítica ${formatPercent(criticalRate)}`}
+                  hint={`${totalInsights} insights • taxa crítica ${formatPercent(criticalRate)}`}
                   tone={critical > 0 ? "critical" : "default"}
                   accent={critical > 0 ? "critical" : "default"}
                 />
@@ -517,7 +517,7 @@ export function AnalysisOverallView({ refreshHint, sectionStart = 1, ownerScope 
             {filteredProducts.length > productsPageSize ? (
               <div className="pagination-row">
                 <span>
-                  {filteredProducts.length} registros â€¢ Página {safeProductsPage} de {totalProductsPages}
+                  {filteredProducts.length} registros • Página {safeProductsPage} de {totalProductsPages}
                 </span>
                 <button type="button" onClick={() => setProductsPage(Math.max(1, safeProductsPage - 1))} disabled={safeProductsPage <= 1}>
                   {"<"}
@@ -543,7 +543,7 @@ export function AnalysisOverallView({ refreshHint, sectionStart = 1, ownerScope 
           >
             <HileSurfaceCard
               title="Contexto informativo"
-              description={`${filteredContextItems.length} registro(s) apos os filtros aplicados`}
+              description={`${filteredContextItems.length} registro(s) após os filtros aplicados`}
               tone={visibleContext.length > 0 ? "default" : "soft"}
             >
             <div className="report-filters-shell" style={{ marginBottom: "12px" }}>
@@ -637,7 +637,7 @@ export function AnalysisOverallView({ refreshHint, sectionStart = 1, ownerScope 
                         </p>
                       ) : null}
                       <p>
-                        <strong>Data:</strong> {item.date} â€¢ <strong>Severidade:</strong> {severityLabel[item.severity]}
+                        <strong>Data:</strong> {item.date} • <strong>Severidade:</strong> {severityLabel[item.severity]}
                       </p>
                     </div>
                   </article>
@@ -648,7 +648,7 @@ export function AnalysisOverallView({ refreshHint, sectionStart = 1, ownerScope 
             {filteredContextItems.length > contextPageSize ? (
               <div className="pagination-row">
                 <span>
-                  {filteredContextItems.length} registros â€¢ Página {safeContextPage} de {totalContextPages}
+                  {filteredContextItems.length} registros • Página {safeContextPage} de {totalContextPages}
                 </span>
                 <button type="button" onClick={() => setContextPage(Math.max(1, safeContextPage - 1))} disabled={safeContextPage <= 1}>
                   {"<"}

@@ -220,6 +220,31 @@
     opacity:1;
     transform:none;
   }
+
+  .splash-screen{
+    animation-duration:.6s !important;
+  }
+
+  .splash-logo{
+    animation-duration:1.2s !important;
+  }
+
+  .splash-screen h1,
+  .splash-screen p{
+    animation-duration:.9s !important;
+  }
+
+  .login-screen{
+    animation-duration:.35s !important;
+  }
+
+  .login-card{
+    animation-duration:.45s !important;
+  }
+
+  .login-logo-circle::after{
+    animation:none !important;
+  }
 }
 
 

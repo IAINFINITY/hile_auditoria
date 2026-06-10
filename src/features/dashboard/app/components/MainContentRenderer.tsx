@@ -307,7 +307,7 @@ export function MainContentRenderer({
                       <HileKpiCard
                         label="Críticos"
                         value={dayCritical}
-                        hint={`${dayTotalInsights} insights â€¢ taxa crítica ${(dayCriticalRate * 100).toFixed(1)}%`}
+                        hint={`${dayTotalInsights} insights • taxa crítica ${(dayCriticalRate * 100).toFixed(1)}%`}
                         tone={dayCritical > 0 ? "critical" : "default"}
                         accent={dayCritical > 0 ? "critical" : "default"}
                       />

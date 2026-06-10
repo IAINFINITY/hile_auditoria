@@ -41,7 +41,6 @@ export function ShellTopbar({
           <span className="sep">&gt;</span>
           <strong>{currentBreadcrumb}</strong>
         </div>
-        <span className="topbar-context-pill">Painel Operacional</span>
       </div>
 
       <div className="topbar-actions">

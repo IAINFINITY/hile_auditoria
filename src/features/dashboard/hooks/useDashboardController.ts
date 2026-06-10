@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { apiGet, apiPost } from "../../../lib/api";
+﻿import { useEffect, useMemo, useRef, useState } from "react";
+import { apiGet, apiPost, ApiRequestError } from "../../../lib/api";
 import type {
   AvailableDatesResponse,
   FailureItem,
@@ -269,20 +269,28 @@ export function useDashboardController(options?: { enabled?: boolean; syncNavOnS
       missingReportDatesRef.current.delete(targetDate);
       setAvailableReportDates((current) => (current.includes(targetDate) ? current : [targetDate, ...current]));
       return snapshot;
-    } catch {
+    } catch (error) {
+      const isNotFound = error instanceof ApiRequestError && error.status === 404;
+      const message = error instanceof Error ? error.message : "Não foi possível carregar o relatório salvo agora.";
+
       if (!background) {
-        missingReportDatesRef.current.add(targetDate);
-        setOverview(null);
-        setInsights([]);
-        setReport(null);
-        setFailures([]);
-        setRawOutput("Sem relatório salvo para essa data. Você pode gerar um novo overview.");
-        setInsightsReady(false);
-        setShowTrend(false);
-        setStatus(`Não encontramos relatório salvo para ${targetDate}.`);
-        setAvailableReportDates((current) =>
-          current.includes(targetDate) ? current.filter((item) => item !== targetDate) : current,
-        );
+        if (isNotFound) {
+          missingReportDatesRef.current.add(targetDate);
+          setOverview(null);
+          setInsights([]);
+          setReport(null);
+          setFailures([]);
+          setRawOutput("Sem relatorio salvo para essa data. Voce pode gerar um novo overview.");
+          setInsightsReady(false);
+          setShowTrend(false);
+          setStatus(`Nao encontramos relatorio salvo para ${targetDate}.`);
+          setAvailableReportDates((current) =>
+            current.includes(targetDate) ? current.filter((item) => item !== targetDate) : current,
+          );
+        } else {
+          lastLoadedDateRef.current = null;
+          setStatus(`Nao foi possivel carregar ${targetDate} agora: ${message}`);
+        }
       }
       return null;
     } finally {
@@ -657,6 +665,19 @@ export function useDashboardController(options?: { enabled?: boolean; syncNavOnS
       setDateState(safeDate);
     }
 
+    const previousDashboardState = {
+      overview,
+      insights,
+      report,
+      failures,
+      rawOutput,
+      insightsReady,
+      showTrend,
+      lastRunAt,
+      selectedReportContact,
+      reportSeverityFilter,
+    };
+
     setLoading("overview");
     setRunTimeline(["Iniciando overview do dia..."]);
     updateRunProgress(1);
@@ -846,7 +867,17 @@ export function useDashboardController(options?: { enabled?: boolean; syncNavOnS
 
       const elapsed = Math.round((Date.now() - startedAt) / 1000);
       if (reportFailedMessage) {
-        setStatus(`Overview concluído em ${elapsed}s. Relatório falhou: ${reportFailedMessage}`);
+        setOverview(previousDashboardState.overview);
+        setInsights(previousDashboardState.insights);
+        setReport(previousDashboardState.report);
+        setFailures(previousDashboardState.failures);
+        setRawOutput(previousDashboardState.rawOutput);
+        setInsightsReady(previousDashboardState.insightsReady);
+        setShowTrend(previousDashboardState.showTrend);
+        setLastRunAt(previousDashboardState.lastRunAt);
+        setSelectedReportContact(previousDashboardState.selectedReportContact);
+        setReportSeverityFilter(previousDashboardState.reportSeverityFilter);
+        setStatus(`Nova execucao falhou em ${elapsed}s. Mantivemos os dados anteriores: ${reportFailedMessage}`);
       } else {
         setOverview(finalOverviewData);
         setInsights(finalInsights);
@@ -861,7 +892,7 @@ export function useDashboardController(options?: { enabled?: boolean; syncNavOnS
         setOverviewRunCount((value) => value + 1);
         setSelectedReportContact(null);
         setReportSeverityFilter("all");
-      setStatus(`Overview concluído em ${elapsed}s. Conexões ${check.ok ? "OK" : "com alerta"}.`);
+        setStatus(`Overview concluido em ${elapsed}s. Conexoes ${check.ok ? "OK" : "com alerta"}.`);
       }
       pushRunStep(`Overview finalizado em ${elapsed}s.`);
       setRunProgress(100);
@@ -884,9 +915,18 @@ export function useDashboardController(options?: { enabled?: boolean; syncNavOnS
         })
         .catch(() => undefined);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Falha não identificada";
+      const message = error instanceof Error ? error.message : "Falha nao identificada";
+      setOverview(previousDashboardState.overview);
+      setInsights(previousDashboardState.insights);
+      setReport(previousDashboardState.report);
+      setFailures(previousDashboardState.failures);
+      setRawOutput(previousDashboardState.rawOutput);
+      setInsightsReady(previousDashboardState.insightsReady);
+      setShowTrend(previousDashboardState.showTrend);
+      setLastRunAt(previousDashboardState.lastRunAt);
+      setSelectedReportContact(previousDashboardState.selectedReportContact);
+      setReportSeverityFilter(previousDashboardState.reportSeverityFilter);
       setStatus(`Erro: ${message}`);
-      setRawOutput(`Erro: ${message}`);
       pushRunStep(`Parou com erro: ${message}`);
       setRunCurrentContact(null);
       setCurrentRunId(null);
