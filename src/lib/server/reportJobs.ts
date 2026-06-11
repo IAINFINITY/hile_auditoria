@@ -18,6 +18,7 @@ export type ReportJobState = {
   db_run_id?: string | null;
   date: string;
   status: ReportJobStatus;
+  phase?: "processing" | "waiting" | "finalizing" | "completed" | "failed";
   started_at: string;
   updated_at: string;
   total: number;
@@ -30,6 +31,12 @@ export type ReportJobState = {
     analysis_key: string | null;
     conversation_ids: number[];
   } | null;
+  wait_message?: string | null;
+  wait_reason?: string | null;
+  wait_retry_after_ms?: number | null;
+  wait_attempt?: number | null;
+  wait_max_attempts?: number | null;
+  wait_next_retry_at?: string | null;
   execution_order: ReportJobEvent[];
   result: unknown | null;
   error: string | null;

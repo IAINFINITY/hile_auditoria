@@ -12,6 +12,16 @@ function parseValue(rawValue: string): string | number | boolean {
   return rawValue;
 }
 
+function parseNonNegativeInteger(rawValue: string | undefined, fallback: number): number {
+  if (rawValue === undefined || rawValue === "") return fallback;
+
+  const parsed = Number(rawValue);
+  if (!Number.isFinite(parsed)) return fallback;
+  if (parsed < 0) return fallback;
+
+  return Math.floor(parsed);
+}
+
 export function loadEnvFile(path = ".env"): void {
   let content = "";
 
@@ -88,6 +98,17 @@ export function getConfig(): AppConfig {
       inputLogField: process.env.DIFY_INPUT_LOG_FIELD || "chat_log",
       userPrefix: process.env.DIFY_USER_PREFIX || "chatwoot-contact",
       requestTimeoutMs: Number(process.env.DIFY_REQUEST_TIMEOUT_MS || 90000),
+    },
+    performance: {
+      fastMode: String(process.env.REPORT_FAST_MODE || "0") === "1" || String(process.env.REPORT_FAST_MODE || "").toLowerCase() === "true",
+      fastScanLookbackDays: Math.max(0, Number(process.env.REPORT_FAST_SCAN_LOOKBACK_DAYS || 0)),
+      fastChatwootMaxPages: parseNonNegativeInteger(process.env.REPORT_FAST_CHATWOOT_MAX_PAGES, 6),
+      fastConversationLimit:
+        process.env.REPORT_FAST_CONVERSATION_LIMIT === undefined || process.env.REPORT_FAST_CONVERSATION_LIMIT === ""
+          ? 25
+          : Math.max(0, Number(process.env.REPORT_FAST_CONVERSATION_LIMIT || 0)),
+      fastMessagePages: parseNonNegativeInteger(process.env.REPORT_FAST_MESSAGE_PAGES, 8),
+      skipHistoryRecovery: String(process.env.REPORT_FAST_SKIP_HISTORY_RECOVERY || "1") === "1" || String(process.env.REPORT_FAST_SKIP_HISTORY_RECOVERY || "").toLowerCase() === "true",
     },
     incremental: {
       minRelevanceScore: Math.max(1, Number(process.env.INCREMENTAL_MIN_RELEVANCE_SCORE || 2)),

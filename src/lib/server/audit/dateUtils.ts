@@ -27,6 +27,14 @@ export function todayYmd(timeZone: string): string {
   return toYmdInTimezone(now, timeZone);
 }
 
+export function addDaysToYmd(value: string, days: number): string {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(value || ""))) return String(value || "");
+  const date = new Date(`${value}T12:00:00.000Z`);
+  if (Number.isNaN(date.getTime())) return String(value || "");
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
 export function nowUnixSeconds(): number {
   return Math.floor(Date.now() / 1000);
 }

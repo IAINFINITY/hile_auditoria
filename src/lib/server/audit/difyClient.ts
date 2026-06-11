@@ -133,6 +133,38 @@ export function createDifyClient({
     );
   }
 
+  function classifyDifyError(status: number, parsed: any, text: string): { code: string | null; retryable: boolean } {
+    const raw = `${text || ""} ${JSON.stringify(parsed || {})}`.toLowerCase();
+    const message = String(parsed?.message || parsed?.error?.message || text || "").toLowerCase();
+    const remoteCode = String(parsed?.code || parsed?.error?.code || "").toLowerCase();
+
+    if (status === 400 && text.includes("Workflow not published")) {
+      return { code: "workflow_not_published", retryable: false };
+    }
+
+    const quotaDetected =
+      remoteCode.includes("insufficient_quota") ||
+      message.includes("insufficient_quota") ||
+      raw.includes("insufficient_quota") ||
+      raw.includes("exceeded your current quota") ||
+      raw.includes("you exceeded your current quota") ||
+      raw.includes("quota") ||
+      raw.includes("rate limit error");
+
+    if (quotaDetected) {
+      return {
+        code: raw.includes("rate limit") ? "dify_rate_limited" : "dify_quota_exceeded",
+        retryable: true,
+      };
+    }
+
+    if (status === 429) {
+      return { code: "dify_rate_limited", retryable: true };
+    }
+
+    return { code: parsed?.code || parsed?.error?.code || null, retryable: false };
+  }
+
   async function request(pathname: string, body: Record<string, unknown>): Promise<any> {
     const response = await fetch(`${normalizedBaseUrl}${pathname}`, {
       method: "POST",
@@ -156,13 +188,16 @@ export function createDifyClient({
         error.status = response.status;
         error.code = "workflow_not_published";
         error.body = text;
+        error.retryable = false;
         throw error;
       }
 
+      const classification = classifyDifyError(response.status, parsed, text);
       const error = new Error(`Dify ${response.status} in ${pathname}. Body: ${text || "(empty)"}`) as ErrorWithMeta;
       error.status = response.status;
-      error.code = parsed?.code || null;
+      error.code = classification.code;
       error.body = text;
+      error.retryable = classification.retryable;
       throw error;
     }
 
@@ -194,8 +229,10 @@ export function createDifyClient({
 
       const error = new Error(`Dify ${response.status} in ${pathname}. Body: ${text || "(empty)"}`) as ErrorWithMeta;
       error.status = response.status;
-      error.code = parsed?.code || null;
+      const classification = classifyDifyError(response.status, parsed, text);
+      error.code = classification.code;
       error.body = text;
+      error.retryable = classification.retryable;
       throw error;
     }
 

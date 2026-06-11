@@ -18,7 +18,7 @@ export const runtime = "nodejs";
 export const maxDuration = 300;
 
 type ProgressEvent = {
-  type?: "contact_start" | "contact_done";
+  type?: "contact_start" | "contact_heartbeat" | "contact_wait" | "contact_done";
   total?: number;
   sequence?: number;
   contact_name?: string;
@@ -29,6 +29,12 @@ type ProgressEvent = {
   success?: boolean;
   error_message?: string;
   error_code?: string | null;
+  wait_message?: string | null;
+  wait_reason?: string | null;
+  wait_retry_after_ms?: number | null;
+  wait_attempt?: number | null;
+  wait_max_attempts?: number | null;
+  wait_next_retry_at?: string | null;
 };
 
 export async function POST(request: Request) {
@@ -80,11 +86,18 @@ export async function POST(request: Request) {
       db_run_id: null,
       date,
       status: "running",
+      phase: "processing",
       started_at: now,
       updated_at: now,
       total: 0,
       processed: 0,
       current_contact: null,
+      wait_message: null,
+      wait_reason: null,
+      wait_retry_after_ms: null,
+      wait_attempt: null,
+      wait_max_attempts: null,
+      wait_next_retry_at: null,
       execution_order: [],
       result: null,
       error: null,
@@ -141,6 +154,7 @@ export async function POST(request: Request) {
             state.total = Number(event?.total || state.total || 0);
 
             if (event?.type === "contact_start") {
+              state.phase = "processing";
               if (state.db_run_id) {
                 fireAndForget(appendRunEvent(state.db_run_id, "contact_start", event), "appendRunEvent(contact_start)");
               }
@@ -155,7 +169,68 @@ export async function POST(request: Request) {
               return;
             }
 
+            if (event?.type === "contact_heartbeat") {
+              const wasWaiting = state.phase === "waiting";
+              state.phase = wasWaiting ? "waiting" : "processing";
+              if (!wasWaiting) {
+                state.wait_message = null;
+                state.wait_reason = null;
+                state.wait_retry_after_ms = null;
+                state.wait_attempt = null;
+                state.wait_max_attempts = null;
+                state.wait_next_retry_at = null;
+              }
+              if (state.db_run_id) {
+                fireAndForget(
+                  appendRunEvent(state.db_run_id, "contact_heartbeat", event),
+                  "appendRunEvent(contact_heartbeat)",
+                );
+              }
+              state.current_contact = {
+                sequence: Number(event?.sequence || state.current_contact?.sequence || 0),
+                total: Number(event?.total || state.total || 0),
+                contact_name: String(event?.contact_name || state.current_contact?.contact_name || event?.contact_key || "Contato"),
+                contact_key: String(event?.contact_key || state.current_contact?.contact_key || ""),
+                analysis_key: event?.analysis_key ? String(event.analysis_key) : state.current_contact?.analysis_key || null,
+                conversation_ids: Array.isArray(event?.conversation_ids)
+                  ? event.conversation_ids
+                  : state.current_contact?.conversation_ids || [],
+              };
+              return;
+            }
+
+            if (event?.type === "contact_wait") {
+              state.phase = "waiting";
+              state.wait_message = event?.wait_message ? String(event.wait_message) : "Aguardando liberação de quota do Dify/OpenAI...";
+              state.wait_reason = event?.wait_reason ? String(event.wait_reason) : "dify_quota_exceeded";
+              state.wait_retry_after_ms = Number(event?.wait_retry_after_ms || 0) || null;
+              state.wait_attempt = Number(event?.wait_attempt || 0) || null;
+              state.wait_max_attempts = Number(event?.wait_max_attempts || 0) || null;
+              state.wait_next_retry_at = event?.wait_next_retry_at ? String(event.wait_next_retry_at) : null;
+              state.current_contact = {
+                sequence: Number(event?.sequence || state.current_contact?.sequence || 0),
+                total: Number(event?.total || state.total || 0),
+                contact_name: String(event?.contact_name || state.current_contact?.contact_name || event?.contact_key || "Contato"),
+                contact_key: String(event?.contact_key || state.current_contact?.contact_key || ""),
+                analysis_key: event?.analysis_key ? String(event.analysis_key) : state.current_contact?.analysis_key || null,
+                conversation_ids: Array.isArray(event?.conversation_ids)
+                  ? event.conversation_ids
+                  : state.current_contact?.conversation_ids || [],
+              };
+              if (state.db_run_id) {
+                fireAndForget(appendRunEvent(state.db_run_id, "contact_wait", event), "appendRunEvent(contact_wait)");
+              }
+              return;
+            }
+
             if (event?.type === "contact_done") {
+              state.phase = "processing";
+              state.wait_message = null;
+              state.wait_reason = null;
+              state.wait_retry_after_ms = null;
+              state.wait_attempt = null;
+              state.wait_max_attempts = null;
+              state.wait_next_retry_at = null;
               state.processed = Number(event?.processed || state.processed || 0);
               state.execution_order.push({
                 sequence: Number(event?.sequence || state.execution_order.length + 1),
@@ -204,8 +279,14 @@ export async function POST(request: Request) {
           );
         }
         const finishedAt = new Date().toISOString();
-        state.status = "completed";
+        state.phase = "finalizing";
         state.updated_at = finishedAt;
+        state.wait_message = null;
+        state.wait_reason = null;
+        state.wait_retry_after_ms = null;
+        state.wait_attempt = null;
+        state.wait_max_attempts = null;
+        state.wait_next_retry_at = null;
         state.result = {
           ...output,
           summary: {
@@ -230,14 +311,30 @@ export async function POST(request: Request) {
             total: state.total,
           });
         }
+        state.status = "completed";
+        state.phase = "completed";
+        state.wait_message = null;
+        state.wait_reason = null;
+        state.wait_retry_after_ms = null;
+        state.wait_attempt = null;
+        state.wait_max_attempts = null;
+        state.wait_next_retry_at = null;
+        state.updated_at = new Date().toISOString();
       } catch (error: unknown) {
         const state = jobs.get(jobId);
         if (!state) return;
         const finishedAt = new Date().toISOString();
         state.status = "failed";
+        state.phase = "failed";
         state.updated_at = finishedAt;
         state.error = error instanceof Error ? error.message : "Falha ao gerar relatório.";
         state.current_contact = null;
+        state.wait_message = null;
+        state.wait_reason = null;
+        state.wait_retry_after_ms = null;
+        state.wait_attempt = null;
+        state.wait_max_attempts = null;
+        state.wait_next_retry_at = null;
         if (state.db_run_id) {
           try {
             await markRunFailed(state.db_run_id, finishedAt, state.error);

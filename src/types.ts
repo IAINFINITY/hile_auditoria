@@ -262,6 +262,7 @@ export interface ReportJobStatusResponse {
   requested_date?: string | null;
   requested_at?: string | null;
   status: "running" | "completed" | "failed";
+  phase?: "processing" | "waiting" | "finalizing" | "completed" | "failed";
   started_at: string;
   updated_at: string;
   total: number;
@@ -274,6 +275,12 @@ export interface ReportJobStatusResponse {
     analysis_key: string | null;
     conversation_ids: number[];
   } | null;
+  wait_message?: string | null;
+  wait_reason?: string | null;
+  wait_retry_after_ms?: number | null;
+  wait_attempt?: number | null;
+  wait_max_attempts?: number | null;
+  wait_next_retry_at?: string | null;
   execution_order: Array<{
     sequence: number;
     total: number;

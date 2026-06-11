@@ -15,9 +15,43 @@ interface ChatwootClientInput {
   apiAccessToken: string;
   accountId: number | null;
   timeoutMs?: number;
+  timezone?: string;
 }
 
-export function createChatwootClient({ baseUrl, apiAccessToken, accountId, timeoutMs = 45000 }: ChatwootClientInput) {
+function toYmdInTimezone(unixValue: unknown, timezone: string): string | null {
+  const raw = Number(unixValue || 0);
+  const unixSeconds = raw > 1e12 ? Math.floor(raw / 1000) : Math.floor(raw);
+  if (!Number.isFinite(unixSeconds) || unixSeconds <= 0) return null;
+
+  const date = new Date(unixSeconds * 1000);
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: timezone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+
+  const year = parts.find((item) => item.type === "year")?.value;
+  const month = parts.find((item) => item.type === "month")?.value;
+  const day = parts.find((item) => item.type === "day")?.value;
+  if (!year || !month || !day) return null;
+  return `${year}-${month}-${day}`;
+}
+
+function normalizePageLimit(value: number | null | undefined, fallback: number): number {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  if (parsed <= 0) return 0;
+  return Math.floor(parsed);
+}
+
+export function createChatwootClient({
+  baseUrl,
+  apiAccessToken,
+  accountId,
+  timeoutMs = 45000,
+  timezone = "UTC",
+}: ChatwootClientInput) {
   const normalizedBaseUrl = baseUrl.replace(/\/$/, "");
   const maxRetries = 5;
 
@@ -135,7 +169,11 @@ export function createChatwootClient({ baseUrl, apiAccessToken, accountId, timeo
     return apiGet(`/api/v1/accounts/${account}/conversations/${conversationId}`);
   }
 
-  async function getConversationMessages(conversationId: number, accountIdOverride: number): Promise<any[]> {
+  async function getConversationMessages(
+    conversationId: number,
+    accountIdOverride: number,
+    options?: { cutoffYmd?: string | null; maxPages?: number | null },
+  ): Promise<any[]> {
     const account = Number(accountIdOverride || accountId || 0);
     if (!account) {
       throw new Error("accountId ausente para getConversationMessages.");
@@ -144,9 +182,12 @@ export function createChatwootClient({ baseUrl, apiAccessToken, accountId, timeo
     const seenIds = new Set<number>();
     let beforeId: number | null = null;
     let safety = 0;
+    const cutoffYmd = String(options?.cutoffYmd || "").trim() || null;
+    const maxPages = normalizePageLimit(options?.maxPages, 50);
+    const pageLimit = maxPages === 0 ? Number.MAX_SAFE_INTEGER : Math.min(50, maxPages);
 
     // Chatwoot devolve mensagens mais recentes; usamos `before` para paginar para trás.
-    while (safety < 50) {
+    while (safety < pageLimit) {
       safety += 1;
       const query = beforeId ? { before: beforeId } : {};
       const data = await apiGet(`/api/v1/accounts/${account}/conversations/${conversationId}/messages`, query);
@@ -155,9 +196,16 @@ export function createChatwootClient({ baseUrl, apiAccessToken, accountId, timeo
 
       let minBatchId = Number.MAX_SAFE_INTEGER;
       let appended = 0;
+      let hasMessageOnOrAfterCutoff = !cutoffYmd;
 
       for (const message of batch) {
         const id = Number(message?.id || 0);
+        if (cutoffYmd) {
+          const messageYmd = toYmdInTimezone(message?.created_at, timezone);
+          if (messageYmd && messageYmd >= cutoffYmd) {
+            hasMessageOnOrAfterCutoff = true;
+          }
+        }
         if (id > 0) {
           if (seenIds.has(id)) continue;
           seenIds.add(id);
@@ -169,6 +217,7 @@ export function createChatwootClient({ baseUrl, apiAccessToken, accountId, timeo
 
       if (appended === 0) break;
       if (!Number.isFinite(minBatchId) || minBatchId === Number.MAX_SAFE_INTEGER) break;
+      if (cutoffYmd && !hasMessageOnOrAfterCutoff) break;
 
       const nextBefore = minBatchId;
       if (beforeId !== null && nextBefore >= beforeId) break;

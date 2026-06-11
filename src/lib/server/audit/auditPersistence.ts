@@ -1312,7 +1312,7 @@ export async function persistCompletedRun(params: {
         },
       },
     });
-  }, { maxWait: 20_000, timeout: 180_000 });
+  }, { maxWait: 20_000, timeout: 600_000 });
 
   for (const cacheWrite of pendingCacheWrites) {
     try {
@@ -1500,10 +1500,10 @@ export async function listRecentRuns(limit: number) {
         failure_count: row.failureCount,
         tenant: row.tenant.name,
         channel: row.channel.name,
-        has_report: hasRenderableReportData(reportJson),
+        has_report: Boolean(row.report),
       };
     })
-    .filter((row) => row.has_report);
+    .sort((a, b) => new Date(b.started_at).getTime() - new Date(a.started_at).getTime());
 }
 
 export async function getRunSnapshot(runId: string) {
@@ -1513,7 +1513,9 @@ export async function getRunSnapshot(runId: string) {
       report: true,
       events: {
         where: {
-          eventType: { in: ["run_requested", "run_completed", "contact_start", "contact_done", "run_failed"] },
+          eventType: {
+            in: ["run_requested", "run_completed", "contact_start", "contact_heartbeat", "contact_done", "run_failed"],
+          },
         },
         orderBy: { createdAt: "desc" },
         select: {
@@ -1593,6 +1595,57 @@ export async function getCurrentContactFromRunEvents(runId: string): Promise<{
     contact_key: contactKey,
     analysis_key: analysisKeyRaw || null,
     conversation_ids: conversationIds,
+  };
+}
+
+export async function getCurrentWaitStateFromRunEvents(runId: string): Promise<{
+  wait_message: string | null;
+  wait_reason: string | null;
+  wait_retry_after_ms: number | null;
+  wait_attempt: number | null;
+  wait_max_attempts: number | null;
+  wait_next_retry_at: string | null;
+} | null> {
+  const [lastWait, lastCompletion] = await Promise.all([
+    prisma.jobEvent.findFirst({
+      where: {
+        runId,
+        eventType: "contact_wait",
+      },
+      orderBy: { createdAt: "desc" },
+      select: {
+        payloadJson: true,
+        createdAt: true,
+      },
+    }),
+    prisma.jobEvent.findFirst({
+      where: {
+        runId,
+        eventType: {
+          in: ["contact_done", "run_completed", "run_failed"],
+        },
+      },
+      orderBy: { createdAt: "desc" },
+      select: {
+        createdAt: true,
+      },
+    }),
+  ]);
+
+  if (!lastWait?.payloadJson || typeof lastWait.payloadJson !== "object") return null;
+  const waitCreatedAt = lastWait.createdAt instanceof Date ? lastWait.createdAt.getTime() : 0;
+  const completionCreatedAt = lastCompletion?.createdAt instanceof Date ? lastCompletion.createdAt.getTime() : 0;
+  if (!waitCreatedAt || (completionCreatedAt && completionCreatedAt > waitCreatedAt)) return null;
+
+  const payload = lastWait.payloadJson as Record<string, unknown>;
+
+  return {
+    wait_message: String(payload.wait_message || "").trim() || null,
+    wait_reason: String(payload.wait_reason || "").trim() || null,
+    wait_retry_after_ms: Number(payload.wait_retry_after_ms || 0) || null,
+    wait_attempt: Number(payload.wait_attempt || 0) || null,
+    wait_max_attempts: Number(payload.wait_max_attempts || 0) || null,
+    wait_next_retry_at: String(payload.wait_next_retry_at || "").trim() || null,
   };
 }
 

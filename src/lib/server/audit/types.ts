@@ -25,11 +25,21 @@ export interface DifyConfig {
   timezone?: string;
 }
 
+export interface PerformanceConfig {
+  fastMode: boolean;
+  fastScanLookbackDays: number;
+  fastChatwootMaxPages: number;
+  fastConversationLimit: number;
+  fastMessagePages: number;
+  skipHistoryRecovery: boolean;
+}
+
 export interface AppConfig {
   port: number;
   timezone: string;
   chatwoot: ChatwootConfig;
   dify: DifyConfig;
+  performance: PerformanceConfig;
   incremental: {
     minRelevanceScore: number;
     unansweredMinutesThreshold: number;
@@ -41,6 +51,7 @@ export interface ErrorWithMeta extends Error {
   status?: number;
   code?: string | null;
   body?: string;
+  retryable?: boolean;
 }
 
 export interface ChatwootContact {

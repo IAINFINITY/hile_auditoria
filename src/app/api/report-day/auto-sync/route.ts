@@ -12,6 +12,7 @@ import {
 } from "@/lib/server/audit/auditPersistence";
 import { resolveTenantAndChannel } from "@/lib/server/audit/persistence/helpers";
 import { getAppConfig, parseDateInput } from "@/lib/server/apiUtils";
+import { addDaysToYmd, todayYmd } from "@/lib/server/audit/dateUtils";
 import type { ReportPayload } from "@/types";
 
 export const runtime = "nodejs";
@@ -57,7 +58,10 @@ async function handleAutoSync(request: Request) {
 
     const config = getAppConfig();
     const { searchParams } = new URL(request.url);
-    const date = parseDateInput(searchParams.get("date"), config.timezone);
+    const requestedDate = String(searchParams.get("date") || "").trim();
+    const date = requestedDate
+      ? parseDateInput(requestedDate, config.timezone)
+      : addDaysToYmd(todayYmd(config.timezone), -1);
     const force = ["1", "true", "yes"].includes(String(searchParams.get("force") || "").trim().toLowerCase());
     const reportLike = {
       account: {

@@ -43,9 +43,61 @@ import {
   resolveResponsibleBucketBySenderName,
   sanitizeBreakdownByInbox,
 } from "./ownerBuckets";
+import type { ErrorWithMeta } from "./types";
 
 function normalizeText(value) {
   return String(value || "").trim().toLowerCase();
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+function getDifyQuotaRetryMaxAttempts(): number {
+  const raw = Number(process.env.REPORT_DIFY_QUOTA_RETRY_MAX_ATTEMPTS || 5);
+  if (!Number.isFinite(raw)) return 5;
+  return Math.min(12, Math.max(1, Math.floor(raw)));
+}
+
+function getDifyQuotaRetryDelayMs(attempt: number): number {
+  const baseSecondsRaw = Number(process.env.REPORT_DIFY_QUOTA_RETRY_BASE_SECONDS || 60);
+  const maxMinutesRaw = Number(process.env.REPORT_DIFY_QUOTA_RETRY_MAX_MINUTES || 15);
+  const baseSeconds = Number.isFinite(baseSecondsRaw) ? Math.max(15, Math.floor(baseSecondsRaw)) : 60;
+  const maxMinutes = Number.isFinite(maxMinutesRaw) ? Math.max(1, Math.floor(maxMinutesRaw)) : 15;
+  const exponential = baseSeconds * 1000 * Math.pow(2, Math.max(0, attempt - 1));
+  return Math.max(15_000, Math.min(maxMinutes * 60_000, exponential));
+}
+
+function isDifyQuotaPauseError(error: unknown): boolean {
+  const err = error as ErrorWithMeta | null;
+  const code = String(err?.code || "").toLowerCase();
+  const status = Number(err?.status || 0);
+  const message = String(err?.message || "").toLowerCase();
+  const body = String(err?.body || "").toLowerCase();
+  const raw = `${message} ${body} ${code}`;
+  return (
+    status === 429 ||
+    code.includes("quota") ||
+    code.includes("rate_limit") ||
+    raw.includes("insufficient_quota") ||
+    raw.includes("rate limit error") ||
+    raw.includes("exceeded your current quota") ||
+    raw.includes("you exceeded your current quota")
+  );
+}
+
+function buildDifyQuotaWaitMessage(params: {
+  contactName: string;
+  contactKey: string;
+  attempt: number;
+  maxAttempts: number;
+  waitMs: number;
+}): string {
+  const waitMinutes = Math.max(1, Math.ceil(params.waitMs / 60_000));
+  const target = params.contactName || params.contactKey || "contato";
+  return `Aguardando liberação de quota do Dify/OpenAI para ${target}. Nova tentativa em aproximadamente ${waitMinutes} min (tentativa ${params.attempt}/${params.maxAttempts}).`;
 }
 
 function responsibleLabel(bucket) {
@@ -137,6 +189,12 @@ function buildResponsibleTracking(messages, inboxId) {
       suellen: toMetric("suellen"),
       samuel: toMetric("samuel"),
     },
+  };
+}
+
+function createTimingBucket() {
+  return {
+    total_ms: 0,
   };
 }
 
@@ -364,6 +422,22 @@ function pickInbox(inboxes, inboxName, inboxId, inboxProvider) {
   return byName[0];
 }
 
+function resolveOptionalPageLimit(value: number | null | undefined, fallback: number): number {
+  const normalized = Number.isFinite(Number(value)) ? Math.floor(Number(value)) : fallback;
+  if (normalized <= 0) return 0;
+  return normalized;
+}
+
+function resolveFastPageLimit(normalLimit: number | null | undefined, fastLimit: number | null | undefined, fallback: number): number {
+  const normalizedFast = resolveOptionalPageLimit(fastLimit, fallback);
+  if (normalizedFast === 0) return 0;
+
+  const normalizedNormal = resolveOptionalPageLimit(normalLimit, fallback);
+  if (normalizedNormal === 0) return normalizedFast;
+
+  return Math.min(normalizedNormal, normalizedFast);
+}
+
 export async function discoverChatwootTarget({ config }) {
   const discoveryClient = createChatwootClient({
     baseUrl: config.chatwoot.baseUrl,
@@ -436,8 +510,9 @@ async function listAllConversations({
 }) {
   const all = [];
   let stalePageStreak = 0;
+  const pageLimit = resolveOptionalPageLimit(maxPages, Number.MAX_SAFE_INTEGER) || Number.MAX_SAFE_INTEGER;
 
-  for (let page = 1; page <= maxPages; page += 1) {
+  for (let page = 1; page <= pageLimit; page += 1) {
     const payload = await chatwootClient.listConversationsPage({ inboxId, page, status: "all", accountId });
 
     if (payload.length === 0) {
@@ -535,17 +610,34 @@ function shouldIgnoreConversationByContact(conversation, config) {
 export async function buildDailyConversationLogs({ config, date }) {
   assertYmd(date);
 
+  const timingsMs = createTimingBucket();
+  const buildStartedAt = Date.now();
+  const performance = config.performance || {
+    fastMode: false,
+    fastScanLookbackDays: 0,
+    fastChatwootMaxPages: 6,
+    fastConversationLimit: 25,
+    fastMessagePages: 8,
+    skipHistoryRecovery: true,
+  };
+  const fastModeActive = Boolean(performance.fastMode);
   const toYmd = (unixSeconds) => toYmdInTimezone(unixSeconds, config.timezone);
   const lookbackDays = Math.max(0, Number(config?.chatwoot?.scanLookbackDays || 0));
+  const effectiveLookbackDays = fastModeActive
+    ? Math.min(lookbackDays, Number(performance.fastScanLookbackDays || 0))
+    : lookbackDays;
   const cutoffDate = new Date(`${date}T00:00:00.000Z`);
-  cutoffDate.setUTCDate(cutoffDate.getUTCDate() - lookbackDays);
+  cutoffDate.setUTCDate(cutoffDate.getUTCDate() - effectiveLookbackDays);
   const cutoffYmd = cutoffDate.toISOString().slice(0, 10);
+  const targetStartedAt = Date.now();
   const target = await discoverChatwootTarget({ config });
+  timingsMs.target_discovery_ms = Date.now() - targetStartedAt;
   const chatwootClient = createChatwootClient({
     baseUrl: config.chatwoot.baseUrl,
     apiAccessToken: config.chatwoot.apiToken,
     accountId: target.account.id,
     timeoutMs: config.chatwoot.requestTimeoutMs,
+    timezone: config.timezone,
   });
 
   const scopedInboxIds = unique(
@@ -553,24 +645,36 @@ export async function buildDailyConversationLogs({ config, date }) {
       .filter((value) => Number.isFinite(value) && value > 0),
   );
 
+  const scanStartedAt = Date.now();
+  const effectiveFastChatwootMaxPages = resolveFastPageLimit(
+    config.chatwoot.maxPages,
+    performance.fastChatwootMaxPages,
+    6,
+  );
   const allConversations = await listAllConversationsByInboxes({
     chatwootClient,
     accountId: target.account.id,
     inboxIds: scopedInboxIds,
-    maxPages: config.chatwoot.maxPages,
+    maxPages: fastModeActive
+      ? effectiveFastChatwootMaxPages
+      : config.chatwoot.maxPages,
     cutoffYmd,
     timezone: config.timezone,
     recencyMode: "activity_or_created",
   });
+  timingsMs.chatwoot_scan_ms = Date.now() - scanStartedAt;
+  const filterStartedAt = Date.now();
   const scopedToInbox = allConversations.filter((conversation) => {
     const inboxId = Number(conversation?.inbox_id || 0);
     return scopedInboxIds.includes(inboxId);
   });
   const filteredByContact = scopedToInbox.filter((conversation) => !shouldIgnoreConversationByContact(conversation, config));
+  timingsMs.conversation_filter_ms = Date.now() - filterStartedAt;
   console.log(
     `[preview-day] scan concluido: ${filteredByContact.length} conversas validas nas inboxes ${scopedInboxIds.join(", ")} (conta ${target.account.id}).`,
   );
 
+  const selectionStartedAt = Date.now();
   const enteredToday = extractEnteredToday(filteredByContact, date, toYmd);
   const activeOnDay = extractActiveOnDay(filteredByContact, date, toYmd);
   let selectedConversations = unique(
@@ -580,7 +684,13 @@ export async function buildDailyConversationLogs({ config, date }) {
   )
     .map((id) => filteredByContact.find((conversation) => Number(conversation?.id || 0) === id))
     .filter(Boolean);
-  const maxConversationsPerDay = Math.max(0, Number(config?.chatwoot?.maxConversationsPerDay || 0));
+  const configuredConversationLimit = Math.max(0, Number(config?.chatwoot?.maxConversationsPerDay || 0));
+  const fastConversationLimit = Math.max(0, Number(performance.fastConversationLimit || 0));
+  const maxConversationsPerDay = fastModeActive
+    ? configuredConversationLimit > 0
+      ? configuredConversationLimit
+      : fastConversationLimit
+    : configuredConversationLimit;
   if (maxConversationsPerDay > 0 && selectedConversations.length > maxConversationsPerDay) {
     selectedConversations = selectedConversations
       .sort(
@@ -596,8 +706,10 @@ export async function buildDailyConversationLogs({ config, date }) {
   console.log(
     `[preview-day] elegiveis para analise no dia ${date}: ${selectedConversations.length} conversa(s) com atividade no dia (entraram no dia: ${enteredToday.length}).`,
   );
+  timingsMs.conversation_selection_ms = Date.now() - selectionStartedAt;
   const detailed = [];
   let skippedConversations = 0;
+  const detailStartedAt = Date.now();
 
   for (const conversation of selectedConversations) {
     const conversationId = Number(conversation?.id || 0);
@@ -608,7 +720,10 @@ export async function buildDailyConversationLogs({ config, date }) {
     try {
       [conversationDetail, endpointMessages] = await Promise.all([
         chatwootClient.getConversation(conversationId, target.account.id),
-        chatwootClient.getConversationMessages(conversationId, target.account.id),
+        chatwootClient.getConversationMessages(conversationId, target.account.id, {
+          cutoffYmd: date,
+          maxPages: fastModeActive ? resolveOptionalPageLimit(performance.fastMessagePages, 8) : null,
+        }),
       ]);
     } catch (error) {
       skippedConversations += 1;
@@ -635,14 +750,22 @@ export async function buildDailyConversationLogs({ config, date }) {
 
     detailed.push(normalized);
   }
+  timingsMs.conversation_detail_fetch_ms = Date.now() - detailStartedAt;
   console.log(
     `[preview-day] conversas do dia ${date}: ${detailed.length}${
       skippedConversations > 0 ? ` (ignoradas por falha: ${skippedConversations})` : ""
     }.`,
   );
 
+  const postProcessStartedAt = Date.now();
   const uniqueContacts = unique(detailed.map((item) => item.contact?.id || item.contact?.identifier));
   const contactLogs = buildContactLogs(detailed);
+  timingsMs.post_process_ms = Date.now() - postProcessStartedAt;
+  timingsMs.total_ms = Date.now() - buildStartedAt;
+
+  console.log(
+    `[preview-day] timings: fast_mode=${fastModeActive ? 1 : 0} target=${timingsMs.target_discovery_ms || 0}ms scan=${timingsMs.chatwoot_scan_ms || 0}ms filter=${timingsMs.conversation_filter_ms || 0}ms selection=${timingsMs.conversation_selection_ms || 0}ms detail=${timingsMs.conversation_detail_fetch_ms || 0}ms post_process=${timingsMs.post_process_ms || 0}ms total=${timingsMs.total_ms}ms`,
+  );
 
   return {
     date,
@@ -654,6 +777,8 @@ export async function buildDailyConversationLogs({ config, date }) {
     unique_contacts_today: uniqueContacts.length,
     logs_by_conversation: detailed,
     contact_logs: contactLogs,
+    timings_ms: timingsMs,
+    performance_mode: fastModeActive ? "fast" : "normal",
   };
 }
 
@@ -757,6 +882,8 @@ export async function runDailyAnalysis({
     throw new Error("DIFY_API_KEY não configurada. Configure para rodar /api/analyze-day.");
   }
 
+  const timingsMs = createTimingBucket();
+  const analysisStartedAt = Date.now();
   const dailySnapshot = snapshot || (await buildDailyConversationLogs({ config, date }));
   const difyClient = createDifyClient({
     ...config.dify,
@@ -769,7 +896,15 @@ export async function runDailyAnalysis({
   const persistOnlyFullSuccess = String(process.env.REPORT_PERSIST_ONLY_ON_FULL_SUCCESS || "1") !== "0";
   const notify = typeof onProgress === "function" ? onProgress : null;
   const nowUnix = nowUnixSeconds();
+  const fastModeActive = String(dailySnapshot.performance_mode || "") === "fast" || Boolean(config.performance?.fastMode);
   const operationalByConversation = new Map();
+  const historyRecoveryCounts = {
+    latest_db_hit: 0,
+    cached_hit: 0,
+    history_hit: 0,
+    dify_call: 0,
+    failed: 0,
+  };
   const allConversationIds = unique(
     (dailySnapshot.logs_by_conversation || [])
       .map((item) => Number(item?.conversation_id || 0))
@@ -777,6 +912,7 @@ export async function runDailyAnalysis({
   )
     .map((id) => Number(id || 0))
     .filter((id) => id > 0);
+  const deltaLookupStartedAt = Date.now();
   const incrementalContext = await getConversationDeltaStates({
     config,
     account: dailySnapshot.account,
@@ -787,14 +923,29 @@ export async function runDailyAnalysis({
     },
     conversationIds: allConversationIds,
   });
+  timingsMs.delta_state_lookup_ms = Date.now() - deltaLookupStartedAt;
   const incrementalStates = incrementalContext.statesByConversationId;
   const incrementalUpdates = [];
+  const historyRecoveryMaxContacts = Math.max(
+    1,
+    Number(process.env.REPORT_HISTORY_RECOVERY_MAX_CONTACTS || 20),
+  );
+  const shouldLimitHistoryRecovery = totalToProcess > historyRecoveryMaxContacts || (fastModeActive && Boolean(config.performance?.skipHistoryRecovery));
 
+  if (shouldLimitHistoryRecovery) {
+    console.log(
+      `[analyze-day] recuperação do histórico Dify será evitada${fastModeActive ? " no modo rápido" : ` para lote grande (${totalToProcess} contatos > ${historyRecoveryMaxContacts}).`}`,
+    );
+  }
+
+  const operationalMapStartedAt = Date.now();
   for (const conversationLog of dailySnapshot.logs_by_conversation || []) {
     const state = deriveConversationOperationalState(conversationLog, config.timezone, nowUnix);
     operationalByConversation.set(Number(conversationLog?.conversation_id || 0), state);
   }
+  timingsMs.operational_state_map_ms = Date.now() - operationalMapStartedAt;
 
+  const contactLoopStartedAt = Date.now();
   for (let index = 0; index < dailySnapshot.contact_logs.length; index += 1) {
     const log = dailySnapshot.contact_logs[index];
     const contactKey = log.analysis_key || log.contact_key;
@@ -873,6 +1024,7 @@ export async function runDailyAnalysis({
       contact_key: contactKey || null,
     };
 
+    let contactHeartbeatTimer: ReturnType<typeof setInterval> | null = null;
     if (notify) {
       notify({
         type: "contact_start",
@@ -883,9 +1035,24 @@ export async function runDailyAnalysis({
         contact_name: contactName,
         conversation_ids: log.conversation_ids,
       });
+
+      const heartbeatIntervalMs = 4 * 60 * 1000;
+      contactHeartbeatTimer = setInterval(() => {
+        notify({
+          type: "contact_heartbeat",
+          sequence,
+          total: totalToProcess,
+          contact_key: log.contact_key,
+          analysis_key: log.analysis_key || null,
+          contact_name: contactName,
+          conversation_ids: log.conversation_ids,
+          processed: analyses.length + failures.length,
+        });
+      }, heartbeatIntervalMs);
     }
 
     try {
+      const latestDbLookupStartedAt = Date.now();
       const latestDbAnalysis =
         mode === "reuse" && !shouldRunAi
           ? await getLatestConversationAnalysis({
@@ -899,6 +1066,10 @@ export async function runDailyAnalysis({
               conversationIds: log.conversation_ids || [],
             })
           : null;
+      timingsMs.latest_db_lookup_ms = (timingsMs.latest_db_lookup_ms || 0) + (Date.now() - latestDbLookupStartedAt);
+      if (latestDbAnalysis) historyRecoveryCounts.latest_db_hit += 1;
+
+      const cachedLookupStartedAt = Date.now();
       const cachedAnalysis =
         mode === "reuse" && !latestDbAnalysis
           ? await getCachedAnalysisByFingerprint({
@@ -913,17 +1084,87 @@ export async function runDailyAnalysis({
               sourceFingerprint,
             })
           : null;
+      timingsMs.cached_lookup_ms = (timingsMs.cached_lookup_ms || 0) + (Date.now() - cachedLookupStartedAt);
+      if (cachedAnalysis) historyRecoveryCounts.cached_hit += 1;
 
       const difyHistoryUser = `${config.dify.userPrefix || "chatwoot-contact"}-${contactKey || "unknown"}`;
-      const recoveredFromHistory = mode !== "reuse" || cachedAnalysis || latestDbAnalysis
-        ? null
-        : await difyClient.recoverAnalysisFromHistory({
+      const canRecoverFromHistory =
+        mode === "reuse" &&
+        !cachedAnalysis &&
+        !latestDbAnalysis &&
+        !shouldLimitHistoryRecovery;
+      const historyRecoveryStartedAt = Date.now();
+      const recoveredFromHistory = canRecoverFromHistory
+        ? await difyClient.recoverAnalysisFromHistory({
             user: difyHistoryUser,
             date,
             sourceFingerprint,
             logText,
-          });
+          })
+        : null;
+      timingsMs.history_recovery_ms = (timingsMs.history_recovery_ms || 0) + (Date.now() - historyRecoveryStartedAt);
+      if (recoveredFromHistory) historyRecoveryCounts.history_hit += 1;
 
+      const runDifyWithPause = async (requestedMode: "full" | "delta") => {
+        const maxAttempts = getDifyQuotaRetryMaxAttempts();
+        let quotaAttempt = 0;
+
+        while (true) {
+          const requestStartedAt = Date.now();
+          try {
+            historyRecoveryCounts.dify_call += 1;
+            const result = await difyClient.analyzeLog({
+              contactKey,
+              date,
+              logText,
+              analysisMode: requestedMode,
+              extraInputs: difyDeltaInputs,
+            });
+            return result;
+          } catch (error) {
+            const requestElapsedMs = Date.now() - requestStartedAt;
+            if (!isDifyQuotaPauseError(error) || quotaAttempt >= maxAttempts) {
+              throw error;
+            }
+
+            quotaAttempt += 1;
+            const waitMs = getDifyQuotaRetryDelayMs(quotaAttempt);
+            const waitMessage = buildDifyQuotaWaitMessage({
+              contactName,
+              contactKey,
+              attempt: quotaAttempt,
+              maxAttempts,
+              waitMs,
+            });
+            console.warn(`[analyze-day] ${waitMessage} (tentativa da API: ${requestElapsedMs}ms)`);
+            if (notify) {
+              const waitNextRetryAt = new Date(Date.now() + waitMs).toISOString();
+              notify({
+                type: "contact_wait",
+                sequence,
+                total: totalToProcess,
+                contact_key: log.contact_key,
+                analysis_key: log.analysis_key || null,
+                contact_name: contactName,
+                conversation_ids: log.conversation_ids,
+                processed: analyses.length + failures.length,
+                wait_message: waitMessage,
+                wait_reason: String((error as ErrorWithMeta | null)?.code || "dify_quota_exceeded"),
+                wait_retry_after_ms: waitMs,
+                wait_attempt: quotaAttempt,
+                wait_max_attempts: maxAttempts,
+                wait_next_retry_at: waitNextRetryAt,
+                error_message: error instanceof Error ? error.message : waitMessage,
+                error_code: (error as ErrorWithMeta | null)?.code || null,
+              });
+            }
+
+            await sleep(waitMs);
+          }
+        }
+      };
+
+      const difyRequestStartedAt = Date.now();
       let difyRaw = latestDbAnalysis
         ? {
             answer: latestDbAnalysis.answer,
@@ -931,35 +1172,26 @@ export async function runDailyAnalysis({
             event: "delta_not_relevant_reused_latest_analysis",
           }
         : cachedAnalysis
-        ? {
-            answer: cachedAnalysis.answer,
-            mode: "cache",
-            event: "cached_hit",
-          }
-        : recoveredFromHistory
           ? {
-              answer: recoveredFromHistory.answer,
-              mode: "history",
-              event: "history_recovered",
-              conversation_id: recoveredFromHistory.conversation_id || null,
-              message_id: recoveredFromHistory.message_id || null,
+              answer: cachedAnalysis.answer,
+              mode: "cache",
+              event: "cached_hit",
             }
-          : await difyClient.analyzeLog({
-                contactKey,
-                date,
-                logText,
-                analysisMode,
-                extraInputs: difyDeltaInputs,
-              });
+          : recoveredFromHistory
+            ? {
+                answer: recoveredFromHistory.answer,
+                mode: "history",
+                event: "history_recovered",
+                conversation_id: recoveredFromHistory.conversation_id || null,
+                message_id: recoveredFromHistory.message_id || null,
+              }
+            : await runDifyWithPause(analysisMode);
+      timingsMs.dify_request_ms = (timingsMs.dify_request_ms || 0) + (Date.now() - difyRequestStartedAt);
 
       if (!difyRaw && !shouldRunAi) {
-        difyRaw = await difyClient.analyzeLog({
-          contactKey,
-          date,
-          logText,
-          analysisMode: "full",
-          extraInputs: difyDeltaInputs,
-        });
+        const fallbackDifyStartedAt = Date.now();
+        difyRaw = await runDifyWithPause("full");
+        timingsMs.dify_request_ms = (timingsMs.dify_request_ms || 0) + (Date.now() - fallbackDifyStartedAt);
       }
 
       const difyAnswer = extractDifyAnswer(difyRaw);
@@ -1052,6 +1284,7 @@ export async function runDailyAnalysis({
         });
       }
     } catch (error) {
+      historyRecoveryCounts.failed += 1;
       failures.push({
         analysis_index: sequence,
         analysis_key: log.analysis_key,
@@ -1081,11 +1314,17 @@ export async function runDailyAnalysis({
           error_code: error.code || null,
         });
       }
+    } finally {
+      if (contactHeartbeatTimer) {
+        clearInterval(contactHeartbeatTimer);
+      }
     }
   }
+  timingsMs.contact_loop_ms = Date.now() - contactLoopStartedAt;
 
   const hasAnyFailures = failures.length > 0;
   const canPersistIncrementalStates = !persistOnlyFullSuccess || !hasAnyFailures;
+  const persistStartedAt = Date.now();
   if (incrementalUpdates.length > 0 && canPersistIncrementalStates) {
     try {
       await upsertConversationDeltaStates({
@@ -1106,11 +1345,19 @@ export async function runDailyAnalysis({
       `[analyze-day] persistência incremental ignorada: execução parcial (${analyses.length}/${totalToProcess} sucesso).`,
     );
   }
+  timingsMs.persist_delta_states_ms = Date.now() - persistStartedAt;
+  timingsMs.total_ms = Date.now() - analysisStartedAt;
+
+  console.log(
+    `[analyze-day] timings: fast_mode=${fastModeActive ? 1 : 0} delta_state_lookup=${timingsMs.delta_state_lookup_ms || 0}ms operational_map=${timingsMs.operational_state_map_ms || 0}ms contact_loop=${timingsMs.contact_loop_ms || 0}ms latest_db_lookup=${timingsMs.latest_db_lookup_ms || 0}ms cached_lookup=${timingsMs.cached_lookup_ms || 0}ms history_recovery=${timingsMs.history_recovery_ms || 0}ms dify_request=${timingsMs.dify_request_ms || 0}ms persist_delta_states=${timingsMs.persist_delta_states_ms || 0}ms total=${timingsMs.total_ms}ms reuse_hits=${historyRecoveryCounts.latest_db_hit}/${historyRecoveryCounts.cached_hit}/${historyRecoveryCounts.history_hit} dify_calls=${historyRecoveryCounts.dify_call} failures=${historyRecoveryCounts.failed}`,
+  );
 
   return {
     ...dailySnapshot,
     analyses,
     failures,
+    timings_ms: timingsMs,
+    performance_mode: fastModeActive ? "fast" : "normal",
     run_stats: {
       total_to_process: totalToProcess,
       processed: analyses.length + failures.length,
@@ -1135,6 +1382,7 @@ export async function buildDailyReport({
 }) {
   const snapshot = await buildDailyConversationLogs({ config, date });
   const analysis = await runDailyAnalysis({ config, date, snapshot, onProgress, mode });
+  const reportStartedAt = Date.now();
   const orderedAnalyses = [...analysis.analyses].sort(
     (a, b) => Number(a?.analysis_index || 0) - Number(b?.analysis_index || 0),
   );
@@ -1353,10 +1601,16 @@ export async function buildDailyReport({
     }
   }
 
+  const reportBuildMs = Date.now() - reportStartedAt;
+  console.log(
+    `[report-day] timings: snapshot=${snapshot.timings_ms?.total_ms || 0}ms analysis=${analysis.timings_ms?.total_ms || 0}ms report_build=${reportBuildMs}ms total=${(snapshot.timings_ms?.total_ms || 0) + (analysis.timings_ms?.total_ms || 0) + reportBuildMs}ms`,
+  );
+
   return {
     date: reportDate,
     account: analysis.account,
     inbox: analysis.inbox,
+    performance_mode: analysis.performance_mode || snapshot.performance_mode || "normal",
     summary: {
       conversations_entered_today: analysis.conversations_entered_today,
       unique_contacts_today: analysis.unique_contacts_today,
@@ -1374,6 +1628,11 @@ export async function buildDailyReport({
       ...analysis,
       analyses: orderedAnalyses,
       failures: orderedFailures,
+    },
+    timings_ms: {
+      snapshot: snapshot.timings_ms || null,
+      analysis: analysis.timings_ms || null,
+      report_build_ms: reportBuildMs,
     },
   };
 }
