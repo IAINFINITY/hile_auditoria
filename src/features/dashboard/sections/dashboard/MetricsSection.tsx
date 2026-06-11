@@ -1,6 +1,7 @@
 import { Fragment, useMemo } from "react";
 import type { OverviewPayload, Severity } from "../../../../types";
 import type { PeriodPreset } from "../../shared/types";
+import { summarizeStatusMessage } from "../../shared/helpers";
 import {
   HileCardGrid,
   HileInlineInsight,
@@ -163,6 +164,9 @@ export function MetricsSection({
   const isCustomDay = !isAggregateMode && relativePreset === null;
 
   const statusText = currentStatus.trim();
+  const statusFallback = "Sem execução no momento";
+  const statusSummary = summarizeStatusMessage(statusText || statusFallback);
+  const statusTooltip = statusText || statusFallback;
   const normalizedStatus = statusText.toLowerCase();
   const statusTone =
     normalizedStatus.includes("falhou") || normalizedStatus.includes("erro")
@@ -268,7 +272,9 @@ export function MetricsSection({
                     <div className="hile-section-stack">
                       {statusText ? (
                         <HileInlineInsight title="Última execução" tone={statusTone}>
-                          {statusText}
+                          <span className="hile-status-summary" title={statusTooltip}>
+                            {statusSummary}
+                          </span>
                         </HileInlineInsight>
                       ) : null}
                       <HileInlineInsight title="Acompanhamento" tone="default">

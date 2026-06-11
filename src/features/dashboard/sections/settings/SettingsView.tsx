@@ -170,7 +170,8 @@ export function SettingsView({ currentUser, onUpdateProfile }: SettingsViewProps
               <HileKpiCard label="Preferências" value={[notifyReport, notifyLog, notifyClient].filter(Boolean).length} hint="Notificações ativas" />
             </HileCardGrid>
 
-            <HileSurfaceCard title="Perfil" description="Altere seu nome de exibição e confira os dados da conta.">
+            <div id="settings-profile" style={{ scrollMarginTop: "96px" }}>
+              <HileSurfaceCard title="Perfil" description="Altere seu nome de exibição e confira os dados da conta.">
               <div className="hile-section-stack">
                 <div className="settings-field">
                   <label>Nome de perfil</label>
@@ -189,9 +190,11 @@ export function SettingsView({ currentUser, onUpdateProfile }: SettingsViewProps
                   {profileSaved ? <span className="save-feedback">Salvo</span> : null}
                 </div>
               </div>
-            </HileSurfaceCard>
+              </HileSurfaceCard>
+            </div>
 
-            <HileSurfaceCard title="Segurança" description="Atualize sua senha e acompanhe a força da nova credencial." tone="soft">
+            <div id="settings-security" style={{ scrollMarginTop: "96px" }}>
+              <HileSurfaceCard title="Segurança" description="Atualize sua senha e acompanhe a força da nova credencial." tone="soft">
               <div className="hile-section-stack">
                 <div className="settings-field">
                   <label>Senha atual</label>
@@ -259,9 +262,11 @@ export function SettingsView({ currentUser, onUpdateProfile }: SettingsViewProps
                   {securitySaved ? <span className="save-feedback">Salvo</span> : null}
                 </div>
               </div>
-            </HileSurfaceCard>
+              </HileSurfaceCard>
+            </div>
 
-            <HileSurfaceCard title="Preferências" description="Ative ou desative notificações do sistema." tone="soft">
+            <div id="settings-preferences" style={{ scrollMarginTop: "96px" }}>
+              <HileSurfaceCard title="Preferências" description="Ative ou desative notificações do sistema." tone="soft">
               <div className="hile-section-stack">
                 <HileInlineInsight title="Leitura rápida">As preferências abaixo ficam salvas por usuário no navegador atual.</HileInlineInsight>
 
@@ -303,7 +308,8 @@ export function SettingsView({ currentUser, onUpdateProfile }: SettingsViewProps
                   {prefsSaved ? <span className="save-feedback">Salvo</span> : null}
                 </div>
               </div>
-            </HileSurfaceCard>
+              </HileSurfaceCard>
+            </div>
           </div>
         </HileSectionShell>
       </div>

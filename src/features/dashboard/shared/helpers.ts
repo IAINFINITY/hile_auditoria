@@ -69,3 +69,18 @@ export function parseHour(value: string | null | undefined): number | null {
   if (Number.isNaN(hour) || hour < 0 || hour > 23) return null;
   return hour;
 }
+
+export function summarizeStatusMessage(message: string, maxLength = 180): string {
+  const cleaned = String(message || "").replace(/\s+/g, " ").trim();
+  if (!cleaned) return "";
+
+  const technicalMarker = "Mantivemos os dados anteriores:";
+  if (cleaned.includes(technicalMarker)) {
+    const [prefix] = cleaned.split(technicalMarker);
+    const base = prefix.trim().replace(/\s+\.$/, ".").replace(/\.$/, "");
+    return base ? `${base}.` : "A execução falhou.";
+  }
+
+  if (cleaned.length <= maxLength) return cleaned;
+  return `${cleaned.slice(0, maxLength - 1).trimEnd()}…`;
+}

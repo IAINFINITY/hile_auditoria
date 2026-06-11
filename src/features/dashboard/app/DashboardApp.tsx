@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useDashboardController } from "@/features/dashboard/hooks/useDashboardController";
 import { useNotifications } from "@/features/dashboard/hooks/useNotifications";
 import { useRevealOnScroll } from "@/features/dashboard/hooks/useRevealOnScroll";
@@ -50,6 +50,22 @@ function clearLastActivity(emailValue: string | null | undefined): void {
   } catch {
     // noop
   }
+}
+
+function summarizeRunFailureMessage(message: string): string {
+  const cleaned = String(message || "").replace(/\s+/g, " ").trim();
+  if (!cleaned) return "";
+
+  const technicalMarker = "Mantivemos os dados anteriores:";
+  if (cleaned.includes(technicalMarker)) {
+    const [prefix] = cleaned.split(technicalMarker);
+    const base = prefix.trim().replace(/\s+\.$/, ".").replace(/\.$/, "");
+    return base ? `${base}.` : "A execução falhou.";
+  }
+
+  const maxLength = 220;
+  if (cleaned.length <= maxLength) return cleaned;
+  return `${cleaned.slice(0, maxLength - 1).trimEnd()}…`;
 }
 
 export function DashboardApp() {
@@ -114,6 +130,8 @@ export function DashboardApp() {
   const [dismissedRunFailureStatus, setDismissedRunFailureStatus] = useState("");
   const [runFailureMessage, setRunFailureMessage] = useState("");
   const [activeSubNavKey, setActiveSubNavKey] = useState<string>("inicio");
+  const navSyncFreezeUntilRef = useRef(0);
+  const pendingAnchoredNavigationRef = useRef<{ view: Exclude<AppView, "dashboard">; section: string } | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     if (typeof window === "undefined") return false;
     try {
@@ -142,6 +160,31 @@ export function DashboardApp() {
   const effectiveActiveView: AppView = activeView === "superadmin" && !isSuperadmin ? "settings" : activeView;
 
   useRevealOnScroll({ enabled: stage === "app", viewKey: effectiveActiveView });
+
+  useEffect(() => {
+    const pending = pendingAnchoredNavigationRef.current;
+    if (!pending) return;
+    if (effectiveActiveView !== pending.view) return;
+
+    const section = pending.section;
+    let cancelled = false;
+    let firstRaf = 0;
+    let secondRaf = 0;
+
+    firstRaf = requestAnimationFrame(() => {
+      secondRaf = requestAnimationFrame(() => {
+        if (cancelled) return;
+        pendingAnchoredNavigationRef.current = null;
+        scrollToAnchoredSection(section);
+      });
+    });
+
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(firstRaf);
+      cancelAnimationFrame(secondRaf);
+    };
+  }, [effectiveActiveView]);
 
   const controller = useDashboardController({
     enabled: stage === "app",
@@ -176,7 +219,7 @@ export function DashboardApp() {
   }, [currentUser?.email]);
 
   const { state: notificationState, clear: clearNotifications, clearOne: clearNotification } = useNotifications({
-    enabled: stage === "app",
+    enabled: stage === "app" && !controller.isRunningOverview,
     notifyReport: notifyPrefs.report,
     notifyLog: notifyPrefs.log,
     notifyClient: notifyPrefs.client,
@@ -206,6 +249,7 @@ export function DashboardApp() {
 
   const runStatusText = String(controller.status || "").trim();
   const normalizedRunStatus = runStatusText.toLowerCase();
+  const runFailureSummary = summarizeRunFailureMessage(runFailureMessage || runStatusText);
   const isRunFailure =
     !controller.isRunningOverview &&
     (normalizedRunStatus.startsWith("erro:") ||
@@ -408,29 +452,44 @@ export function DashboardApp() {
     const sectionKeys = VIEW_SECTION_KEYS[effectiveActiveView];
     if (!sectionKeys || sectionKeys.length === 0) return;
 
-    const offsetTop = 96;
     const syncActiveSection = () => {
+      if (Date.now() < navSyncFreezeUntilRef.current) return;
+
+      const doc = document.documentElement;
+      const scrollTop = window.scrollY || doc.scrollTop || 0;
+      const viewportBottom = scrollTop + window.innerHeight;
+      const pageBottom = doc.scrollHeight - 2;
+
+      if (viewportBottom >= pageBottom) {
+        const lastKey = sectionKeys[sectionKeys.length - 1];
+        setActiveSubNavKey((current) => (current === lastKey ? current : lastKey));
+        return;
+      }
+
+      const marker = 96;
       let bestKey = sectionKeys[0];
       let bestTopDistance = Number.POSITIVE_INFINITY;
+
       for (const key of sectionKeys) {
         const element = document.getElementById(key);
         if (!element) continue;
         const top = element.getBoundingClientRect().top;
-        const distanceFromMarker = Math.abs(top - offsetTop);
-        if (top <= offsetTop && distanceFromMarker < bestTopDistance) {
-          bestTopDistance = distanceFromMarker;
+        const distance = Math.abs(top - marker);
+        if (top <= marker && distance < bestTopDistance) {
+          bestTopDistance = distance;
           bestKey = key;
         }
       }
+
       if (bestTopDistance === Number.POSITIVE_INFINITY) {
         for (const key of sectionKeys) {
-          const element = document.getElementById(key);
-          if (element) {
+          if (document.getElementById(key)) {
             bestKey = key;
             break;
           }
         }
       }
+
       setActiveSubNavKey((current) => (current === bestKey ? current : bestKey));
     };
 
@@ -439,8 +498,10 @@ export function DashboardApp() {
       cancelAnimationFrame(raf);
       raf = requestAnimationFrame(syncActiveSection);
     };
+
     window.addEventListener("scroll", handleScroll, { passive: true });
     window.addEventListener("resize", handleScroll);
+
     return () => {
       cancelAnimationFrame(raf);
       window.removeEventListener("scroll", handleScroll);
@@ -517,12 +578,14 @@ export function DashboardApp() {
   function scrollToAnchoredSection(sectionId: string) {
     const target = document.getElementById(sectionId);
     if (!target) return;
+    navSyncFreezeUntilRef.current = Date.now() + 850;
     setActiveSubNavKey(sectionId);
     const top = Math.max(0, target.offsetTop - 68);
     window.scrollTo({ top, behavior: "smooth" });
   }
 
   function openViewAndScrollTop(view: AppView, subNavKey?: string) {
+    pendingAnchoredNavigationRef.current = null;
     if (subNavKey) setActiveSubNavKey(subNavKey);
     forceScrollTop();
     setActiveView(view);
@@ -548,6 +611,7 @@ export function DashboardApp() {
   }
 
   function handleNavigate(section: string) {
+    pendingAnchoredNavigationRef.current = null;
     setActiveSubNavKey(section);
     if (effectiveActiveView !== "dashboard") {
       setActiveView("dashboard");
@@ -558,80 +622,97 @@ export function DashboardApp() {
   }
 
   function handleNavigateAnalysis(section: "analysis-overview" | "analysis-movimentacao" | "analysis-conteudo") {
+    setActiveSubNavKey(section);
     if (effectiveActiveView !== "analysis") {
+      pendingAnchoredNavigationRef.current = { view: "analysis", section };
       setActiveView("analysis");
-      setTimeout(() => scrollToAnchoredSection(section), 0);
       return;
     }
+    pendingAnchoredNavigationRef.current = null;
     scrollToAnchoredSection(section);
   }
 
   function handleNavigateClients(section: "clients-filtros" | "clients-kanban") {
+    setActiveSubNavKey(section);
     if (effectiveActiveView !== "clients") {
+      pendingAnchoredNavigationRef.current = { view: "clients", section };
       setActiveView("clients");
-      setTimeout(() => scrollToAnchoredSection(section), 0);
       return;
     }
+    pendingAnchoredNavigationRef.current = null;
     scrollToAnchoredSection(section);
   }
 
   function handleNavigateLogs(section: "logs-saude" | "logs-execucao" | "logs-recentes") {
+    setActiveSubNavKey(section);
     if (effectiveActiveView !== "logs") {
+      pendingAnchoredNavigationRef.current = { view: "logs", section };
       setActiveView("logs");
-      setTimeout(() => scrollToAnchoredSection(section), 0);
       return;
     }
+    pendingAnchoredNavigationRef.current = null;
     scrollToAnchoredSection(section);
   }
 
   function handleNavigateProducts(section: "products-overview" | "products-ranking" | "products-charts") {
+    setActiveSubNavKey(section);
     if (effectiveActiveView !== "products") {
+      pendingAnchoredNavigationRef.current = { view: "products", section };
       setActiveView("products");
-      setTimeout(() => scrollToAnchoredSection(section), 0);
       return;
     }
+    pendingAnchoredNavigationRef.current = null;
     scrollToAnchoredSection(section);
   }
 
   function handleNavigateDissatisfaction(section: "dissatisfaction-overview" | "dissatisfaction-filters" | "dissatisfaction-list") {
+    setActiveSubNavKey(section);
     if (effectiveActiveView !== "dissatisfaction") {
+      pendingAnchoredNavigationRef.current = { view: "dissatisfaction", section };
       setActiveView("dissatisfaction");
-      setTimeout(() => scrollToAnchoredSection(section), 0);
       return;
     }
+    pendingAnchoredNavigationRef.current = null;
     scrollToAnchoredSection(section);
   }
 
   function handleNavigateAttendants(section: "attendants-overview" | "attendants-breakdown" | "attendants-comparison") {
+    setActiveSubNavKey(section);
     if (effectiveActiveView !== "attendants") {
+      pendingAnchoredNavigationRef.current = { view: "attendants", section };
       setActiveView("attendants");
-      setTimeout(() => scrollToAnchoredSection(section), 0);
       return;
     }
+    pendingAnchoredNavigationRef.current = null;
     scrollToAnchoredSection(section);
   }
 
   function handleNavigateSettings(
     section: "settings-profile" | "settings-security" | "settings-preferences",
   ) {
+    setActiveSubNavKey(section);
     if (effectiveActiveView !== "settings") {
+      pendingAnchoredNavigationRef.current = { view: "settings", section };
       setActiveView("settings");
-      setTimeout(() => scrollToAnchoredSection(section), 0);
       return;
     }
+    pendingAnchoredNavigationRef.current = null;
     scrollToAnchoredSection(section);
   }
 
   function handleNavigateSuperadmin(section: "superadmin-accounts") {
     if (!isSuperadmin) {
+      pendingAnchoredNavigationRef.current = null;
       setActiveView("settings");
       return;
     }
+    setActiveSubNavKey(section);
     if (effectiveActiveView !== "superadmin") {
+      pendingAnchoredNavigationRef.current = { view: "superadmin", section };
       setActiveView("superadmin");
-      setTimeout(() => scrollToAnchoredSection(section), 0);
       return;
     }
+    pendingAnchoredNavigationRef.current = null;
     scrollToAnchoredSection(section);
   }
 
@@ -813,7 +894,7 @@ export function DashboardApp() {
         showLogoutConfirmModal={showLogoutConfirmModal}
         isDashboardView={effectiveActiveView === "dashboard"}
         selectedDateHasSavedReport={controller.selectedDateHasSavedReport}
-        runFailureMessage={runFailureMessage || runStatusText}
+        runFailureMessage={runFailureSummary}
         onCancelConfirmRun={() => setShowConfirmModal(false)}
         onConfirmRun={() => void handleConfirmRun()}
         onCloseRunWarning={() => setDismissedRunWarningId(controller.currentRunId || "running")}

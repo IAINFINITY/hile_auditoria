@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { toTitleCaseName } from "../../hooks/controller/common";
 import { buildConversationUrl, normalizeChatwootAppBase } from "../../shared/helpers";
+import { preserveWindowScroll } from "../../shared/scroll";
 import { normalizeSeverity, severityColors, severityLabel } from "../../shared/constants";
 import { HileCardGrid, HileEmptyPanel, HileKpiCard, HileSectionShell, HileSurfaceCard } from "../../shared/ui/HilePrimitives";
 import type { OperationalAlertItem } from "../../shared/types";
@@ -104,12 +105,21 @@ export function DissatisfactionView({
               <HileKpiCard label="Altos" value={summary.high} hint="Ocorrências em nível alto" tone={summary.high > 0 ? "critical" : "default"} accent={summary.high > 0 ? "high" : "default"} />
             </HileCardGrid>
 
-            <HileSurfaceCard title="Filtros" description="Refine a leitura por tipo e severidade." tone="accent">
+            <div id="dissatisfaction-filters" style={{ scrollMarginTop: "96px" }}>
+              <HileSurfaceCard title="Filtros" description="Refine a leitura por tipo e severidade." tone="accent">
               <div className="accounts-filters">
                 <div className="accounts-filter-row">
                   <label>
                     Tipo
-                    <select value={typeFilter} onChange={(event) => { setTypeFilter(event.target.value as AlertTypeFilter); setPage(1); }}>
+                    <select
+                      value={typeFilter}
+                      onChange={(event) =>
+                        preserveWindowScroll(() => {
+                          setTypeFilter(event.target.value as AlertTypeFilter);
+                          setPage(1);
+                        })
+                      }
+                    >
                       <option value="all">{typeLabel("all")}</option>
                       <option value="insatisfacao_hile">{typeLabel("insatisfacao_hile")}</option>
                       <option value="insatisfacao_atendimento">{typeLabel("insatisfacao_atendimento")}</option>
@@ -117,7 +127,15 @@ export function DissatisfactionView({
                   </label>
                   <label>
                     Severidade
-                    <select value={severityFilter} onChange={(event) => { setSeverityFilter(event.target.value as AlertSeverityFilter); setPage(1); }}>
+                    <select
+                      value={severityFilter}
+                      onChange={(event) =>
+                        preserveWindowScroll(() => {
+                          setSeverityFilter(event.target.value as AlertSeverityFilter);
+                          setPage(1);
+                        })
+                      }
+                    >
                       <option value="all">Todas</option>
                       <option value="critical">{severityLabel.critical}</option>
                       <option value="high">Alto</option>
@@ -127,8 +145,10 @@ export function DissatisfactionView({
                 </div>
               </div>
             </HileSurfaceCard>
+            </div>
 
-            <HileSurfaceCard title="Ocorrências" description={`${filteredAlerts.length} registro(s) encontrados para os filtros atuais`} tone={paged.length > 0 ? "default" : "soft"}>
+            <div id="dissatisfaction-list" style={{ scrollMarginTop: "96px" }}>
+              <HileSurfaceCard title="Ocorrências" description={`${filteredAlerts.length} registro(s) encontrados para os filtros atuais`} tone={paged.length > 0 ? "default" : "soft"}>
               {paged.length === 0 ? (
                 <HileEmptyPanel title="Sem ocorrências para os filtros aplicados" description="Quando houver novos sinais de insatisfação neste recorte, eles aparecerão aqui." />
               ) : (
@@ -178,15 +198,16 @@ export function DissatisfactionView({
                   <span>
                     {filteredAlerts.length} registros • Página {safePage} de {totalPages}
                   </span>
-                  <button type="button" onClick={() => setPage(Math.max(1, safePage - 1))} disabled={safePage <= 1}>
+                  <button type="button" onClick={() => preserveWindowScroll(() => setPage(Math.max(1, safePage - 1)))} disabled={safePage <= 1}>
                     {"<"}
                   </button>
-                  <button type="button" onClick={() => setPage(Math.min(totalPages, safePage + 1))} disabled={safePage >= totalPages}>
+                  <button type="button" onClick={() => preserveWindowScroll(() => setPage(Math.min(totalPages, safePage + 1)))} disabled={safePage >= totalPages}>
                     {">"}
                   </button>
                 </div>
               ) : null}
             </HileSurfaceCard>
+            </div>
           </div>
         </HileSectionShell>
       </div>

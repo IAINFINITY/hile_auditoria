@@ -54,8 +54,35 @@ import {
   extractProductDemand,
 } from "./controller/operationalSignals";
 
-const SECTION_IDS = ["gaps", "insights"] as const;
+const SECTION_IDS = ["inicio", "gaps", "insights"] as const;
 const NAVBAR_HEIGHT = 68;
+const POLL_INTERVAL_MS = 4000;
+const BASE_POLL_IDLE_TIMEOUT_MS = 35 * 60 * 1000;
+const MAX_POLL_IDLE_TIMEOUT_MS = 90 * 60 * 1000;
+const PER_CONTACT_IDLE_TIMEOUT_MS = 30 * 1000;
+
+function getAdaptivePollIdleTimeoutMs(total: number): number {
+  const safeTotal = Math.max(0, Number(total || 0));
+  const adaptive = BASE_POLL_IDLE_TIMEOUT_MS + safeTotal * PER_CONTACT_IDLE_TIMEOUT_MS;
+  return Math.max(BASE_POLL_IDLE_TIMEOUT_MS, Math.min(MAX_POLL_IDLE_TIMEOUT_MS, adaptive));
+}
+
+function buildStatusSignature(statusData: ReportJobStatusResponse): string {
+  const current = statusData.current_contact;
+  return [
+    statusData.updated_at || "",
+    statusData.phase || "",
+    statusData.total || 0,
+    statusData.processed || 0,
+    statusData.wait_message || "",
+    statusData.wait_reason || "",
+    statusData.wait_retry_after_ms || 0,
+    statusData.wait_attempt || 0,
+    current?.sequence || 0,
+    current?.contact_key || "",
+    current?.analysis_key || "",
+  ].join("|");
+}
 
 export function useDashboardController(options?: { enabled?: boolean; syncNavOnScroll?: boolean }): DashboardController {
   const enabled = options?.enabled ?? true;
@@ -80,8 +107,8 @@ export function useDashboardController(options?: { enabled?: boolean; syncNavOnS
   const [insightFilter, setInsightFilterState] = useState<InsightFilter>("all");
   const [insightsPage, setInsightsPage] = useState<number>(1);
   const [showTrend, setShowTrend] = useState<boolean>(false);
-  const [activeNav, setActiveNav] = useState<string>("gaps");
-  const activeNavRef = useRef<string>("gaps");
+  const [activeNav, setActiveNav] = useState<string>("inicio");
+  const activeNavRef = useRef<string>("inicio");
   const navFreezeUntilRef = useRef<number>(0);
   const [lastRunAt, setLastRunAt] = useState<string | null>(null);
   const [overviewRunCount, setOverviewRunCount] = useState<number>(0);
@@ -719,25 +746,75 @@ export function useDashboardController(options?: { enabled?: boolean; syncNavOnS
             reportJob.db_run_id ? ` • run ${reportJob.db_run_id.slice(0, 8)}` : ""
           }).`,
         );
-        const maxWaitMs = 15 * 60 * 1000;
-        const pollStartedAt = Date.now();
         let finalStatus: ReportJobStatusResponse | null = null;
         let lastProcessed = -1;
         let lastCurrentContactKey = "";
+        let lastHeartbeatAt = Date.now();
+        let lastHeartbeatSignature = "";
+        let pollFailureCount = 0;
+        let idleTimeoutMs = BASE_POLL_IDLE_TIMEOUT_MS;
 
-        while (Date.now() - pollStartedAt < maxWaitMs) {
-          await sleep(2000);
+        while (true) {
+          await sleep(POLL_INTERVAL_MS);
           const runIdQuery = reportJob.db_run_id ? `&run_id=${encodeURIComponent(reportJob.db_run_id)}` : "";
-          const statusData = await apiGet<ReportJobStatusResponse>(
-            `/api/report-day/status?job_id=${encodeURIComponent(reportJob.job_id)}${runIdQuery}`,
-          );
+          let statusData: ReportJobStatusResponse;
+          try {
+            statusData = await apiGet<ReportJobStatusResponse>(
+              `/api/report-day/status?job_id=${encodeURIComponent(reportJob.job_id)}${runIdQuery}`,
+            );
+            pollFailureCount = 0;
+          } catch (error) {
+            pollFailureCount += 1;
+            pushRunStep(`Acompanhando o status... tentativa ${pollFailureCount} com falha temporária.`);
+            if (pollFailureCount < 3) {
+              continue;
+            }
+            throw new Error(error instanceof Error ? error.message : "Falha ao consultar o status do relatório.");
+          }
 
           finalStatus = statusData;
+          const heartbeatSignature = buildStatusSignature(statusData);
+          if (heartbeatSignature !== lastHeartbeatSignature) {
+            lastHeartbeatSignature = heartbeatSignature;
+            lastHeartbeatAt = Date.now();
+            idleTimeoutMs = getAdaptivePollIdleTimeoutMs(statusData.total || 0);
+          }
 
           const total = Math.max(0, Number(statusData.total || 0));
           const processed = Math.max(0, Number(statusData.processed || 0));
+          const isWaiting = statusData.phase === "waiting";
+          const isFinalizing = statusData.phase === "finalizing" || (statusData.status === "running" && total > 0 && processed >= total);
 
-          if (statusData.current_contact) {
+          if (isWaiting) {
+            const current = statusData.current_contact;
+            const safeTotal = current?.total || total || 0;
+            const formattedCurrentName = current ? toTitleCaseName(current.contact_name || "") : "";
+            const displayName =
+              formattedCurrentName ||
+              String(current?.contact_key || "").trim() ||
+              "Contato";
+            const waitMessage =
+              statusData.wait_message ||
+              `Aguardando liberação de quota do Dify/OpenAI${displayName ? ` para ${displayName}` : ""}.`;
+            const waitSignature = `waiting-${statusData.wait_attempt || 0}-${statusData.wait_message || waitMessage}`;
+            setRunCurrentContact(
+              current
+                ? `${displayName} (${current.sequence}/${safeTotal > 0 ? safeTotal : "?"}) - aguardando`
+                : waitMessage,
+            );
+            setStatus(waitMessage);
+            if (waitSignature !== lastCurrentContactKey) {
+              lastCurrentContactKey = waitSignature;
+              pushRunStep(waitMessage);
+            }
+          } else if (isFinalizing) {
+            if (lastCurrentContactKey !== "finalizing") {
+              lastCurrentContactKey = "finalizing";
+              pushRunStep("Processamento concluído. Finalizando persistência e atualização do histórico...");
+            }
+            setRunCurrentContact("Finalizando persistência...");
+            setStatus("Finalizando persistência e atualização do histórico...");
+          } else if (statusData.current_contact) {
             const current = statusData.current_contact;
             const safeTotal = current.total || total || 0;
             const signature = `${current.contact_key}-${current.sequence}-${safeTotal}`;
@@ -749,12 +826,16 @@ export function useDashboardController(options?: { enabled?: boolean; syncNavOnS
             setRunCurrentContact(
               `${displayName} (${current.sequence}/${safeTotal > 0 ? safeTotal : "?"})`,
             );
+            setStatus(`Analisando ${displayName} (${current.sequence}/${safeTotal > 0 ? safeTotal : "?"})...`);
             if (signature !== lastCurrentContactKey) {
               lastCurrentContactKey = signature;
               pushRunStep(
                 `Analisando contato ${current.sequence}/${safeTotal > 0 ? safeTotal : "?"}: ${displayName} (${current.contact_key}).`,
               );
             }
+          } else {
+            setRunCurrentContact(null);
+            setStatus("Processando overview...");
           }
 
           if (total > 0) {
@@ -773,16 +854,22 @@ export function useDashboardController(options?: { enabled?: boolean; syncNavOnS
           if (statusData.status === "failed") {
             throw new Error(statusData.error || "Falha ao gerar relatório.");
           }
+
+          if (Date.now() - lastHeartbeatAt > idleTimeoutMs) {
+            throw new Error("A execução ficou sem heartbeat por tempo demais. Verifique os logs.");
+          }
         }
 
         if (!finalStatus || finalStatus.status !== "completed") {
-          throw new Error("Tempo de espera excedido ao gerar relatório.");
+          throw new Error("A execução não concluiu dentro do acompanhamento esperado.");
         }
 
         let reportData: ReportPayload | null = finalStatus.result as ReportPayload | null;
         let persistedByDate: ReportByDateResponse | null = null;
         const expectedRunId = finalStatus.db_run_id || reportJob.db_run_id || null;
-        for (let attempt = 0; attempt < 20; attempt += 1) {
+        pushRunStep("Execução concluída. Exibindo o resultado imediato e renovando o histórico em segundo plano...");
+        const syncAttempts = 0; // background-only: avoid blocking on by-date confirmation
+        for (let attempt = 0; attempt < syncAttempts; attempt += 1) {
           try {
             const payload = await apiGet<ReportByDateResponse>(
               `/api/report-day/by-date?date=${encodeURIComponent(safeDate)}`,
@@ -795,7 +882,7 @@ export function useDashboardController(options?: { enabled?: boolean; syncNavOnS
           } catch {
             // tenta novamente
           }
-          await sleep(800);
+          await sleep(400);
         }
 
         if (persistedByDate?.run) {

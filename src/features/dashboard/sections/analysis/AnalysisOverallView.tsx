@@ -5,6 +5,7 @@ import { toTitleCaseName } from "../../hooks/controller/common";
 import { MovementSection } from "../dashboard/MovementSection";
 import { canonicalizeProductLabel, normalizeProductForMatch } from "@/lib/products/canonical";
 import { severityDotClass, severityLabel } from "../../shared/constants";
+import { preserveWindowScroll } from "../../shared/scroll";
 import type { OwnerScope } from "../../shared/types";
 import {
   HileCardGrid,
@@ -519,10 +520,10 @@ export function AnalysisOverallView({ refreshHint, sectionStart = 1, ownerScope 
                 <span>
                   {filteredProducts.length} registros • Página {safeProductsPage} de {totalProductsPages}
                 </span>
-                <button type="button" onClick={() => setProductsPage(Math.max(1, safeProductsPage - 1))} disabled={safeProductsPage <= 1}>
+                <button type="button" onClick={() => preserveWindowScroll(() => setProductsPage(Math.max(1, safeProductsPage - 1)))} disabled={safeProductsPage <= 1}>
                   {"<"}
                 </button>
-                <button type="button" onClick={() => setProductsPage(Math.min(totalProductsPages, safeProductsPage + 1))} disabled={safeProductsPage >= totalProductsPages}>
+                <button type="button" onClick={() => preserveWindowScroll(() => setProductsPage(Math.min(totalProductsPages, safeProductsPage + 1)))} disabled={safeProductsPage >= totalProductsPages}>
                   {">"}
                 </button>
               </div>
@@ -550,14 +551,16 @@ export function AnalysisOverallView({ refreshHint, sectionStart = 1, ownerScope 
               <div className="report-filters-grid">
                 <div className="report-filter-field">
                   <label htmlFor="overall-context-filter">Gaps/Severidade</label>
-                  <select
-                    id="overall-context-filter"
-                    value={contextSeverityFilter}
-                    onChange={(event) => {
-                      setContextSeverityFilter(event.target.value as Severity | "all");
-                      setContextPage(1);
-                    }}
-                  >
+                    <select
+                      id="overall-context-filter"
+                      value={contextSeverityFilter}
+                      onChange={(event) =>
+                        preserveWindowScroll(() => {
+                          setContextSeverityFilter(event.target.value as Severity | "all");
+                          setContextPage(1);
+                        })
+                      }
+                    >
                     <option value="all">Todas</option>
                     <option value="critical">{severityLabel.critical}</option>
                     <option value="high">{severityLabel.high}</option>
@@ -572,10 +575,12 @@ export function AnalysisOverallView({ refreshHint, sectionStart = 1, ownerScope 
                   <select
                     id="overall-context-contact"
                     value={contextContactFilter}
-                    onChange={(event) => {
-                      setContextContactFilter(event.target.value);
-                      setContextPage(1);
-                    }}
+                    onChange={(event) =>
+                      preserveWindowScroll(() => {
+                        setContextContactFilter(event.target.value);
+                        setContextPage(1);
+                      })
+                    }
                   >
                     <option value="all">Todos</option>
                     {contactOptions.map((contact) => (
@@ -589,10 +594,12 @@ export function AnalysisOverallView({ refreshHint, sectionStart = 1, ownerScope 
                   <select
                     id="overall-context-date"
                     value={contextDateFilter}
-                    onChange={(event) => {
-                      setContextDateFilter(event.target.value);
-                      setContextPage(1);
-                    }}
+                    onChange={(event) =>
+                      preserveWindowScroll(() => {
+                        setContextDateFilter(event.target.value);
+                        setContextPage(1);
+                      })
+                    }
                   >
                     <option value="all">Todas</option>
                     {dateOptions.map((date) => (
@@ -608,10 +615,12 @@ export function AnalysisOverallView({ refreshHint, sectionStart = 1, ownerScope 
                     type="text"
                     placeholder="Contato, resumo ou data"
                     value={contextQuery}
-                    onChange={(event) => {
-                      setContextQuery(event.target.value);
-                      setContextPage(1);
-                    }}
+                    onChange={(event) =>
+                      preserveWindowScroll(() => {
+                        setContextQuery(event.target.value);
+                        setContextPage(1);
+                      })
+                    }
                   />
                 </div>
               </div>
@@ -650,10 +659,10 @@ export function AnalysisOverallView({ refreshHint, sectionStart = 1, ownerScope 
                 <span>
                   {filteredContextItems.length} registros • Página {safeContextPage} de {totalContextPages}
                 </span>
-                <button type="button" onClick={() => setContextPage(Math.max(1, safeContextPage - 1))} disabled={safeContextPage <= 1}>
+                <button type="button" onClick={() => preserveWindowScroll(() => setContextPage(Math.max(1, safeContextPage - 1)))} disabled={safeContextPage <= 1}>
                   {"<"}
                 </button>
-                <button type="button" onClick={() => setContextPage(Math.min(totalContextPages, safeContextPage + 1))} disabled={safeContextPage >= totalContextPages}>
+                <button type="button" onClick={() => preserveWindowScroll(() => setContextPage(Math.min(totalContextPages, safeContextPage + 1)))} disabled={safeContextPage >= totalContextPages}>
                   {">"}
                 </button>
               </div>

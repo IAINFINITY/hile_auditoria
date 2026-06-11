@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import type { InsightItem, OverviewPayload } from "../../../../types";
 import type { OperationalAlertItem } from "../../shared/types";
 import { toTitleCaseName } from "../../hooks/controller/common";
-import { severityColors, severityLabel } from "../../shared/constants";
+import { severityColors, severityDotClass, severityLabel } from "../../shared/constants";
 import { HileEmptyPanel, HileSectionShell, HileSurfaceCard } from "../../shared/ui/HilePrimitives";
 
 interface GapsSectionProps {
@@ -177,7 +177,7 @@ export function GapsSection({
               ) : filtered.length === 0 ? (
                 <HileEmptyPanel title="Nenhum gap no filtro selecionado." description="Amplie o filtro para visualizar outras ocorrencias relevantes." />
               ) : (
-                <div className="gaps-grid gaps-grid-animated" key={`${filter}-${safePage}-${animationSeed}`}>
+                <div className="report-list-animated" key={`${filter}-${safePage}-${animationSeed}`}>
                   {pagedItems.map((item) => {
                     const url = buildConversationLink(baseUrl, accountId, inboxId, item.conversation_id);
                     const contactName = toTitleCaseName(item.contact_name || "");
@@ -185,40 +185,38 @@ export function GapsSection({
                     const showReason = shouldShowGapReason(headline, item.summary);
 
                     return (
-                      <article className={`gap-item ${item.severity}`} key={item.id}>
-                        <div className="gap-color-bar" />
-                        <div className="gap-card-body">
+                      <article className="report-card gap-report-card" key={item.id}>
+                        <span className={`report-card-dot ${severityDotClass(item.severity)}`} />
+                        <div className="report-card-content gap-report-card-content">
                           <div className="gap-top">
                             <span className="gap-severity" style={{ color: severityColor(item.severity) }}>
                               {severityLabel[item.severity === "critical" ? "critical" : "high"]}
                             </span>
-                            <span style={{ fontSize: "var(--fs-small)", color: "var(--muted)", fontFamily: "var(--font-mono)" }}>
+                            <span style={{ color: "var(--muted)", fontSize: "var(--fs-small)", fontWeight: 700 }}>
                               #{item.conversation_id}
                             </span>
                           </div>
-
-                          <div style={{ fontSize: "var(--fs-h3)", fontWeight: 700, color: "var(--navy)", margin: "4px 0 2px" }}>{headline}</div>
-
-                          <div className="gap-contact">
-                            <strong>{contactName}</strong>
-                            <span>- Conversa #{item.conversation_id}</span>
-                            <button type="button" className="link-btn" onClick={() => onOpenReportByContact(contactName)}>
+                          <h4>{headline}</h4>
+                          <p>
+                            <strong>{contactName}</strong> • conversa #{item.conversation_id}
+                          </p>
+                          <p>
+                            <strong>Severidade:</strong>{" "}
+                            <span style={{ color: severityColor(item.severity), fontWeight: 800 }}>
+                              {severityLabel[item.severity === "critical" ? "critical" : "high"]}
+                            </span>
+                          </p>
+                          {showReason ? <p>{item.summary}</p> : null}
+                          <div className="gap-actions">
+                            <button type="button" className="link-btn link-btn-spaced" onClick={() => onOpenReportByContact(contactName)}>
                               Ver detalhes desta pessoa
                             </button>
                             {url ? (
-                              <a href={url} target="_blank" rel="noreferrer">
+                              <a className="link-btn link-btn-spaced" href={url} target="_blank" rel="noreferrer">
                                 Ver no Chatwoot {"->"}
                               </a>
                             ) : null}
                           </div>
-
-                          {showReason ? (
-                            <>
-                              <hr className="gap-divider" />
-                              <p className="gap-reason">{item.summary}</p>
-                            </>
-                          ) : null}
-
                           <div className="gap-label-row">
                             {(item.labels || []).length > 0 ? (
                               (item.labels || []).map((tag) => (

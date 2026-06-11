@@ -1,6 +1,7 @@
 ﻿import { useEffect, useMemo, useRef, useState } from "react";
 import { apiGet } from "@/lib/api";
 import { useChartEnterAnimation } from "../../charts/useChartEnterAnimation";
+import { preserveWindowScroll } from "../../shared/scroll";
 import type { OwnerScope, ProductDemandItem } from "../../shared/types";
 
 type ProductOverallItem = {
@@ -286,11 +287,11 @@ export function ProductsOverallView({
   const donutTotal = useMemo(() => donutEntries.reduce((acc, item) => acc + item.value, 0), [donutEntries]);
 
   function goPrev() {
-    setPage((current) => Math.max(1, current - 1));
+    preserveWindowScroll(() => setPage((current) => Math.max(1, current - 1)));
   }
 
   function goNext() {
-    setPage((current) => Math.min(totalPages, current + 1));
+    preserveWindowScroll(() => setPage((current) => Math.min(totalPages, current + 1)));
   }
 
   const rootClass = `${showHeader ? "settings-shell" : "products-scope-shell"} reveal ${isSingleItem ? "products-overall-single" : ""}`;
@@ -371,19 +372,23 @@ export function ProductsOverallView({
               <input
                 type="text"
                 value={query}
-                onChange={(event) => {
-                  setQuery(event.target.value);
-                  setPage(1);
-                }}
+                onChange={(event) =>
+                  preserveWindowScroll(() => {
+                    setQuery(event.target.value);
+                    setPage(1);
+                  })
+                }
                 className="products-overall-search"
                 placeholder="Buscar produto..."
               />
               <select
                 value={sortMode}
-                onChange={(event) => {
-                  setSortMode(event.target.value as SortMode);
-                  setPage(1);
-                }}
+                onChange={(event) =>
+                  preserveWindowScroll(() => {
+                    setSortMode(event.target.value as SortMode);
+                    setPage(1);
+                  })
+                }
                 className="products-overall-sort"
               >
                 <option value="count">Ordenar por: Quantidade</option>

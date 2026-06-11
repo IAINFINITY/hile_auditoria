@@ -106,7 +106,7 @@ export function AttendantsView({
 
   return (
     <section className="settings-shell reveal">
-      <div className="section-inner" id="attendants-overview">
+      <div className="section-inner" id="attendants-overview" style={{ scrollMarginTop: "96px" }}>
         <HileSectionShell
           eyebrow="01"
           title="Desempenho de Atendentes"
@@ -161,7 +161,8 @@ export function AttendantsView({
               <HileKpiCard label="Críticos" value={activeSummary.totalCriticalGaps} hint="Gaps de maior severidade" tone={activeSummary.totalCriticalGaps > 0 ? "critical" : "default"} accent={activeSummary.totalCriticalGaps > 0 ? "critical" : "default"} />
             </HileCardGrid>
 
-            <HileSurfaceCard title="Indicadores visuais" description="Comparativo rápido de volume de mensagens e gaps por responsável.">
+            <div id="attendants-breakdown" style={{ scrollMarginTop: "96px" }}>
+              <HileSurfaceCard title="Indicadores visuais" description="Comparativo rápido de volume de mensagens e gaps por responsável.">
               {scope === "overall" && overallLoading ? (
                 <HileEmptyPanel title="Carregando consolidado geral" description="Estamos buscando os dados agregados dos atendentes." />
               ) : scope === "overall" && overallError ? (
@@ -210,8 +211,10 @@ export function AttendantsView({
                 </div>
               )}
             </HileSurfaceCard>
+            </div>
 
-            <HileSurfaceCard title="Por responsável" description="Detalhamento operacional de cada owner dentro do escopo selecionado." tone={hasData ? "default" : "soft"}>
+            <div id="attendants-comparison" style={{ scrollMarginTop: "96px" }}>
+              <HileSurfaceCard title="Por responsável" description="Detalhamento operacional de cada owner dentro do escopo selecionado." tone={hasData ? "default" : "soft"}>
               {scope === "overall" && overallLoading ? (
                 <HileEmptyPanel title="Carregando atendentes" description="O detalhamento geral esta sendo preparado." />
               ) : activeSummary.entries.length === 0 ? (
@@ -277,6 +280,7 @@ export function AttendantsView({
                 </div>
               )}
             </HileSurfaceCard>
+            </div>
           </div>
         </HileSectionShell>
       </div>

@@ -28,7 +28,7 @@ interface UseNotificationsOptions {
 }
 
 const POLL_MS_IDLE = 30_000;
-const POLL_MS_RUNNING = 5_000;
+const POLL_MS_RUNNING = 20_000;
 const EMPTY_STATE: NotificationState = {
   events: [],
   total: 0,

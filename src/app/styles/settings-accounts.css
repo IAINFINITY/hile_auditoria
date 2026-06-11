@@ -5,6 +5,7 @@
   display:grid;
   gap:20px;
   animation:fadeIn .35s ease;
+  overflow-anchor:none;
 }
 .settings-animated .settings-shell > *{
   opacity:0;
@@ -630,6 +631,7 @@
   padding:calc(var(--nav-h) + 22px) 0 40px;
   display:grid;
   gap:20px;
+  overflow-anchor:none;
 }
 
 .accounts-shell .settings-card{
@@ -737,6 +739,7 @@
 .accounts-list{
   display:grid;
   gap:12px;
+  overflow-anchor:none;
 }
 
 .accounts-kanban{
@@ -1301,6 +1304,15 @@
 .logs-list{
   display:grid;
   gap:10px;
+  overflow-anchor:none;
+}
+.logs-list-scroll{
+  max-height:min(52vh, 560px);
+  overflow-y:auto;
+  overflow-x:hidden;
+  padding-right:6px;
+  scrollbar-gutter:stable;
+  overscroll-behavior:contain;
 }
 
 .log-item{
@@ -1404,6 +1416,7 @@
   display: grid;
   place-items: center;
   padding: 16px;
+  overflow-y: auto;
   backdrop-filter: blur(2px);
 }
 .modal-card {
@@ -1411,12 +1424,15 @@
   border: 1px solid var(--line);
   border-radius: 14px;
   padding: 24px;
-  max-width: 420px;
+  max-width: min(560px, calc(100vw - 32px));
   width: calc(100vw - 32px);
-  display: grid;
+  max-height: calc(100dvh - 32px);
+  display: flex;
+  flex-direction: column;
   gap: 12px;
   box-shadow: 0 14px 40px rgba(11, 19, 40, 0.18);
-  overflow: hidden;
+  overflow: auto;
+  scrollbar-gutter: stable;
 }
 
 .account-detail-modal{
@@ -1524,10 +1540,16 @@
   margin: 0;
   font-size: var(--fs-body);
   color: var(--muted);
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 .modal-actions {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
+  flex-shrink: 0;
+  margin-top: auto;
+  padding-top: 4px;
+  background: linear-gradient(180deg, rgba(255,255,255,0), var(--branco) 28%);
 }
 
