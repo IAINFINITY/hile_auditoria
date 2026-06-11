@@ -168,7 +168,7 @@ async function handleAutoSync(request: Request) {
             }
           },
         });
-        const reportOutput = output as ReportPayload;
+        const reportOutput = output as unknown as ReportPayload;
 
         const finishedAt = new Date().toISOString();
         const result = {
@@ -184,7 +184,7 @@ async function handleAutoSync(request: Request) {
           config,
           date,
           finishedAtIso: finishedAt,
-          output: result as ReportPayload,
+          output: result as unknown as ReportPayload,
         });
         await appendRunEvent(runId, "run_completed", {
           processed: result.summary.processed,

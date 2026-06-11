@@ -304,7 +304,7 @@ export async function POST(request: Request) {
             config,
             date,
             finishedAtIso: finishedAt,
-            output: state.result as ReportPayload,
+          output: state.result as unknown as ReportPayload,
           });
           await appendRunEvent(state.db_run_id, "run_completed", {
             processed: state.processed,

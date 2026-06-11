@@ -45,6 +45,24 @@ import {
 } from "./ownerBuckets";
 import type { ErrorWithMeta } from "./types";
 
+type TimingBucket = {
+  total_ms: number;
+  target_discovery_ms?: number;
+  chatwoot_scan_ms?: number;
+  conversation_filter_ms?: number;
+  conversation_selection_ms?: number;
+  conversation_detail_fetch_ms?: number;
+  post_process_ms?: number;
+  delta_state_lookup_ms?: number;
+  operational_state_map_ms?: number;
+  latest_db_lookup_ms?: number;
+  cached_lookup_ms?: number;
+  history_recovery_ms?: number;
+  dify_request_ms?: number;
+  contact_loop_ms?: number;
+  persist_delta_states_ms?: number;
+};
+
 function normalizeText(value) {
   return String(value || "").trim().toLowerCase();
 }
@@ -195,7 +213,7 @@ function buildResponsibleTracking(messages, inboxId) {
 function createTimingBucket() {
   return {
     total_ms: 0,
-  };
+  } as TimingBucket;
 }
 
 function looksLikeWhatsapp(inbox) {
