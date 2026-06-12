@@ -26,3 +26,17 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
+
+  # Cloudflare Tunnel (sidecar) — publica auditoria-hile.ai-infinity.io.
+  # O token vem do .env (CLOUDFLARE_TUNNEL_TOKEN), nunca é commitado.
+  # Roteia para http://auditoria-hile:3001 (mesma rede do compose).
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: auditoria-hile-cloudflared
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN}
+    depends_on:
+      app:
+        condition: service_healthy
