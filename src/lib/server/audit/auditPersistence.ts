@@ -812,6 +812,158 @@ export async function updateRunProgress(
   });
 }
 
+export async function persistAnalysisResult(params: {
+  config: AppConfig;
+  runId: string;
+  analysis: Record<string, any>;
+}) {
+  const reportLike = {
+    account: {
+      id: Number(params.config.chatwoot.accountId || 0),
+      name: params.config.chatwoot.groupName,
+      role: null,
+    },
+    inbox: {
+      id: Number(params.config.chatwoot.inboxId || 0),
+      name: params.config.chatwoot.inboxName,
+      provider: params.config.chatwoot.inboxProvider,
+      channel_type: null,
+      phone_number: null,
+    },
+  } as unknown as ReportPayload;
+
+  await prisma.$transaction(async (tx) => {
+    const { tenant, channel } = await resolveTenantAndChannel(tx, params.config, reportLike);
+    const parsed = deriveFallbackMetricsAndProducts(
+      parseJsonSafe(params.analysis.analysis?.answer),
+      String(params.analysis.log_text || ""),
+    );
+    const derivedRiskLevel = deriveRiskLevelFromParsed(parsed);
+    const contactIdentifier = String(params.analysis.contact?.identifier || "").trim();
+    const contactName = toTitleCaseName(String(params.analysis.contact?.name || "").trim());
+    const contact = await upsertContactByReference({
+      db: tx,
+      tenantId: tenant.id,
+      contactKey: String(params.analysis.contact_key || ""),
+      contactName,
+      contactIdentifier,
+    });
+
+    const firstConversationId = Number(params.analysis.conversation_ids?.[0] || 0);
+    if (firstConversationId <= 0) return;
+
+    const conversation = await tx.conversation.upsert({
+      where: {
+        tenantId_chatwootConversationId: {
+          tenantId: tenant.id,
+          chatwootConversationId: firstConversationId,
+        },
+      },
+      update: {
+        channelId: channel.id,
+        contactId: contact.id,
+      },
+      create: {
+        tenantId: tenant.id,
+        channelId: channel.id,
+        contactId: contact.id,
+        chatwootConversationId: firstConversationId,
+        labels: [],
+      },
+    });
+
+    const existingAnalysis = await tx.conversationAnalysis.findFirst({
+      where: {
+        runId: params.runId,
+        conversationId: conversation.id,
+      },
+      orderBy: { createdAt: "desc" },
+      select: { id: true },
+    });
+
+    const baseAnalysisUpdateData = {
+      contactId: contact.id,
+      riskLevel: derivedRiskLevel,
+      summary: String(parsed.resumo || "").trim() || null,
+      improvementsJson: asStringList(parsed.pontos_melhoria),
+      nextStepsJson: asStringList(parsed.proximos_passos),
+      aiRawJson: toJsonValue(parsed),
+      finalizationStatus:
+        params.analysis.conversation_operational?.[0]?.state?.finalization_status === "finalizada"
+          ? "finalizada"
+          : "continuada",
+    } as any;
+
+    const baseAnalysisCreateData = {
+      runId: params.runId,
+      conversationId: conversation.id,
+      contactId: contact.id,
+      riskLevel: derivedRiskLevel,
+      summary: String(parsed.resumo || "").trim() || null,
+      improvementsJson: asStringList(parsed.pontos_melhoria),
+      nextStepsJson: asStringList(parsed.proximos_passos),
+      aiRawJson: toJsonValue(parsed),
+      finalizationStatus:
+        params.analysis.conversation_operational?.[0]?.state?.finalization_status === "finalizada"
+          ? "finalizada"
+          : "continuada",
+    } as any;
+
+    const entry = existingAnalysis
+      ? await tx.conversationAnalysis.update({
+          where: { id: existingAnalysis.id },
+          data: baseAnalysisUpdateData,
+        })
+      : await tx.conversationAnalysis.create({
+          data: baseAnalysisCreateData,
+        });
+
+    if (existingAnalysis) {
+      await tx.gap.deleteMany({ where: { analysisId: entry.id } });
+      await tx.insight.deleteMany({ where: { analysisId: entry.id } });
+    }
+
+    const gaps = parseGapEntries(parsed);
+    const gapRows = gaps.map((gap) => {
+      const severityLabel = pickFirstText(gap, ["severidade", "severity", "nivel", "prioridade"]);
+      return {
+        analysisId: entry.id,
+        name: pickFirstText(gap, ["nome_gap", "nome", "titulo", "title", "gap", "categoria"]) || "Gap operacional",
+        severity: parseGapSeverity(severityLabel),
+        description: pickFirstText(gap, ["descricao", "description", "detalhe", "detalhes", "contexto"]) || null,
+        messageReference:
+          pickFirstText(gap, ["mensagem_referencia", "message_reference", "referencia_mensagem", "trecho"]) || null,
+        userReportedData:
+          pickFirstText(gap, ["dado_informado_pelo_usuario", "dado_informado", "valor_informado"]) || null,
+        confirmedData:
+          pickFirstText(gap, ["dado_confirmado_pelo_acesso_infinity", "dado_confirmado", "valor_confirmado"]) || null,
+        category: pickFirstText(gap, ["categoria", "category"]) || null,
+        isCritical: isCriticalSeverityLabel(severityLabel),
+      };
+    });
+    if (gapRows.length > 0) {
+      await tx.gap.createMany({
+        data: gapRows,
+      });
+    }
+
+    const operationalInsights = allInsightsFromAnalysis(params.analysis as any);
+    const insightRows = operationalInsights.map((insight) => ({
+      analysisId: entry.id,
+      type: insight.type || null,
+      severity: parseInsightSeverity(insight.severity),
+      title: String(insight.title || "Insight operacional"),
+      summary: String(insight.summary || "").trim(),
+      operationalStateJson: toJsonValue(insight),
+    }));
+    if (insightRows.length > 0) {
+      await tx.insight.createMany({
+        data: insightRows,
+      });
+    }
+  }, { maxWait: 20_000, timeout: 120_000 });
+}
+
 export async function persistCompletedRun(params: {
   runId: string;
   config: AppConfig;
@@ -1908,50 +2060,91 @@ export async function listClientsByDate(date: string) {
     };
   }
 
-  const states = await prisma.clientState.findMany({
-    where: {
-      tenantId: contextRun.tenantId,
-      channelId: contextRun.channelId,
-      phonePk: {
-        in: (runForDate?.clientRecords || []).map((item) => item.phonePk),
-      },
-    },
-    select: {
-      phonePk: true,
-      firstSeenAt: true,
-      lastSeenAt: true,
-      firstIssueAt: true,
-      lastIssueAt: true,
-      resolvedAt: true,
-      currentStatus: true,
-      currentSeverity: true,
-      responsibleBucket: true,
-      responsibleLabel: true,
-      responsibleMessageCount: true,
-      responsibleMessageBreakdown: true,
-    },
-  });
-  const stateByPhone = new Map(states.map((item) => [item.phonePk, item]));
-  const phonesForTimeline = Array.from(new Set((runForDate?.clientRecords || []).map((item) => String(item.phonePk || "").trim()).filter(Boolean)));
-  const timelineEvents = phonesForTimeline.length
-    ? await prisma.conversationTimelineEvent.findMany({
+  const safeQuery = async <T>(label: string, query: () => Promise<T>, fallback: T): Promise<T> => {
+    try {
+      return await query();
+    } catch (error) {
+      console.warn(`[audit-persistence] listClientsByDate(${date}) falha em ${label}:`, error);
+      return fallback;
+    }
+  };
+
+  const states = await safeQuery(
+    "clientState.findMany",
+    () =>
+      prisma.clientState.findMany({
         where: {
           tenantId: contextRun.tenantId,
           channelId: contextRun.channelId,
-          phonePk: { in: phonesForTimeline },
+          phonePk: {
+            in: (runForDate?.clientRecords || []).map((item) => item.phonePk),
+          },
         },
-        orderBy: [{ createdAt: "asc" }],
         select: {
           phonePk: true,
-          dateRef: true,
-          chatwootConversationId: true,
-          eventType: true,
-          severity: true,
-          reason: true,
-          source: true,
-          createdAt: true,
+          firstSeenAt: true,
+          lastSeenAt: true,
+          firstIssueAt: true,
+          lastIssueAt: true,
+          resolvedAt: true,
+          currentStatus: true,
+          currentSeverity: true,
+          responsibleBucket: true,
+          responsibleLabel: true,
+          responsibleMessageCount: true,
+          responsibleMessageBreakdown: true,
         },
-      })
+      }),
+    [] as Array<{
+      phonePk: string;
+      firstSeenAt: Date | null;
+      lastSeenAt: Date | null;
+      firstIssueAt: Date | null;
+      lastIssueAt: Date | null;
+      resolvedAt: Date | null;
+      currentStatus: string | null;
+      currentSeverity: string | null;
+      responsibleBucket: string | null;
+      responsibleLabel: string | null;
+      responsibleMessageCount: number | null;
+      responsibleMessageBreakdown: unknown;
+    }>,
+  );
+  const stateByPhone = new Map(states.map((item) => [item.phonePk, item]));
+  const phonesForTimeline = Array.from(new Set((runForDate?.clientRecords || []).map((item) => String(item.phonePk || "").trim()).filter(Boolean)));
+  const timelineEvents = phonesForTimeline.length
+    ? await safeQuery(
+        "conversationTimelineEvent.findMany",
+        () =>
+          prisma.conversationTimelineEvent.findMany({
+            where: {
+              tenantId: contextRun.tenantId,
+              channelId: contextRun.channelId,
+              phonePk: { in: phonesForTimeline },
+            },
+            orderBy: [{ createdAt: "asc" }],
+            select: {
+              phonePk: true,
+              dateRef: true,
+              chatwootConversationId: true,
+              eventType: true,
+              severity: true,
+              reason: true,
+              source: true,
+              createdAt: true,
+            },
+          }),
+        [] as Array<{
+          phonePk: string | null;
+          dateRef: Date;
+          chatwootConversationId: number | null;
+          eventType: string | null;
+          severity: string | null;
+          reason: string | null;
+          source: string | null;
+          createdAt: Date;
+        }>,
+      )
     : [];
   const timelineByPhone = new Map<string, Array<{
     dateRef: string;
@@ -2175,35 +2368,47 @@ export async function listClientsByDate(date: string) {
     }
   >();
   if (trackedConversationIds.length > 0) {
-    const rows = await prisma.message.findMany({
-      where: {
-        tenantId: contextRun.tenantId,
-        conversation: {
-          chatwootConversationId: {
-            in: trackedConversationIds,
+    const rows = await safeQuery(
+      "message.findMany",
+      () =>
+        prisma.message.findMany({
+          where: {
+            tenantId: contextRun.tenantId,
+            conversation: {
+              chatwootConversationId: {
+                in: trackedConversationIds,
+              },
+            },
+            role: {
+              contains: "AGENT",
+              mode: "insensitive",
+            },
           },
-        },
-        role: {
-          contains: "AGENT",
-          mode: "insensitive",
-        },
-      },
-      select: {
-        senderName: true,
-        createdAt: true,
-        conversation: {
           select: {
-            chatwootConversationId: true,
-            channel: {
+            senderName: true,
+            createdAt: true,
+            conversation: {
               select: {
-                chatwootInboxId: true,
+                chatwootConversationId: true,
+                channel: {
+                  select: {
+                    chatwootInboxId: true,
+                  },
+                },
               },
             },
           },
-        },
-      },
-      orderBy: [{ createdAt: "asc" }],
-    });
+          orderBy: [{ createdAt: "asc" }],
+        }),
+      [] as Array<{
+        senderName: string | null;
+        createdAt: Date;
+        conversation: {
+          chatwootConversationId: number | null;
+          channel: { chatwootInboxId: number | null } | null;
+        } | null;
+      }>,
+    );
     for (const row of rows) {
       const conversationId = Number(row.conversation?.chatwootConversationId || 0);
       if (!conversationId) continue;
@@ -2528,47 +2733,72 @@ export async function listClientsByDate(date: string) {
   };
 
   if (runForDate?.id) {
-    const analysesFromTables = await prisma.conversationAnalysis.findMany({
-      where: { runId: runForDate.id },
-      select: {
-        riskLevel: true,
-        summary: true,
-        finalizationStatus: true,
-        improvementsJson: true,
-        aiRawJson: true,
-        gaps: {
+    const analysesFromTables = await safeQuery(
+      "conversationAnalysis.findMany",
+      () =>
+        prisma.conversationAnalysis.findMany({
+          where: { runId: runForDate.id },
           select: {
-            name: true,
-            description: true,
-            severity: true,
-            isCritical: true,
-          },
-        },
-        insights: {
-          select: {
-            title: true,
+            riskLevel: true,
             summary: true,
-            severity: true,
+            finalizationStatus: true,
+            improvementsJson: true,
+            aiRawJson: true,
+            gaps: {
+              select: {
+                name: true,
+                description: true,
+                severity: true,
+                isCritical: true,
+              },
+            },
+            insights: {
+              select: {
+                title: true,
+                summary: true,
+                severity: true,
+              },
+            },
+            conversation: {
+              select: {
+                chatwootConversationId: true,
+                labels: true,
+                resolvedAt: true,
+                status: true,
+              },
+            },
+            contact: {
+              select: {
+                name: true,
+                identifierHash: true,
+                identifierLast4: true,
+                chatwootContactId: true,
+              },
+            },
           },
-        },
+        }),
+      [] as Array<{
+        riskLevel: string | null;
+        summary: string | null;
+        finalizationStatus: string | null;
+        improvementsJson: unknown;
+        aiRawJson: unknown;
+        gaps: Array<{ name: string | null; description: string | null; severity: string | null; isCritical: boolean | null }>;
+        insights: Array<{ title: string | null; summary: string | null; severity: string | null }>;
         conversation: {
-          select: {
-            chatwootConversationId: true,
-            labels: true,
-            resolvedAt: true,
-            status: true,
-          },
-        },
+          chatwootConversationId: number | null;
+          labels: string[] | null;
+          resolvedAt: Date | null;
+          status: string | null;
+        } | null;
         contact: {
-          select: {
-            name: true,
-            identifierHash: true,
-            identifierLast4: true,
-            chatwootContactId: true,
-          },
-        },
-      },
-    });
+          name: string | null;
+          identifierHash: string | null;
+          identifierLast4: string | null;
+          chatwootContactId: number | null;
+        } | null;
+      }>,
+    );
 
     for (const analysis of analysesFromTables) {
       const conversationId = Number(analysis.conversation?.chatwootConversationId || 0);
@@ -3068,14 +3298,37 @@ export async function listClientsByDate(date: string) {
     };
   }
 
-  const statesFallback = await prisma.clientState.findMany({
-    where: {
-      tenantId: contextRun.tenantId,
-      channelId: contextRun.channelId,
-    },
-    orderBy: { updatedAt: "desc" },
-    take: 500,
-  });
+  const statesFallback = await safeQuery(
+    "clientState fallback findMany",
+    () =>
+      prisma.clientState.findMany({
+        where: {
+          tenantId: contextRun.tenantId,
+          channelId: contextRun.channelId,
+        },
+        orderBy: { updatedAt: "desc" },
+        take: 500,
+      }),
+    [] as Array<{
+      phonePk: string;
+      contactName: string | null;
+      companyName: string | null;
+      cnpj: string | null;
+      currentLabels: string[] | null;
+      openConversationIds: number[] | null;
+      firstSeenAt: Date;
+      lastSeenAt: Date | null;
+      firstIssueAt: Date | null;
+      lastIssueAt: Date | null;
+      resolvedAt: Date | null;
+      currentStatus: string;
+      currentSeverity: string;
+      responsibleBucket: string | null;
+      responsibleLabel: string | null;
+      responsibleMessageCount: number | null;
+      responsibleMessageBreakdown: unknown;
+    }>,
+  );
 
   if (statesFallback.length > 0) {
     return {
@@ -3155,37 +3408,55 @@ export async function listClientsByDate(date: string) {
     };
   }
 
-  const contacts = await prisma.contact.findMany({
-    where: {
-      tenantId: contextRun.tenantId,
-      conversations: {
-        some: {
-          channelId: contextRun.channelId,
-        },
-      },
-    },
-    select: {
-      name: true,
-      chatwootContactId: true,
-      identifierHash: true,
-      identifierLast4: true,
-      conversations: {
+  const contacts = await safeQuery(
+    "contact.findMany",
+    () =>
+      prisma.contact.findMany({
         where: {
-          channelId: contextRun.channelId,
+          tenantId: contextRun.tenantId,
+          conversations: {
+            some: {
+              channelId: contextRun.channelId,
+            },
+          },
         },
         select: {
-          chatwootConversationId: true,
-          labels: true,
-          createdAt: true,
-          resolvedAt: true,
-          lastActivityAt: true,
-          status: true,
+          name: true,
+          chatwootContactId: true,
+          identifierHash: true,
+          identifierLast4: true,
+          conversations: {
+            where: {
+              channelId: contextRun.channelId,
+            },
+            select: {
+              chatwootConversationId: true,
+              labels: true,
+              createdAt: true,
+              resolvedAt: true,
+              lastActivityAt: true,
+              status: true,
+            },
+          },
         },
-      },
-    },
-    take: 500,
-    orderBy: { updatedAt: "desc" },
-  });
+        take: 500,
+        orderBy: { updatedAt: "desc" },
+      }),
+    [] as Array<{
+      name: string | null;
+      chatwootContactId: number | null;
+      identifierHash: string | null;
+      identifierLast4: string | null;
+      conversations: Array<{
+        chatwootConversationId: number | null;
+        labels: string[] | null;
+        createdAt: Date;
+        resolvedAt: Date | null;
+        lastActivityAt: Date | null;
+        status: string | null;
+      }>;
+    }>,
+  );
 
   const contactItems = contacts.map((contact) => {
     const identifierRaw = String(contact.identifierHash || "").trim();

@@ -4,6 +4,10 @@ function normalizeSenderType(rawType: unknown): string {
   return String(rawType || "").toLowerCase();
 }
 
+function normalizeMessageType(rawType: unknown): string {
+  return String(rawType || "").toLowerCase().trim();
+}
+
 function toUnixSecondsSafe(value: unknown): number {
   if (value === null || value === undefined || value === "") return 0;
   const asNumber = Number(value);
@@ -63,14 +67,30 @@ function resolveRole(message: any): string {
   if (message?.private) return "SYSTEM_PRIVATE";
 
   const senderType = normalizeSenderType(message?.sender_type || message?.sender?.type);
-  const messageType = Number(message?.message_type);
+  const messageTypeRaw = message?.message_type;
+  const messageTypeNumber = Number(messageTypeRaw);
+  const messageTypeText = normalizeMessageType(messageTypeRaw);
+  const fromMe = Boolean(message?.from_me || message?.is_from_me);
+
+  if (messageTypeText === "incoming" || messageTypeText === "inbound" || messageTypeText === "contact") {
+    return "USER";
+  }
+  if (messageTypeText === "outgoing" || messageTypeText === "outbound" || messageTypeText === "reply") {
+    return "AGENT";
+  }
+  if (messageTypeText === "activity" || messageTypeText === "system") {
+    return "SYSTEM";
+  }
 
   if (senderType === "0") return "USER";
   if (senderType === "1") return "AGENT";
   if (senderType === "2") return "SYSTEM";
 
-  if (messageType === 0 || senderType === "contact") return "USER";
-  if (messageType === 1 || senderType === "user" || senderType === "agent") return "AGENT";
+  if (messageTypeNumber === 0 || senderType === "contact") return "USER";
+  if (messageTypeNumber === 1 || fromMe || senderType === "user" || senderType === "agent" || senderType === "assistant") {
+    return "AGENT";
+  }
+  if (messageTypeNumber === 2 || senderType === "system" || senderType === "bot") return "SYSTEM";
 
   return "SYSTEM";
 }

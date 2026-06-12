@@ -5,6 +5,7 @@ import {
   getCachedAnalysisByFingerprint,
   getConversationDeltaStates,
   getLatestConversationAnalysis,
+  persistAnalysisResult,
   upsertConversationDeltaStates,
 } from "./auditPersistence";
 import { assertYmd, nowUnixSeconds, toYmdInTimezone, unique } from "./dateUtils";
@@ -67,12 +68,6 @@ function normalizeText(value) {
   return String(value || "").trim().toLowerCase();
 }
 
-function sleep(ms) {
-  return new Promise((resolve) => {
-    setTimeout(resolve, ms);
-  });
-}
-
 function getDifyQuotaRetryMaxAttempts(): number {
   const raw = Number(process.env.REPORT_DIFY_QUOTA_RETRY_MAX_ATTEMPTS || 5);
   if (!Number.isFinite(raw)) return 5;
@@ -86,6 +81,36 @@ function getDifyQuotaRetryDelayMs(attempt: number): number {
   const maxMinutes = Number.isFinite(maxMinutesRaw) ? Math.max(1, Math.floor(maxMinutesRaw)) : 15;
   const exponential = baseSeconds * 1000 * Math.pow(2, Math.max(0, attempt - 1));
   return Math.max(15_000, Math.min(maxMinutes * 60_000, exponential));
+}
+
+function buildQuotaPauseError(params: {
+  contactName: string;
+  contactKey: string;
+  attempt: number;
+  maxAttempts: number;
+  waitMs: number;
+  baseError: unknown;
+}) {
+  const waitNextRetryAt = new Date(Date.now() + params.waitMs).toISOString();
+  const waitMessage = buildDifyQuotaWaitMessage({
+    contactName: params.contactName,
+    contactKey: params.contactKey,
+    attempt: params.attempt,
+    maxAttempts: params.maxAttempts,
+    waitMs: params.waitMs,
+  });
+  const error = new Error(waitMessage) as ErrorWithMeta;
+  error.code = "dify_quota_exceeded";
+  error.retryable = true;
+  error.status = Number((params.baseError as ErrorWithMeta | null)?.status || 429) || 429;
+  error.body = String((params.baseError as ErrorWithMeta | null)?.body || "");
+  (error as ErrorWithMeta & { wait_message?: string; wait_retry_after_ms?: number; wait_next_retry_at?: string }).wait_message =
+    waitMessage;
+  (error as ErrorWithMeta & { wait_message?: string; wait_retry_after_ms?: number; wait_next_retry_at?: string }).wait_retry_after_ms =
+    params.waitMs;
+  (error as ErrorWithMeta & { wait_message?: string; wait_retry_after_ms?: number; wait_next_retry_at?: string }).wait_next_retry_at =
+    waitNextRetryAt;
+  return error;
 }
 
 function isDifyQuotaPauseError(error: unknown): boolean {
@@ -889,12 +914,14 @@ export async function runDailyAnalysis({
   snapshot = null,
   onProgress = null,
   mode = "reuse",
+  runId = null,
 }: {
   config: any;
   date: string;
   snapshot?: any;
   onProgress?: any;
   mode?: "reuse" | "force";
+  runId?: string | null;
 }) {
   if (!config.dify.apiKey) {
     throw new Error("DIFY_API_KEY não configurada. Configure para rodar /api/analyze-day.");
@@ -1124,61 +1151,60 @@ export async function runDailyAnalysis({
       if (recoveredFromHistory) historyRecoveryCounts.history_hit += 1;
 
       const runDifyWithPause = async (requestedMode: "full" | "delta") => {
-        const maxAttempts = getDifyQuotaRetryMaxAttempts();
-        let quotaAttempt = 0;
-
-        while (true) {
-          const requestStartedAt = Date.now();
-          try {
-            historyRecoveryCounts.dify_call += 1;
-            const result = await difyClient.analyzeLog({
-              contactKey,
-              date,
-              logText,
-              analysisMode: requestedMode,
-              extraInputs: difyDeltaInputs,
-            });
-            return result;
-          } catch (error) {
-            const requestElapsedMs = Date.now() - requestStartedAt;
-            if (!isDifyQuotaPauseError(error) || quotaAttempt >= maxAttempts) {
-              throw error;
-            }
-
-            quotaAttempt += 1;
-            const waitMs = getDifyQuotaRetryDelayMs(quotaAttempt);
-            const waitMessage = buildDifyQuotaWaitMessage({
-              contactName,
-              contactKey,
-              attempt: quotaAttempt,
-              maxAttempts,
-              waitMs,
-            });
-            console.warn(`[analyze-day] ${waitMessage} (tentativa da API: ${requestElapsedMs}ms)`);
-            if (notify) {
-              const waitNextRetryAt = new Date(Date.now() + waitMs).toISOString();
-              notify({
-                type: "contact_wait",
-                sequence,
-                total: totalToProcess,
-                contact_key: log.contact_key,
-                analysis_key: log.analysis_key || null,
-                contact_name: contactName,
-                conversation_ids: log.conversation_ids,
-                processed: analyses.length + failures.length,
-                wait_message: waitMessage,
-                wait_reason: String((error as ErrorWithMeta | null)?.code || "dify_quota_exceeded"),
-                wait_retry_after_ms: waitMs,
-                wait_attempt: quotaAttempt,
-                wait_max_attempts: maxAttempts,
-                wait_next_retry_at: waitNextRetryAt,
-                error_message: error instanceof Error ? error.message : waitMessage,
-                error_code: (error as ErrorWithMeta | null)?.code || null,
-              });
-            }
-
-            await sleep(waitMs);
+        historyRecoveryCounts.dify_call += 1;
+        try {
+          return await difyClient.analyzeLog({
+            contactKey,
+            date,
+            logText,
+            analysisMode: requestedMode,
+            extraInputs: difyDeltaInputs,
+          });
+        } catch (error) {
+          if (!isDifyQuotaPauseError(error)) {
+            throw error;
           }
+
+          const maxAttempts = getDifyQuotaRetryMaxAttempts();
+          const waitMs = getDifyQuotaRetryDelayMs(1);
+          const waitMessage = buildDifyQuotaWaitMessage({
+            contactName,
+            contactKey,
+            attempt: 1,
+            maxAttempts,
+            waitMs,
+          });
+          console.warn(`[analyze-day] ${waitMessage} (execução pausada sem bloqueio longo)`);
+          if (notify) {
+            const waitNextRetryAt = new Date(Date.now() + waitMs).toISOString();
+            notify({
+              type: "contact_wait",
+              sequence,
+              total: totalToProcess,
+              contact_key: log.contact_key,
+              analysis_key: log.analysis_key || null,
+              contact_name: contactName,
+              conversation_ids: log.conversation_ids,
+              processed: analyses.length + failures.length,
+              wait_message: waitMessage,
+              wait_reason: String((error as ErrorWithMeta | null)?.code || "dify_quota_exceeded"),
+              wait_retry_after_ms: waitMs,
+              wait_attempt: 1,
+              wait_max_attempts: maxAttempts,
+              wait_next_retry_at: waitNextRetryAt,
+              error_message: error instanceof Error ? error.message : waitMessage,
+              error_code: (error as ErrorWithMeta | null)?.code || null,
+            });
+          }
+
+          throw buildQuotaPauseError({
+            contactName,
+            contactKey,
+            attempt: 1,
+            maxAttempts,
+            waitMs,
+            baseError: error,
+          });
         }
       };
 
@@ -1247,7 +1273,7 @@ export async function runDailyAnalysis({
         });
       }
 
-      analyses.push({
+      const analysisItem = {
         analysis_index: sequence,
         analysis_key: log.analysis_key,
         source_fingerprint: sourceFingerprint,
@@ -1276,7 +1302,15 @@ export async function runDailyAnalysis({
           log.inbox_id,
         ),
         analysis: compactAnalysis(difyRaw),
-      });
+      };
+      if (runId) {
+        await persistAnalysisResult({
+          config,
+          runId,
+          analysis: analysisItem as Record<string, any>,
+        });
+      }
+      analyses.push(analysisItem);
       console.log(
         `[analyze-day] contato ${log.contact_key} ${
           latestDbAnalysis
@@ -1392,14 +1426,16 @@ export async function buildDailyReport({
   date,
   onProgress = null,
   mode = "reuse",
+  runId = null,
 }: {
   config: any;
   date: string;
   onProgress?: any;
   mode?: "reuse" | "force";
+  runId?: string | null;
 }) {
   const snapshot = await buildDailyConversationLogs({ config, date });
-  const analysis = await runDailyAnalysis({ config, date, snapshot, onProgress, mode });
+  const analysis = await runDailyAnalysis({ config, date, snapshot, onProgress, mode, runId });
   const reportStartedAt = Date.now();
   const orderedAnalyses = [...analysis.analyses].sort(
     (a, b) => Number(a?.analysis_index || 0) - Number(b?.analysis_index || 0),
