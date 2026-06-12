@@ -1,0 +1,26 @@
+# docker-compose — auditoria_hile
+# Sobe o app Next.js na porta 3001, exposto apenas em 127.0.0.1
+# (o Cloudflare Tunnel roteará pra ele a partir do host).
+services:
+  app:
+    build:
+      context: .
+      args:
+        # Lidas do .env (substituição do Compose) e injetadas no build.
+        NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL}
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY}
+        NEXT_PUBLIC_SESSION_TIMEOUT_MINUTES: ${NEXT_PUBLIC_SESSION_TIMEOUT_MINUTES:-30}
+    image: auditoria-hile:latest
+    container_name: auditoria-hile
+    restart: unless-stopped
+    # Todas as variáveis de runtime (Chatwoot, Dify, DB, segredos) vêm do .env
+    env_file: .env
+    ports:
+      # Só localhost: o cloudflared do host alcança via http://localhost:3001
+      - "127.0.0.1:3001:3001"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3001/api/health').then(r=>{process.exit(r.ok?0:1)}).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
