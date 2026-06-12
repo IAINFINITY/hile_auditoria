@@ -147,6 +147,7 @@ async function handleAutoSync(request: Request) {
         const output = await buildDailyReport({
           config,
           date,
+          runId,
           mode: "reuse",
           onProgress: (event: ProgressEvent) => {
             if (!event?.type) return;

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { prisma } from "@/lib/db/prisma";
 import {
   getCurrentContactFromRunEvents,
   getCurrentWaitStateFromRunEvents,
@@ -162,6 +163,23 @@ export async function GET(request: Request) {
       status === "running"
         ? await getCurrentWaitStateFromRunEvents(runId)
         : null;
+    const failedEvent =
+      status === "failed"
+        ? await prisma.jobEvent.findFirst({
+            where: {
+              runId,
+              eventType: "run_failed",
+            },
+            orderBy: { createdAt: "desc" },
+            select: {
+              payloadJson: true,
+            },
+          })
+        : null;
+    const failureMessage =
+      failedEvent?.payloadJson && typeof failedEvent.payloadJson === "object"
+        ? String((failedEvent.payloadJson as Record<string, unknown>).message || "").trim() || null
+        : null;
     const phase = resolveJobPhase({
       status,
       processed: snapshot.run.processed || 0,
@@ -196,7 +214,7 @@ export async function GET(request: Request) {
         status === "completed" && snapshot.report_json
           ? (snapshot.report_json as unknown as ReportPayload)
           : null,
-      error: status === "failed" ? "Execução finalizada com falha." : null,
+      error: status === "failed" ? failureMessage || "Execução finalizada com falha." : null,
       restored_from_db: true,
     });
   } catch (error: unknown) {

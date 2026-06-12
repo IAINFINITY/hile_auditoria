@@ -146,6 +146,7 @@ export async function POST(request: Request) {
         const output = await buildDailyReport({
           config,
           date,
+          runId: initialJob.db_run_id,
           onProgress: (event: ProgressEvent) => {
             const state = jobs.get(jobId);
             if (!state) return;
