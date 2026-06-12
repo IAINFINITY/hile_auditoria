@@ -16,8 +16,10 @@ services:
     # Todas as variáveis de runtime (Chatwoot, Dify, DB, segredos) vêm do .env
     env_file: .env
     ports:
-      # Só localhost: o cloudflared do host alcança via http://localhost:3001
-      - "127.0.0.1:3001:3001"
+      # Porta no HOST configurável via APP_HOST_PORT (padrão 3001).
+      # Se 3001 já estiver em uso, defina outra no .env (ex.: APP_HOST_PORT=3010).
+      # Só escuta em localhost; o Cloudflare Tunnel roteia a partir do host.
+      - "127.0.0.1:${APP_HOST_PORT:-3001}:3001"
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3001/api/health').then(r=>{process.exit(r.ok?0:1)}).catch(()=>process.exit(1))"]
       interval: 30s
