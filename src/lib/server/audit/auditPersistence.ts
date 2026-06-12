@@ -36,6 +36,46 @@ const insightSeverityRank: Record<string, number> = {
   info: 1,
 };
 
+type AuditReadCacheEntry<T> = {
+  expiresAt: number;
+  value: T;
+};
+
+declare global {
+  // Short-lived in-memory cache to soften repeated dashboard reads.
+  // Safe to lose between instances.
+  var __hileAuditReadCache: Map<string, AuditReadCacheEntry<unknown>> | undefined;
+}
+
+function getAuditReadCache(): Map<string, AuditReadCacheEntry<unknown>> {
+  if (!globalThis.__hileAuditReadCache) {
+    globalThis.__hileAuditReadCache = new Map<string, AuditReadCacheEntry<unknown>>();
+  }
+  return globalThis.__hileAuditReadCache;
+}
+
+function readAuditCache<T>(key: string): T | null {
+  const entry = getAuditReadCache().get(key);
+  if (!entry) return null;
+  if (Date.now() >= entry.expiresAt) {
+    getAuditReadCache().delete(key);
+    return null;
+  }
+  return entry.value as T;
+}
+
+function writeAuditCache<T>(key: string, value: T, ttlMs = 10_000): T {
+  getAuditReadCache().set(key, {
+    value,
+    expiresAt: Date.now() + Math.max(1_000, ttlMs),
+  });
+  return value;
+}
+
+export function invalidateAuditReadCache(): void {
+  getAuditReadCache().clear();
+}
+
 function normalizeTimelineStatus(value: unknown): string {
   const v = String(value || "").toLowerCase();
   if (v === "resolvido") return "resolvido";
@@ -461,6 +501,7 @@ export async function createRunRecord(params: {
       select: { id: true },
     });
 
+    invalidateAuditReadCache();
     return run.id;
   }, { maxWait: 20_000, timeout: 120_000 });
 }
@@ -1490,6 +1531,8 @@ export async function persistCompletedRun(params: {
       );
     }
   }
+
+  invalidateAuditReadCache();
 }
 
 export async function markRunFailed(runId: string, finishedAtIso: string, message: string) {
@@ -1548,10 +1591,21 @@ export async function markRunFailed(runId: string, finishedAtIso: string, messag
   }
 
   try {
-    await retry(() => appendRunEvent(runId, "run_failed", { message }), "appendRunEvent(run_failed)");
+    const normalized = String(message || "").toLowerCase();
+    const failure_kind =
+      normalized.includes("quota") || normalized.includes("rate limit") || normalized.includes("429")
+        ? "quota"
+        : normalized.includes("timeout") || normalized.includes("heartbeat") || normalized.includes("inatividade")
+          ? "timeout"
+          : normalized.includes("stale")
+            ? "stale"
+            : "generic";
+    await retry(() => appendRunEvent(runId, "run_failed", { message, failure_kind }), "appendRunEvent(run_failed)");
   } catch (error) {
     console.warn("[audit-persistence] falha ao registrar evento run_failed:", error);
   }
+
+  invalidateAuditReadCache();
 }
 
 function getRunningStaleMinutes(): number {
@@ -1560,13 +1614,25 @@ function getRunningStaleMinutes(): number {
   return Math.min(240, Math.max(5, Math.floor(raw)));
 }
 
+let lastStaleCleanupAt = 0;
+
 async function cleanupStaleRunningRuns(where: {
   tenantId?: string;
   channelId?: string;
   dateRef?: Date;
 } = {}) {
+  const now = Date.now();
+  const isGlobalCleanup = !where.tenantId && !where.channelId && !where.dateRef;
+  const cleanupCooldownMs = Number(process.env.REPORT_STALE_CLEANUP_COOLDOWN_MS || 30_000);
+
+  if (isGlobalCleanup && Number.isFinite(cleanupCooldownMs) && now - lastStaleCleanupAt < cleanupCooldownMs) {
+    return;
+  }
+
+  lastStaleCleanupAt = now;
+
   const staleMinutes = getRunningStaleMinutes();
-  const staleBefore = new Date(Date.now() - staleMinutes * 60 * 1000);
+  const staleBefore = new Date(now - staleMinutes * 60 * 1000);
 
   const rows = await prisma.analysisRun.findMany({
     where: {
@@ -1601,6 +1667,9 @@ async function cleanupStaleRunningRuns(where: {
 
 export async function listRecentRuns(limit: number) {
   const safeLimit = Math.max(1, Math.min(50, Number(limit || 10)));
+  const cacheKey = `recent-runs:${safeLimit}`;
+  const cached = readAuditCache<unknown>(cacheKey);
+  if (cached) return cached as any;
   await cleanupStaleRunningRuns();
   const rows = await prisma.analysisRun.findMany({
     where: {
@@ -1629,7 +1698,7 @@ export async function listRecentRuns(limit: number) {
     },
   });
 
-  return rows
+  const result = rows
     .map((row) => {
       const reportJson = (row.report?.reportJson as Record<string, unknown> | null) || null;
       const requestEvent = row.events.find((event) => event.eventType === "run_requested");
@@ -1656,6 +1725,8 @@ export async function listRecentRuns(limit: number) {
       };
     })
     .sort((a, b) => new Date(b.started_at).getTime() - new Date(a.started_at).getTime());
+
+  return writeAuditCache(cacheKey, result);
 }
 
 export async function getRunSnapshot(runId: string) {
@@ -1802,6 +1873,10 @@ export async function getCurrentWaitStateFromRunEvents(runId: string): Promise<{
 }
 
 export async function listAvailableReportDates(limit = 365) {
+  const safeLimit = Math.max(1, Math.min(2000, Number(limit || 365)));
+  const cacheKey = `available-dates:${safeLimit}`;
+  const cached = readAuditCache<unknown>(cacheKey);
+  if (cached) return cached as string[];
   await cleanupStaleRunningRuns();
   const rows = await prisma.analysisRun.findMany({
     where: {
@@ -1811,7 +1886,7 @@ export async function listAvailableReportDates(limit = 365) {
       },
     },
     orderBy: [{ dateRef: "desc" }, { startedAt: "desc" }],
-    take: Math.max(1, Math.min(2000, Number(limit || 365))),
+    take: safeLimit,
     select: {
       dateRef: true,
       report: {
@@ -1833,10 +1908,14 @@ export async function listAvailableReportDates(limit = 365) {
     }
   }
 
-  return Array.from(validDates);
+  return writeAuditCache(cacheKey, Array.from(validDates));
 }
 
 export async function getLatestRunByDate(date: string) {
+  const safeDate = String(date || "").trim();
+  const cacheKey = `latest-run:${safeDate}`;
+  const cached = readAuditCache<unknown>(cacheKey);
+  if (cached) return cached as any;
   await cleanupStaleRunningRuns({ dateRef: toDateRef(date) });
   const runs = await prisma.analysisRun.findMany({
     where: {
@@ -1862,7 +1941,7 @@ export async function getLatestRunByDate(date: string) {
 
   if (!run) return null;
 
-  return {
+  return writeAuditCache(cacheKey, {
     id: run.id,
     status: run.status,
     date_ref: run.dateRef.toISOString().slice(0, 10),
@@ -1878,10 +1957,14 @@ export async function getLatestRunByDate(date: string) {
     has_report: Boolean(run.report),
     report_json: (run.report?.reportJson as Record<string, unknown> | null) || null,
     report_markdown: run.report?.reportMarkdown || null,
-  };
+  });
 }
 
 export async function listRunsByDate(date: string) {
+  const safeDate = String(date || "").trim();
+  const cacheKey = `runs-by-date:${safeDate}`;
+  const cached = readAuditCache<unknown>(cacheKey);
+  if (cached) return cached as any;
   await cleanupStaleRunningRuns({ dateRef: toDateRef(date) });
   const rows = await prisma.analysisRun.findMany({
     where: {
@@ -1899,7 +1982,7 @@ export async function listRunsByDate(date: string) {
     },
   });
 
-  return rows
+  const result = rows
     .map((row) => {
       const reportJson = (row.report?.reportJson as Record<string, unknown> | null) || null;
       return {
@@ -1920,6 +2003,8 @@ export async function listRunsByDate(date: string) {
       };
     })
     .filter((row) => row.has_report);
+
+  return writeAuditCache(cacheKey, result);
 }
 
 export async function getRunningRunByDate(date: string) {

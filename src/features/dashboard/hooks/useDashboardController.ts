@@ -129,9 +129,11 @@ export function useDashboardController(options?: { enabled?: boolean; syncNavOnS
   const missingReportDatesRef = useRef<Set<string>>(new Set());
   const initialReportDateResolvedRef = useRef<boolean>(false);
   const userSelectedDateRef = useRef<boolean>(false);
+  const savedReportCacheRef = useRef<Map<string, { snapshot: DashboardRunSnapshot; cachedAt: number }>>(new Map());
   const isBusy = loading !== null;
   const isRunningOverview = loading === "overview";
   const insightsPageSize = clampInsightsPageSize();
+  const SAVED_REPORT_CACHE_TTL_MS = 20_000;
 
   function setDate(value: string) {
     const normalized = normalizeDateInput(value, maxDate);
@@ -197,12 +199,6 @@ export function useDashboardController(options?: { enabled?: boolean; syncNavOnS
 
     isLoadingPeriodRef.current = true;
     if (!background) {
-      setStatus(`Agregando dados de ${datesInRange.length} dia(s)...`);
-      setOverview(null);
-      setInsights([]);
-      setReport(null);
-      setFailures([]);
-      setRawOutput("Carregando dados do período...");
       setInsightsReady(false);
       setShowTrend(false);
     }
@@ -264,17 +260,31 @@ export function useDashboardController(options?: { enabled?: boolean; syncNavOnS
 
   async function loadSavedDateReport(targetDate: string, options?: { background?: boolean }) {
     const background = options?.background ?? false;
+    const cached = savedReportCacheRef.current.get(targetDate);
+    const cacheAge = cached ? Date.now() - cached.cachedAt : Number.POSITIVE_INFINITY;
+    const canUseCache = Boolean(cached) && cacheAge >= 0 && cacheAge <= SAVED_REPORT_CACHE_TTL_MS;
 
     if (!background) {
-      setOverview(null);
-      setInsights([]);
-      setReport(null);
-      setFailures([]);
-      setRawOutput("Carregando relatório salvo da data selecionada...");
       setInsightsReady(false);
       setShowTrend(false);
       setIsLoadingDateReport(true);
-      setStatus(`Carregando relatório salvo de ${targetDate}...`);
+      setStatus(`Carregando relatorio salvo de ${targetDate}...`);
+    }
+
+    if (canUseCache && cached) {
+      const snapshot = cached.snapshot;
+      setOverview(snapshot.overview);
+      setInsights(snapshot.insights);
+      setReport(snapshot.report);
+      setFailures([]);
+      setRawOutput(snapshot.rawOutput || "Relatório salvo sem conteúdo markdown.");
+      setInsightsReady(true);
+      setShowTrend(true);
+      setLastRunAt(new Date(cached.cachedAt).toISOString());
+      setStatus(background ? `Dados atualizados automaticamente para ${targetDate}.` : `Dados carregados do cache para ${targetDate}.`);
+      missingReportDatesRef.current.delete(targetDate);
+      setAvailableReportDates((current) => (current.includes(targetDate) ? current : [targetDate, ...current]));
+      return snapshot;
     }
 
     try {
@@ -295,6 +305,10 @@ export function useDashboardController(options?: { enabled?: boolean; syncNavOnS
       setStatus(background ? `Dados atualizados automaticamente para ${targetDate}.` : `Dados carregados para ${targetDate}.`);
       missingReportDatesRef.current.delete(targetDate);
       setAvailableReportDates((current) => (current.includes(targetDate) ? current : [targetDate, ...current]));
+      savedReportCacheRef.current.set(targetDate, {
+        snapshot,
+        cachedAt: Date.now(),
+      });
       return snapshot;
     } catch (error) {
       const isNotFound = error instanceof ApiRequestError && error.status === 404;
@@ -442,7 +456,6 @@ export function useDashboardController(options?: { enabled?: boolean; syncNavOnS
     if (!isDateHydrated) return;
     if (!date) return;
     if (isRunningOverview) return;
-    if (!hasLoadedAvailableDates) return;
     if (isPeriodMode) return;
 
     if (missingReportDatesRef.current.has(date)) {
@@ -460,7 +473,7 @@ export function useDashboardController(options?: { enabled?: boolean; syncNavOnS
     if (lastLoadedDateRef.current === date) return;
     lastLoadedDateRef.current = date;
     void loadSavedDateReport(date);
-  }, [date, enabled, hasLoadedAvailableDates, isDateHydrated, isRunningOverview, isPeriodMode]);
+  }, [date, enabled, isDateHydrated, isRunningOverview, isPeriodMode]);
 
   useEffect(() => {
     if (!enabled) return;
@@ -495,28 +508,30 @@ export function useDashboardController(options?: { enabled?: boolean; syncNavOnS
       if (isRunningOverview || isBusy || isLoadingDateReport || isLoadingPeriodRef.current) return;
 
       try {
-        const history = await apiGet<ReportHistoryResponse>("/api/report-day/history?limit=8");
+        const [history, datesResponse] = await Promise.all([
+          apiGet<ReportHistoryResponse>("/api/report-day/history?limit=8").catch(() => null),
+          apiGet<AvailableDatesResponse>("/api/report-day/available-dates?limit=1000").catch(() => null),
+        ]);
         if (cancelled) return;
 
         const items = Array.isArray(history?.items) ? history.items : [];
         const latest = items[0] || null;
-        if (!latest?.id) return;
-
-        if (latestHistoryRunIdRef.current === latest.id) return;
-        latestHistoryRunIdRef.current = latest.id;
-
-        setReportHistory(items);
-        setLastRunAt(latest.started_at || latest.finished_at || new Date().toISOString());
-
-        const datesResponse = await apiGet<AvailableDatesResponse>("/api/report-day/available-dates?limit=1000");
-        if (cancelled) return;
+        if (items.length > 0) {
+          if (latest?.id && latestHistoryRunIdRef.current !== latest.id) {
+            latestHistoryRunIdRef.current = latest.id;
+          }
+          setReportHistory(items);
+          setLastRunAt(latest?.started_at || latest?.finished_at || new Date().toISOString());
+        }
 
         const dates = Array.isArray(datesResponse?.dates) ? datesResponse.dates : [];
-        setAvailableReportDates(dates);
-        missingReportDatesRef.current = new Set(
-          [...missingReportDatesRef.current].filter((item) => !dates.includes(item)),
-        );
-        setHasLoadedAvailableDates(true);
+        if (dates.length > 0) {
+          setAvailableReportDates(dates);
+          missingReportDatesRef.current = new Set(
+            [...missingReportDatesRef.current].filter((item) => !dates.includes(item)),
+          );
+          setHasLoadedAvailableDates(true);
+        }
 
         if (isPeriodMode) {
           loadedPeriodDatesRef.current = null;
@@ -536,7 +551,7 @@ export function useDashboardController(options?: { enabled?: boolean; syncNavOnS
           return;
         }
 
-        if (String(latest.date_ref || "").trim() === date) {
+        if (latest && String(latest.date_ref || "").trim() === date) {
           lastLoadedDateRef.current = null;
           void loadSavedDateReport(date, { background: true });
         }
@@ -683,6 +698,32 @@ export function useDashboardController(options?: { enabled?: boolean; syncNavOnS
 
   function sleep(ms: number) {
     return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  function formatOverviewFailureMessage(message: string, elapsed: number, failureKind?: string | null): string {
+    const normalized = message.toLowerCase();
+    if (failureKind === "partial" || normalized.includes("partial") || normalized.includes("parcial")) {
+      return `Execução parcial em ${elapsed}s. Alguns contatos foram processados, mas o resultado final não foi persistido: ${message}`;
+    }
+    if (
+      failureKind === "quota" ||
+      normalized.includes("insufficient_quota") ||
+      normalized.includes("quota") ||
+      normalized.includes("rate limit") ||
+      normalized.includes("429")
+    ) {
+      return `Execução pausada por quota do Dify/OpenAI em ${elapsed}s. A rodada foi interrompida para evitar perda de progresso.`;
+    }
+    if (
+      failureKind === "timeout" ||
+      failureKind === "stale" ||
+      normalized.includes("timeout") ||
+      normalized.includes("heartbeat") ||
+      normalized.includes("inatividade")
+    ) {
+      return `Execução interrompida por timeout ou falta de heartbeat em ${elapsed}s.`;
+    }
+    return `Erro durante a execução em ${elapsed}s: ${message}`;
   }
 
   async function executeOverview() {
@@ -852,7 +893,13 @@ export function useDashboardController(options?: { enabled?: boolean; syncNavOnS
           }
 
           if (statusData.status === "failed") {
-            throw new Error(statusData.error || "Falha ao gerar relatório.");
+            const failureMessage = statusData.error || "Falha ao gerar relatório.";
+            const friendlyFailureMessage = formatOverviewFailureMessage(
+              failureMessage,
+              Math.round((Date.now() - startedAt) / 1000),
+              statusData.failure_kind || null,
+            );
+            throw new Error(friendlyFailureMessage);
           }
 
           if (Date.now() - lastHeartbeatAt > idleTimeoutMs) {
@@ -964,7 +1011,7 @@ export function useDashboardController(options?: { enabled?: boolean; syncNavOnS
         setLastRunAt(previousDashboardState.lastRunAt);
         setSelectedReportContact(previousDashboardState.selectedReportContact);
         setReportSeverityFilter(previousDashboardState.reportSeverityFilter);
-        setStatus(`Nova execução falhou em ${elapsed}s. Mantivemos os dados anteriores: ${reportFailedMessage}`);
+        setStatus(formatOverviewFailureMessage(reportFailedMessage, elapsed));
       } else {
         setOverview(finalOverviewData);
         setInsights(finalInsights);
@@ -1013,7 +1060,7 @@ export function useDashboardController(options?: { enabled?: boolean; syncNavOnS
       setLastRunAt(previousDashboardState.lastRunAt);
       setSelectedReportContact(previousDashboardState.selectedReportContact);
       setReportSeverityFilter(previousDashboardState.reportSeverityFilter);
-      setStatus(`Erro: ${message}`);
+      setStatus(formatOverviewFailureMessage(message, 0));
       pushRunStep(`Parou com erro: ${message}`);
       setRunCurrentContact(null);
       setCurrentRunId(null);

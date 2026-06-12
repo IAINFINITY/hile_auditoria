@@ -168,11 +168,12 @@ export async function GET(request: Request) {
         ? await prisma.jobEvent.findFirst({
             where: {
               runId,
-              eventType: "run_failed",
+              eventType: { in: ["run_failed", "run_partial"] },
             },
             orderBy: { createdAt: "desc" },
             select: {
               payloadJson: true,
+              eventType: true,
             },
           })
         : null;
@@ -180,6 +181,23 @@ export async function GET(request: Request) {
       failedEvent?.payloadJson && typeof failedEvent.payloadJson === "object"
         ? String((failedEvent.payloadJson as Record<string, unknown>).message || "").trim() || null
         : null;
+    const failureKindRaw =
+      failedEvent?.payloadJson && typeof failedEvent.payloadJson === "object"
+        ? String((failedEvent.payloadJson as Record<string, unknown>).failure_kind || "").trim().toLowerCase()
+        : "";
+    const normalizedFailureMessage = String(failureMessage || "").toLowerCase();
+    const failureKind =
+      failedEvent?.eventType === "run_partial"
+        ? "partial"
+        : failureKindRaw === "quota" || failureKindRaw === "timeout" || failureKindRaw === "stale"
+          ? failureKindRaw
+          : normalizedFailureMessage.includes("quota") || normalizedFailureMessage.includes("rate limit") || normalizedFailureMessage.includes("429")
+            ? "quota"
+            : normalizedFailureMessage.includes("timeout") || normalizedFailureMessage.includes("heartbeat") || normalizedFailureMessage.includes("inatividade")
+              ? "timeout"
+              : failureMessage
+                ? "generic"
+                : null;
     const phase = resolveJobPhase({
       status,
       processed: snapshot.run.processed || 0,
@@ -209,6 +227,7 @@ export async function GET(request: Request) {
       wait_attempt: dbWaitState?.wait_attempt || null,
       wait_max_attempts: dbWaitState?.wait_max_attempts || null,
       wait_next_retry_at: dbWaitState?.wait_next_retry_at || null,
+      failure_kind: failureKind,
       execution_order: [],
       result:
         status === "completed" && snapshot.report_json

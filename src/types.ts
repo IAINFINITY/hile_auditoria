@@ -281,6 +281,7 @@ export interface ReportJobStatusResponse {
   wait_attempt?: number | null;
   wait_max_attempts?: number | null;
   wait_next_retry_at?: string | null;
+  failure_kind?: "partial" | "quota" | "timeout" | "stale" | "generic" | null;
   execution_order: Array<{
     sequence: number;
     total: number;

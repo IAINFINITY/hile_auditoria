@@ -275,8 +275,22 @@ export async function POST(request: Request) {
         const isPartialRun =
           (Number.isFinite(totalToProcess) && totalToProcess > 0 && processed < totalToProcess) || failureCount > 0;
         if (persistOnlyFullSuccess && isPartialRun) {
+          const partialMessage =
+            `Execução parcial detectada (${processed}/${totalToProcess} processados, ${failureCount} falha(s)); ` +
+            `persistência final bloqueada para evitar salvar um resultado incompleto.`;
+          if (state.db_run_id) {
+            fireAndForget(
+              appendRunEvent(state.db_run_id, "run_partial", {
+                message: partialMessage,
+                processed,
+                total: totalToProcess,
+                failures: failureCount,
+              }),
+              "appendRunEvent(run_partial)",
+            );
+          }
           throw new Error(
-            `Execução parcial detectada (${processed}/${totalToProcess} processados, ${failureCount} falha(s)); persistência final bloqueada.`,
+            partialMessage,
           );
         }
         const finishedAt = new Date().toISOString();
