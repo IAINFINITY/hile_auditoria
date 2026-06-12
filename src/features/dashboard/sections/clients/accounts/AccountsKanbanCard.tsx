@@ -43,6 +43,8 @@ export function AccountsKanbanCard({
   onTogglePinned,
   onSelectRecord,
 }: AccountsKanbanCardProps) {
+  const shouldShowError = !loading && Boolean(errorMessage) && filteredRecords.length === 0;
+
   return (
     <HileSurfaceCard
       title={`Kanban - ${filteredRecords.length} cliente(s)`}
@@ -52,12 +54,15 @@ export function AccountsKanbanCard({
     >
       <div className="accounts-list-wrap" id="clients-kanban">
         {loading ? <HileEmptyPanel title="Carregando clientes" description="Estamos buscando os registros salvos no banco para montar o kanban." /> : null}
-        {!loading && errorMessage ? <HileEmptyPanel title="Falha ao carregar clientes" description={errorMessage} /> : null}
+        {shouldShowError ? <HileEmptyPanel title="Falha ao carregar clientes" description={errorMessage} /> : null}
         {!loading && !errorMessage && filteredRecords.length === 0 ? (
           <HileEmptyPanel title="Nenhum cliente encontrado" description="Ajuste os filtros para localizar registros neste escopo." />
         ) : null}
+        {!loading && errorMessage && filteredRecords.length > 0 ? (
+          <p className="accounts-list-note">Houve uma falha ao atualizar os dados, mas a lista em cache continua visível.</p>
+        ) : null}
 
-        {!loading && !errorMessage && filteredRecords.length > 0 ? (
+        {!loading && filteredRecords.length > 0 ? (
           <div className={`accounts-kanban ${hasActiveFilters ? `is-filtered ${filteredColsClass}` : ""}`}>
             {visibleStatuses.map((status) => {
               const list = recordsByStatus[status];

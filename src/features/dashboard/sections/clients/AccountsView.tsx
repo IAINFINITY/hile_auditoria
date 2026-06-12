@@ -176,13 +176,15 @@ export function AccountsView({
           );
         }
 
+        setErrorMessage("");
         sessionStorage.setItem(fetchMetaKey, JSON.stringify({ fetchedAt: Date.now(), runId: incomingRunId }));
       })
       .catch((error: unknown) => {
         if (cancelled) return;
-        if (records.length === 0) {
-          setRecords([]);
-          setRunId(null);
+        const cachedRecords = Array.isArray(cachedPayload?.records) ? cachedPayload.records : [];
+        if (records.length === 0 && cachedRecords.length > 0) {
+          setRecords(cachedRecords);
+          setRunId(cachedPayload?.runId || null);
         }
         setErrorMessage(error instanceof Error ? error.message : "Falha ao carregar clientes.");
       })

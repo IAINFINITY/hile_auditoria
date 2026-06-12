@@ -44,6 +44,21 @@ type MergedClientState = {
   storedBreakdown: ResponsibleBreakdown;
 };
 
+function sanitizeClientErrorMessage(error: unknown, fallback: string): string {
+  const message = error instanceof Error ? error.message : fallback;
+  const normalized = String(message || "").toLowerCase();
+  if (
+    normalized.includes("quota") ||
+    normalized.includes("rate limit") ||
+    normalized.includes("insufficient_quota") ||
+    normalized.includes("openai") ||
+    normalized.includes("dify")
+  ) {
+    return "Nao foi possivel carregar os clientes agora. Tente novamente em instantes.";
+  }
+  return String(message || fallback || "Nao foi possivel carregar os clientes agora.");
+}
+
 function normalizeOwnerScope(value: string | null): OwnerScope {
   const normalized = String(value || "").trim().toLowerCase();
   if (normalized === "ia" || normalized === "suellen" || normalized === "samuel") return normalized;
@@ -582,7 +597,7 @@ export async function GET(request: Request) {
       items,
     });
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : "Não foi possível carregar os clientes gerais.";
+    const message = sanitizeClientErrorMessage(error, "Nao foi possivel carregar os clientes gerais.");
     return NextResponse.json({ error: "clients_overall_fetch_failed", message }, { status: 400 });
   }
 }
