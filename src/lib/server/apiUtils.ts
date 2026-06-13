@@ -49,6 +49,7 @@ export interface AuthorizedApiUser {
   email: string;
   role: AppAuthRole;
   allowedUserId: string | null;
+  displayName: string | null;
 }
 
 export async function getAuthorizedApiUser() {
@@ -104,6 +105,7 @@ export async function getAuthorizedApiUser() {
       email: user.email,
       role: access.role,
       allowedUserId: access.allowedUserId,
+      displayName: null,
     } satisfies AuthorizedApiUser,
   };
 }

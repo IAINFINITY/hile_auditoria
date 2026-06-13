@@ -4,6 +4,7 @@ import { buildDailyReport } from "@/lib/server/audit/auditService";
 import {
   appendRunEvent,
   createRunRecord,
+  formatRunInProgressMessage,
   getRunningRunByDate,
   getSyncCheckpoint,
   markRunFailed,
@@ -16,7 +17,6 @@ import { addDaysToYmd, todayYmd } from "@/lib/server/audit/dateUtils";
 import type { ReportPayload } from "@/types";
 
 export const runtime = "nodejs";
-export const maxDuration = 300;
 
 type ProgressEvent = {
   type?: "contact_start" | "contact_done";
@@ -33,9 +33,6 @@ type ProgressEvent = {
 };
 
 function isCronAuthorized(request: Request): boolean {
-  const cronHeader = String(request.headers.get("x-vercel-cron") || "").trim();
-  if (cronHeader === "1") return true;
-
   const expectedSecret = String(process.env.CRON_SECRET || "").trim();
   if (!expectedSecret) return false;
 
@@ -113,6 +110,8 @@ async function handleAutoSync(request: Request) {
         requested_at: startedAt,
         force,
         trigger: "cron",
+        requested_by_name: "Sincronização automática",
+        requested_by_role: "system",
       });
     } catch (error: unknown) {
       const code = (error as { code?: string } | null)?.code;
@@ -128,7 +127,8 @@ async function handleAutoSync(request: Request) {
             date,
             report_date: date,
             mode: "auto_sync",
-            message: "Existe uma sincronização em andamento para esta data.",
+            message: formatRunInProgressMessage(runningDbRun ? runningDbRun : null, "auto_sync"),
+            blocking_run: runningDbRun || null,
           },
           { status: 202 },
         );

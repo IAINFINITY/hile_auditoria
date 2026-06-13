@@ -1,21 +1,22 @@
 import { randomUUID } from "node:crypto";
 import { after, NextResponse } from "next/server";
 import { buildDailyReport } from "@/lib/server/audit/auditService";
+import { prisma } from "@/lib/db/prisma";
 import {
   appendRunEvent,
   createRunRecord,
+  formatRunInProgressMessage,
   getLatestRunByDate,
   getRunningRunByDate,
   markRunFailed,
   persistCompletedRun,
   updateRunProgress,
 } from "@/lib/server/audit/auditPersistence";
-import { getAppConfig, parseDateInput, readJsonBody, requireAuthorizedApiAccess } from "@/lib/server/apiUtils";
+import { getAppConfig, getAuthorizedApiUser, parseDateInput, readJsonBody } from "@/lib/server/apiUtils";
 import { cleanupReportJobs, getReportJobsStore, type ReportJobState } from "@/lib/server/reportJobs";
 import type { ReportPayload } from "@/types";
 
 export const runtime = "nodejs";
-export const maxDuration = 300;
 
 type ProgressEvent = {
   type?: "contact_start" | "contact_heartbeat" | "contact_wait" | "contact_done";
@@ -39,8 +40,25 @@ type ProgressEvent = {
 
 export async function POST(request: Request) {
   try {
-    const authResponse = await requireAuthorizedApiAccess();
-    if (authResponse) return authResponse;
+    const auth = await getAuthorizedApiUser();
+    if (auth.response) return auth.response;
+    const authorizedUser = auth.user;
+  if (!authorizedUser) {
+      return NextResponse.json(
+        { error: "unauthorized", message: "Faça login para acessar esta rota." },
+        { status: 401 },
+      );
+    }
+
+    const allowedUser = authorizedUser.allowedUserId
+      ? await prisma.allowedUser
+          .findUnique({
+            where: { id: authorizedUser.allowedUserId },
+            select: { displayName: true },
+          })
+          .catch(() => null)
+      : null;
+    const requestedByName = allowedUser?.displayName || null;
 
     cleanupReportJobs();
 
@@ -64,17 +82,20 @@ export async function POST(request: Request) {
       if (isStaleInMemory) {
         jobs.delete(runningForDate.job_id);
       } else {
-      return NextResponse.json(
-        {
-          ok: true,
-          already_running: true,
-          job_id: runningForDate.job_id,
-          db_run_id: runningForDate.db_run_id || null,
-          status: "running",
-          date,
-        },
-        { status: 202 },
-      );
+        const blockingRun = await getRunningRunByDate(date);
+        return NextResponse.json(
+          {
+            ok: true,
+            already_running: true,
+            job_id: runningForDate.job_id,
+            db_run_id: runningForDate.db_run_id || blockingRun?.id || null,
+            status: "running",
+            date,
+            message: formatRunInProgressMessage(blockingRun ? blockingRun : null, "manual"),
+            blocking_run: blockingRun || null,
+          },
+          { status: 202 },
+        );
       }
     }
 
@@ -111,11 +132,14 @@ export async function POST(request: Request) {
         requested_date: date,
         requested_at: now,
         job_id: jobId,
+        requested_by_user_id: authorizedUser.id,
+        requested_by_allowed_user_id: authorizedUser.allowedUserId,
+        requested_by_email: authorizedUser.email,
+        requested_by_name: requestedByName,
+        requested_by_role: authorizedUser.role,
       });
     } catch (error: unknown) {
       jobs.delete(jobId);
-      const message =
-        error instanceof Error ? error.message : "Não foi possível iniciar o overview para esta data.";
       const code = (error as { code?: string } | null)?.code;
       if (code === "RUN_ALREADY_IN_PROGRESS") {
         const runningDbRun = await getRunningRunByDate(date);
@@ -127,7 +151,8 @@ export async function POST(request: Request) {
             db_run_id: runningDbRun?.id || null,
             status: "running",
             date,
-            message,
+            message: formatRunInProgressMessage(runningDbRun ? runningDbRun : null, "manual"),
+            blocking_run: runningDbRun || null,
           },
           { status: 202 },
         );

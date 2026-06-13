@@ -799,6 +799,25 @@ export async function appendRunEvent(runId: string, eventType: string, payloadJs
 
 type RunTriggerSource = "manual" | "auto_sync" | "unknown";
 
+type RunRequestMeta = {
+  trigger_source: RunTriggerSource;
+  requested_date: string;
+  requested_at: string | null;
+  requested_by_user_id: string | null;
+  requested_by_allowed_user_id: string | null;
+  requested_by_email: string | null;
+  requested_by_name: string | null;
+  requested_by_role: string | null;
+};
+
+type RunningRunSummary = RunRequestMeta & {
+  id: string;
+  date_ref: string;
+  started_at: string;
+  total_conversations: number;
+  processed: number;
+};
+
 function normalizeRunTriggerSource(value: unknown): RunTriggerSource {
   const normalized = String(value || "").trim().toLowerCase();
   if (normalized === "manual") return "manual";
@@ -806,11 +825,19 @@ function normalizeRunTriggerSource(value: unknown): RunTriggerSource {
   return "unknown";
 }
 
+function readPayloadString(payload: Record<string, unknown>, ...keys: string[]): string | null {
+  for (const key of keys) {
+    const value = String(payload[key] || "").trim();
+    if (value) return value;
+  }
+  return null;
+}
+
 function extractRunTriggerMeta(
   requestEvent: { payloadJson?: Prisma.JsonValue | null; createdAt?: Date } | null | undefined,
   completionEvent: { payloadJson?: Prisma.JsonValue | null } | null | undefined,
   fallbackDate: string,
-) {
+): RunRequestMeta {
   const requestPayload =
     requestEvent?.payloadJson && typeof requestEvent.payloadJson === "object"
       ? (requestEvent.payloadJson as Record<string, unknown>)
@@ -830,12 +857,64 @@ function extractRunTriggerMeta(
     (requestEvent?.createdAt instanceof Date && !Number.isNaN(requestEvent.createdAt.getTime())
       ? requestEvent.createdAt.toISOString()
       : null);
+  const requestedByUserId =
+    readPayloadString(requestPayload, "requested_by_user_id", "actor_user_id") ||
+    readPayloadString(completionPayload, "requested_by_user_id", "actor_user_id") ||
+    null;
+  const requestedByAllowedUserId =
+    readPayloadString(requestPayload, "requested_by_allowed_user_id") ||
+    readPayloadString(completionPayload, "requested_by_allowed_user_id") ||
+    null;
+  const requestedByEmail =
+    readPayloadString(requestPayload, "requested_by_email", "actor_email") ||
+    readPayloadString(completionPayload, "requested_by_email", "actor_email") ||
+    null;
+  const requestedByName =
+    readPayloadString(requestPayload, "requested_by_name", "actor_name") ||
+    readPayloadString(completionPayload, "requested_by_name", "actor_name") ||
+    null;
+  const requestedByRole =
+    readPayloadString(requestPayload, "requested_by_role", "actor_role") ||
+    readPayloadString(completionPayload, "requested_by_role", "actor_role") ||
+    null;
 
   return {
     trigger_source: source,
     requested_date: requestedDate,
     requested_at: requestedAt,
+    requested_by_user_id: requestedByUserId,
+    requested_by_allowed_user_id: requestedByAllowedUserId,
+    requested_by_email: requestedByEmail,
+    requested_by_name: requestedByName,
+    requested_by_role: requestedByRole,
   };
+}
+
+export function formatRunInProgressMessage(
+  run: Pick<
+    RunningRunSummary,
+    | "trigger_source"
+    | "requested_by_name"
+    | "requested_by_email"
+    | "requested_by_role"
+  > | null,
+  mode: "manual" | "auto_sync" = "manual",
+): string {
+  const triggerSource = run?.trigger_source || "unknown";
+  const requestedByName = String(run?.requested_by_name || "").trim();
+  const requestedByEmail = String(run?.requested_by_email || "").trim();
+  const isAutoSync = mode === "auto_sync" || triggerSource === "auto_sync" || run?.requested_by_role === "system";
+
+  if (isAutoSync) {
+    return "Já existe uma sincronização automática em andamento para esta data.";
+  }
+
+  const actorLabel = requestedByName || requestedByEmail;
+  if (actorLabel) {
+    return `Não é possível realizar uma execução dessa data, pois ${actorLabel} está realizando uma execução dessa mesma data agora.`;
+  }
+
+  return "Não é possível realizar uma execução dessa data, pois já existe uma execução em andamento para esta data.";
 }
 
 export async function updateRunProgress(
@@ -1713,6 +1792,11 @@ export async function listRecentRuns(limit: number) {
         trigger_source: triggerMeta.trigger_source,
         requested_date: triggerMeta.requested_date,
         requested_at: triggerMeta.requested_at,
+        requested_by_user_id: triggerMeta.requested_by_user_id,
+        requested_by_allowed_user_id: triggerMeta.requested_by_allowed_user_id,
+        requested_by_email: triggerMeta.requested_by_email,
+        requested_by_name: triggerMeta.requested_by_name,
+        requested_by_role: triggerMeta.requested_by_role,
         started_at: row.startedAt.toISOString(),
         finished_at: row.finishedAt ? row.finishedAt.toISOString() : null,
         total_conversations: row.totalConversations,
@@ -1766,6 +1850,11 @@ export async function getRunSnapshot(runId: string) {
       trigger_source: triggerMeta.trigger_source,
       requested_date: triggerMeta.requested_date,
       requested_at: triggerMeta.requested_at,
+      requested_by_user_id: triggerMeta.requested_by_user_id,
+      requested_by_allowed_user_id: triggerMeta.requested_by_allowed_user_id,
+      requested_by_email: triggerMeta.requested_by_email,
+      requested_by_name: triggerMeta.requested_by_name,
+      requested_by_role: triggerMeta.requested_by_role,
       started_at: run.startedAt.toISOString(),
       finished_at: run.finishedAt ? run.finishedAt.toISOString() : null,
       last_event_at: latestEventAt,
@@ -1931,6 +2020,17 @@ export async function getLatestRunByDate(date: string) {
       report: true,
       channel: true,
       tenant: true,
+      events: {
+        where: {
+          eventType: { in: ["run_requested", "run_completed"] },
+        },
+        orderBy: { createdAt: "asc" },
+        select: {
+          eventType: true,
+          payloadJson: true,
+          createdAt: true,
+        },
+      },
     },
   });
 
@@ -1940,6 +2040,9 @@ export async function getLatestRunByDate(date: string) {
   });
 
   if (!run) return null;
+  const requestEvent = run.events.find((event) => event.eventType === "run_requested");
+  const completionEvent = run.events.find((event) => event.eventType === "run_completed");
+  const triggerMeta = extractRunTriggerMeta(requestEvent, completionEvent, run.dateRef.toISOString().slice(0, 10));
 
   return writeAuditCache(cacheKey, {
     id: run.id,
@@ -1950,6 +2053,14 @@ export async function getLatestRunByDate(date: string) {
     finished_at: run.finishedAt ? run.finishedAt.toISOString() : null,
     total_conversations: run.totalConversations,
     processed: run.processed,
+    trigger_source: triggerMeta.trigger_source,
+    requested_date: triggerMeta.requested_date,
+    requested_at: triggerMeta.requested_at,
+    requested_by_user_id: triggerMeta.requested_by_user_id,
+    requested_by_allowed_user_id: triggerMeta.requested_by_allowed_user_id,
+    requested_by_email: triggerMeta.requested_by_email,
+    requested_by_name: triggerMeta.requested_by_name,
+    requested_by_role: triggerMeta.requested_by_role,
     success_count: run.successCount,
     failure_count: run.failureCount,
     tenant: run.tenant.name,
@@ -1979,18 +2090,40 @@ export async function listRunsByDate(date: string) {
       report: true,
       channel: true,
       tenant: true,
+      events: {
+        where: {
+          eventType: { in: ["run_requested", "run_completed"] },
+        },
+        orderBy: { createdAt: "asc" },
+        select: {
+          eventType: true,
+          payloadJson: true,
+          createdAt: true,
+        },
+      },
     },
   });
 
   const result = rows
     .map((row) => {
       const reportJson = (row.report?.reportJson as Record<string, unknown> | null) || null;
+      const requestEvent = row.events.find((event) => event.eventType === "run_requested");
+      const completionEvent = row.events.find((event) => event.eventType === "run_completed");
+      const triggerMeta = extractRunTriggerMeta(requestEvent, completionEvent, row.dateRef.toISOString().slice(0, 10));
       return {
         report_json: reportJson,
         id: row.id,
         status: row.status,
         date_ref: row.dateRef.toISOString().slice(0, 10),
         report_date: row.dateRef.toISOString().slice(0, 10),
+        trigger_source: triggerMeta.trigger_source,
+        requested_date: triggerMeta.requested_date,
+        requested_at: triggerMeta.requested_at,
+        requested_by_user_id: triggerMeta.requested_by_user_id,
+        requested_by_allowed_user_id: triggerMeta.requested_by_allowed_user_id,
+        requested_by_email: triggerMeta.requested_by_email,
+        requested_by_name: triggerMeta.requested_by_name,
+        requested_by_role: triggerMeta.requested_by_role,
         started_at: row.startedAt.toISOString(),
         finished_at: row.finishedAt ? row.finishedAt.toISOString() : null,
         total_conversations: row.totalConversations,
@@ -2021,10 +2154,24 @@ export async function getRunningRunByDate(date: string) {
       startedAt: true,
       totalConversations: true,
       processed: true,
+      events: {
+        where: {
+          eventType: { in: ["run_requested", "run_completed"] },
+        },
+        orderBy: { createdAt: "asc" },
+        take: 1,
+        select: {
+          eventType: true,
+          payloadJson: true,
+          createdAt: true,
+        },
+      },
     },
   });
 
   if (!run) return null;
+  const requestEvent = run.events.find((event) => event.eventType === "run_requested") || run.events[0] || null;
+  const triggerMeta = extractRunTriggerMeta(requestEvent, null, run.dateRef.toISOString().slice(0, 10));
 
   return {
     id: run.id,
@@ -2032,6 +2179,14 @@ export async function getRunningRunByDate(date: string) {
     started_at: run.startedAt.toISOString(),
     total_conversations: run.totalConversations,
     processed: run.processed,
+    trigger_source: triggerMeta.trigger_source,
+    requested_date: triggerMeta.requested_date,
+    requested_at: triggerMeta.requested_at,
+    requested_by_user_id: triggerMeta.requested_by_user_id,
+    requested_by_allowed_user_id: triggerMeta.requested_by_allowed_user_id,
+    requested_by_email: triggerMeta.requested_by_email,
+    requested_by_name: triggerMeta.requested_by_name,
+    requested_by_role: triggerMeta.requested_by_role,
   };
 }
 

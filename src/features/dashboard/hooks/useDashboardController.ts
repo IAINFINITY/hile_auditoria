@@ -7,6 +7,7 @@ import type {
   OverviewPayload,
   ReportByDateResponse,
   ReportHistoryResponse,
+  ReportJobBlockingRun,
   ReportJobStartResponse,
   ReportJobStatusResponse,
   ReportPayload,
@@ -82,6 +83,39 @@ function buildStatusSignature(statusData: ReportJobStatusResponse): string {
     current?.contact_key || "",
     current?.analysis_key || "",
   ].join("|");
+}
+
+function resolveBlockingRunActorLabel(blockingRun?: ReportJobBlockingRun | null): string | null {
+  if (!blockingRun) return null;
+
+  const requestedByName = String(blockingRun.requested_by_name || "").trim();
+  if (requestedByName) {
+    return toTitleCaseName(requestedByName);
+  }
+
+  const requestedByEmail = String(blockingRun.requested_by_email || "").trim();
+  if (requestedByEmail) {
+    return requestedByEmail;
+  }
+
+  if (blockingRun.trigger_source === "auto_sync") {
+    return "a sincronização automática";
+  }
+
+  return null;
+}
+
+function buildAlreadyRunningMessage(blockingRun?: ReportJobBlockingRun | null): string {
+  if (blockingRun?.trigger_source === "auto_sync") {
+    return "Já existe uma sincronização automática em andamento para esta data.";
+  }
+
+  const actorLabel = resolveBlockingRunActorLabel(blockingRun);
+  if (actorLabel) {
+    return `Não é possível realizar uma execução dessa data, pois ${actorLabel} está realizando uma execução dessa mesma data agora.`;
+  }
+
+  return "Não é possível realizar uma execução dessa data, pois já existe uma execução em andamento para esta data.";
 }
 
 export function useDashboardController(options?: { enabled?: boolean; syncNavOnScroll?: boolean }): DashboardController {
@@ -782,8 +816,12 @@ export function useDashboardController(options?: { enabled?: boolean; syncNavOnS
           date: safeDate,
         });
         setCurrentRunId(reportJob.db_run_id || null);
+        const startMessage = reportJob.already_running
+          ? reportJob.message || buildAlreadyRunningMessage(reportJob.blocking_run)
+          : "Execução iniciada";
+        setStatus(startMessage);
         pushRunStep(
-          `${reportJob.already_running ? "Execução já em andamento" : "Execução iniciada"} (job ${reportJob.job_id.slice(0, 8)}${
+          `${startMessage} (job ${reportJob.job_id.slice(0, 8)}${
             reportJob.db_run_id ? ` • run ${reportJob.db_run_id.slice(0, 8)}` : ""
           }).`,
         );

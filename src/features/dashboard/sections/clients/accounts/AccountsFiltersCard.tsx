@@ -116,7 +116,7 @@ export function AccountsFiltersCard({
             <select value={phaseFilter} onChange={(event) => onPhaseFilterChange(event.target.value as "all" | ClientPhase)}>
               <option value="all">Todas</option>
               <option value="inicial">Inicial</option>
-              <option value="intermediário">Intermediário</option>
+              <option value="intermediario">Intermediário</option>
               <option value="avancado">Avançado</option>
             </select>
           </label>

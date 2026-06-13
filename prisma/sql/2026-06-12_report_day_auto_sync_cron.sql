@@ -1,7 +1,9 @@
 -- Supabase cron for hourly report-day auto-sync.
--- This job calls the existing /api/report-day/auto-sync endpoint.
--- The secret is read from Supabase Vault, so no secret value is stored here.
--- Prerequisite: create a Vault secret named `report_day_auto_sync_secret`.
+-- This job calls the /api/report-day/auto-sync endpoint hosted on the VPS.
+-- The endpoint URL and the secret are read from Supabase Vault, so no host or secret value is stored here.
+-- Prerequisites:
+-- - create a Vault secret named `report_day_auto_sync_url`
+-- - create a Vault secret named `report_day_auto_sync_secret`
 
 create extension if not exists pg_cron;
 create extension if not exists pg_net;
@@ -13,9 +15,20 @@ security definer
 set search_path = public
 as $$
 declare
+  base_url text;
   cron_secret text;
   target_date text;
 begin
+  select decrypted_secret
+    into base_url
+  from vault.decrypted_secrets
+  where name = 'report_day_auto_sync_url'
+  limit 1;
+
+  if base_url is null or length(trim(base_url)) = 0 then
+    raise exception 'Missing cron base url report_day_auto_sync_url';
+  end if;
+
   select decrypted_secret
     into cron_secret
   from vault.decrypted_secrets
@@ -26,10 +39,11 @@ begin
     raise exception 'Missing cron secret report_day_auto_sync_secret';
   end if;
 
+  base_url := regexp_replace(trim(base_url), '/+$', '');
   target_date := to_char((now() at time zone 'America/Fortaleza')::date, 'YYYY-MM-DD');
 
   perform net.http_post(
-    url := 'https://hile-auditoria.vercel.app/api/report-day/auto-sync?date=' || target_date || '&force=true',
+    url := base_url || '/api/report-day/auto-sync?date=' || target_date || '&force=true',
     headers := jsonb_build_object(
       'Content-Type', 'application/json',
       'x-cron-secret', cron_secret

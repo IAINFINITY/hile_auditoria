@@ -33,9 +33,15 @@ export function statusLabel(status: AccountStatus): string {
 }
 
 export function normalizeClientPhase(value: unknown): ClientPhase {
-  const normalized = String(value || "").trim().toLowerCase();
-  if (normalized === "avancado") return "avancado";
-  if (normalized === "intermediario") return "intermediario";
+  const normalized = String(value || "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+  if (!normalized) return "inicial";
+  if (normalized.includes("avanc")) return "avancado";
+  if (normalized.includes("intermedi")) return "intermediario";
+  if (normalized.includes("inicial")) return "inicial";
   return "inicial";
 }
 

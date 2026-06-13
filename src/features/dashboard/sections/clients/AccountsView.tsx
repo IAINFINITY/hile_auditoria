@@ -428,7 +428,7 @@ export function AccountsView({
                     <strong>Fora da IA:</strong> conversa com etiqueta de saída do fluxo da IA, como <code>lead_agendado</code> ou <code>pausar_ia</code>.
                   </p>
                   <p>
-                    <strong>Fase do cliente:</strong> inicial (ideia sem estrutura), intermediário (ja tem CNPJ/presença de marca) e avançado (ja opera marca e busca otimização de terceirização com a Hile).
+                    <strong>Fase do cliente:</strong> inicial (ideia sem estrutura), intermediário (já tem CNPJ/presença de marca) e avançado (já opera marca e busca otimização de terceirização com a Hile).
                   </p>
                 </HileSurfaceCard>
 

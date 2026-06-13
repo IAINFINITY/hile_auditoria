@@ -251,6 +251,24 @@ export interface ReportJobStartResponse {
   report_date?: string;
   has_previous_report?: boolean;
   previous_run_id?: string | null;
+  message?: string;
+  blocking_run?: ReportJobBlockingRun | null;
+}
+
+export interface ReportJobBlockingRun {
+  id: string;
+  date_ref: string;
+  started_at: string;
+  total_conversations: number;
+  processed: number;
+  trigger_source?: "manual" | "auto_sync" | "unknown";
+  requested_date?: string | null;
+  requested_at?: string | null;
+  requested_by_user_id?: string | null;
+  requested_by_allowed_user_id?: string | null;
+  requested_by_email?: string | null;
+  requested_by_name?: string | null;
+  requested_by_role?: string | null;
 }
 
 export interface ReportJobStatusResponse {
@@ -261,6 +279,11 @@ export interface ReportJobStatusResponse {
   trigger_source?: "manual" | "auto_sync" | "unknown";
   requested_date?: string | null;
   requested_at?: string | null;
+  requested_by_user_id?: string | null;
+  requested_by_allowed_user_id?: string | null;
+  requested_by_email?: string | null;
+  requested_by_name?: string | null;
+  requested_by_role?: string | null;
   status: "running" | "completed" | "failed";
   phase?: "processing" | "waiting" | "finalizing" | "completed" | "failed";
   started_at: string;
@@ -308,6 +331,11 @@ export interface ReportRunResponse {
     trigger_source?: "manual" | "auto_sync" | "unknown";
     requested_date?: string | null;
     requested_at?: string | null;
+    requested_by_user_id?: string | null;
+    requested_by_allowed_user_id?: string | null;
+    requested_by_email?: string | null;
+    requested_by_name?: string | null;
+    requested_by_role?: string | null;
     started_at: string;
     finished_at: string | null;
     total_conversations: number;
@@ -327,6 +355,11 @@ export interface ReportHistoryItem {
   trigger_source?: "manual" | "auto_sync" | "unknown";
   requested_date?: string | null;
   requested_at?: string | null;
+  requested_by_user_id?: string | null;
+  requested_by_allowed_user_id?: string | null;
+  requested_by_email?: string | null;
+  requested_by_name?: string | null;
+  requested_by_role?: string | null;
   started_at: string;
   finished_at: string | null;
   total_conversations: number;
